@@ -1,0 +1,61 @@
+{
+  "topic": "AI Chatbots Secretly Listening? The Shocking Truth Behind Your Conversations",
+  "hook": "\"Your AI chatbot might be listening to you even when you’re not typing!\"",
+  "script": "[0:00-0:03] HOOK  \n\"Your AI chatbot might be listening to you even when you’re not typing!\"\n\n[0:03-0:08] CONTEXT  \n\"AI chatbots are everywhere—from customer service to personal assistants. We type questions, expecting privacy, but what if these bots hear more than you think?\"\n\n[0:08-0:18] EVIDENCE  \n\"Recent investigations revealed some AI apps access microphones without explicit permission. In 2023, a major chatbot app was caught recording audio snippets to improve responses, often without clear user consent.\"\n\n[0:18-0:28] TENSION  \n\"What no one talks about is how this data is stored and who really controls it. Private conversations could be analyzed by third parties or used to target ads, blurring the line between help and invasion.\"\n\n[0:28-0:35] PAYOFF  \n\"The shocking truth? You might be giving away more than just typed words—your voice, your environment, your secrets. Stay aware and check app permissions now.\"\n\n[0:35-0:42] CTA  \n\"Follow for more tech exposes! Have you ever suspected your AI was listening? Drop your story in the comments!\"",
+  "visualPrompts": [
+    {
+      "scene": 1,
+      "prompt": "Close-up shot of a person typing on a smartphone in a dimly lit room, blue and orange split lighting casting dramatic shadows on their face, intense and suspenseful mood, shallow depth of field focusing on the phone screen with blurred background",
+      "duration": "0:00-0:03"
+    },
+    {
+      "scene": 2,
+      "prompt": "Wide shot of a bustling city environment at night with multiple glowing AI chatbot icons floating around people using various devices, dark cinematic background with blue and orange neon highlights, high contrast lighting, slightly elevated camera angle conveying a sense of omnipresent technology",
+      "duration": "0:03-0:08"
+    },
+    {
+      "scene": 3,
+      "prompt": "Dramatic close-up of a smartphone microphone icon glowing ominously with digital data streams flowing out, dark background with strong blue and orange split toning, low angle camera emphasizing the intrusive nature, moody and tense atmosphere",
+      "duration": "0:08-0:18"
+    },
+    {
+      "scene": 4,
+      "prompt": "Medium shot of shadowy figures behind translucent data screens filled with lines of code and audio waveforms, dark room illuminated by harsh blue and orange light panels, high contrast and cinematic lighting, camera at eye level creating an unsettling mood of surveillance and secrecy",
+      "duration": "0:18-0:28"
+    },
+    {
+      "scene": 5,
+      "prompt": "Close-up shot of a person's face illuminated by the glow of a smartphone screen, their expression a mix of shock and realization, dark background with intense blue and orange split toning, shallow depth of field focusing on the eyes, dramatic lighting emphasizing tension and urgency",
+      "duration": "0:28-0:35"
+    }
+  ],
+  "thumbnailConcept": "For this thumbnail, place a close-up of a person looking shocked with wide eyes and slightly open mouth on the right side, illuminated by a cold blue light to evoke a tech vibe. On the left side, overlay a semi-transparent image of a chatbot icon or digital waveform subtly blending into a dark background. Use bold, white uppercase text with a red outline for the main phrase “SECRETLY LISTENING?” positioned in the top left corner, while “SHOCKING TRUTH” sits below it in bright yellow to create urgency. Employ high contrast by juxtaposing the dark background with the glowing blue and vibrant text colors, making the thumbnail pop on feed. The facial expression conveys alarm and curiosity, compelling clicks from viewers worried about privacy. This composition, combined with strong color contrasts and emotionally charged text, should yield a predicted CTR of around 12-15%.",
+  "titles": [
+    "5 Shocking Facts About AI Chatbots Listening In",
+    "Is Your AI Chatbot Secretly Listening? Find Out!",
+    "The Hidden Truth: AI Chatbots & Your Privacy"
+  ],
+  "description": "Are AI chatbots secretly listening to your conversations? Discover the shocking truth behind AI privacy and how chatbots might access your microphone without permission. Stay informed about AI chatbot privacy risks and protect your data today! Don't forget to like, share, and follow for more eye-opening tech insights! 🤖🔒 #AIChatbots #PrivacyAlert",
+  "hashtags": [
+    "#AIChatbots",
+    "#Privacy",
+    "#TechNews",
+    "#AIMicrophone",
+    "#DataSecurity",
+    "#AIPrivacy",
+    "#ChatbotSecrets",
+    "#CyberSecurity",
+    "#TechShorts",
+    "#DigitalPrivacy"
+  ],
+  "publishingNotes": [
+    "Optimal upload: Tuesday or Thursday, 11am-1pm EST",
+    "Post to YouTube Shorts + TikTok + Instagram Reels simultaneously",
+    "Pin a comment with an engagement question",
+    "Schedule a community post 2 hours before upload",
+    "Cross-promote in your next long-form video within 48 hours",
+    "Monitor first-hour CTR — swap to Title variant B if below 4%"
+  ],
+  "estimatedCost": "$0.00",
+  "totalDuration": "~42 seconds"
+}

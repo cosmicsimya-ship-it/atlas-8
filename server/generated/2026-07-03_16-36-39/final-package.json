@@ -1,0 +1,61 @@
+{
+  "topic": "AI Tool That Writes Code in Seconds—Is It Replacing Developers?",
+  "hook": "\"AI is about to replace millions of software developers—faster than you think.\"",
+  "script": "[0:00-0:03] HOOK  \n\"AI is about to replace millions of software developers—faster than you think.\"\n\n[0:03-0:08] CONTEXT  \n\"Recently, AI tools like GitHub Copilot and ChatGPT started writing complex code in mere seconds. Developers worldwide are stunned by how quickly these tools generate working software.\"\n\n[0:08-0:18] EVIDENCE  \n\"GitHub Copilot, trained on billions of lines of code, can autocomplete entire functions instantly. Companies report up to 40% productivity boosts, while beginners write apps without deep programming knowledge.\"\n\n[0:18-0:28] TENSION  \n\"But here’s the catch: AI lacks true understanding. It can produce buggy or insecure code, and complex projects still need human oversight. Yet many fear this tech could make junior developers obsolete.\"\n\n[0:28-0:35] PAYOFF  \n\"The truth? AI won’t replace developers—it’ll redefine their role. Programmers will shift from writing lines of code to supervising AI, focusing on creativity, logic, and problem-solving.\"\n\n[0:35-0:42] CTA  \n\"Want to stay ahead in tech? Follow for more AI insights. Do you think AI will help or hurt developers? Comment below!\"",
+  "visualPrompts": [
+    {
+      "scene": 1,
+      "prompt": "Dark cinematic cityscape at night with a giant translucent AI brain hologram looming over skyscrapers, glowing blue and orange split toning, dramatic low-angle shot emphasizing scale and urgency, moody atmosphere with fog and sharp contrasts, futuristic tech vibe",
+      "duration": "0:00-0:03"
+    },
+    {
+      "scene": 2,
+      "prompt": "Close-up of a focused software developer's face illuminated by multiple computer screens displaying complex code, dramatic rim lighting with blue and orange split toning, shallow depth of field with blurred background filled with floating code snippets, intense and contemplative mood, eye-level camera angle",
+      "duration": "0:03-0:08"
+    },
+    {
+      "scene": 3,
+      "prompt": "High contrast shot of a futuristic AI interface projecting streams of code and data in midair, bright orange and blue holographic elements swirling dynamically around a sleek workstation, side angle capturing intricate details of the technology, cinematic and awe-inspiring mood",
+      "duration": "0:08-0:18"
+    },
+    {
+      "scene": 4,
+      "prompt": "Dramatic medium close-up of a worried developer in a dimly lit room, deep shadows with sharp blue and orange highlights, intense expression showing concern and tension, blurred screens in the background displaying warning signs and buggy code, low-angle shot emphasizing emotional weight",
+      "duration": "0:18-0:28"
+    },
+    {
+      "scene": 5,
+      "prompt": "Bright cinematic shot of a confident developer standing in front of a glowing AI hologram, arms crossed, half-lit by warm orange and cool blue lights, futuristic office setting with sleek technology, camera placed at eye level, mood of empowerment and forward-thinking transformation",
+      "duration": "0:28-0:35"
+    }
+  ],
+  "thumbnailConcept": "For this thumbnail, place a split-screen composition: on the left, a shocked developer with wide eyes and hands on their head, and on the right, a sleek glowing laptop screen displaying rapidly scrolling code lines. Use a bold, futuristic font for the text overlay: \"AI Writes Code FAST!\" at the top in bright neon blue, and below in smaller red text: \"Replacing Developers?\" The background should be a dark tech-themed gradient with electric blue and black to create high contrast, making the text and expressions pop. Add subtle digital glitch effects around the laptop to emphasize AI power. The developer’s emotional surprise combined with glowing tech visuals and contrasting colors will grab attention instantly. Predicted CTR: 18-22%.",
+  "titles": [
+    "AI Tool Writes Code in Seconds! Developer Jobs at Risk?",
+    "Top AI Coding Tool Shaking Up Developer Careers!",
+    "Is AI Replacing Developers? Code Written Instantly!"
+  ],
+  "description": "Discover how AI tools like GitHub Copilot and ChatGPT are revolutionizing coding by writing complex software in seconds. This AI coding tool is transforming developer workflows and raising questions about the future of software development. Watch this quick breakdown on AI replacing developers and what it means for the tech industry. 🚀💻\n\nStay ahead in tech innovation and don't miss out on the latest AI coding trends! Follow for more insights and updates. 🔔\n\n#AIcoding #GitHubCopilot #ChatGPT",
+  "hashtags": [
+    "#AI",
+    "#Coding",
+    "#Developers",
+    "#GitHubCopilot",
+    "#ChatGPT",
+    "#SoftwareDevelopment",
+    "#TechInnovation",
+    "#AIAutomation",
+    "#Programming",
+    "#CodeInSeconds"
+  ],
+  "publishingNotes": [
+    "Optimal upload: Tuesday or Thursday, 11am-1pm EST",
+    "Post to YouTube Shorts + TikTok + Instagram Reels simultaneously",
+    "Pin a comment with an engagement question",
+    "Schedule a community post 2 hours before upload",
+    "Cross-promote in your next long-form video within 48 hours",
+    "Monitor first-hour CTR — swap to Title variant B if below 4%"
+  ],
+  "estimatedCost": "$0.00",
+  "totalDuration": "~42 seconds"
+}
