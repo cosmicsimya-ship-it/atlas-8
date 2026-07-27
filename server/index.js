@@ -6,7 +6,8 @@ import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createZip } from './zip-utils.js';
-
+import { Runner } from '../runner/runner.js';
+import { routeTask } from '../runner/task-router.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -15,6 +16,7 @@ const PORT = process.env.PORT || 3001;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const GENERATED_DIR = join(__dirname, 'generated');
+const runner = new Runner();
 
 // Ensure generated/ exists on startup
 if (!existsSync(GENERATED_DIR)) {
@@ -337,7 +339,82 @@ app.get('/api/assets/:folder/download-zip', (req, res) => {
     return res.status(500).json({ error: `Failed to build ZIP: ${err.message}` });
   }
 });
+// ══════════════════════════════════════════════════════════════════════
+// PERSONAL ANALYSIS ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════
 
+// ── Run the Personal Analysis Pipeline (routeTask → core-engine) ──────
+// task_type is intentionally hardcoded to 'personal-analysis' below and
+// is never read from the request body — this route exists for exactly
+// one purpose, and this guarantees it can never fall through to the
+// Content Pipeline regardless of what a caller sends.
+app.post('/api/personal-analysis', async (req, res) => {
+  const body = req.body;
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be a JSON object' });
+  }
+
+  const { task_id, subject_id, subject_profile, analysis_inputs, constraints } = body;
+
+  if (typeof task_id !== 'string' || task_id.trim().length === 0) {
+    return res.status(400).json({ error: 'task_id is required and must be a non-empty string' });
+  }
+  if (typeof subject_id !== 'string' || subject_id.trim().length === 0) {
+    return res.status(400).json({ error: 'subject_id is required and must be a non-empty string' });
+  }
+  if (typeof subject_profile !== 'object' || subject_profile === null || Array.isArray(subject_profile)) {
+    return res.status(400).json({ error: 'subject_profile is required and must be an object' });
+  }
+  if (analysis_inputs !== undefined && (typeof analysis_inputs !== 'object' || analysis_inputs === null || Array.isArray(analysis_inputs))) {
+    return res.status(400).json({ error: 'analysis_inputs, if provided, must be an object' });
+  }
+  if (constraints !== undefined && !Array.isArray(constraints)) {
+    return res.status(400).json({ error: 'constraints, if provided, must be an array' });
+  }
+
+  try {
+    const result = await routeTask(
+      {
+        task_type: 'personal-analysis',
+        task_id,
+        subject_id,
+        subject_profile,
+        analysis_inputs,
+        constraints,
+      },
+      runner
+    );
+
+    // The agent/provider call itself failed (routeTask/runPersonalAnalysis-
+    // PipelineRunner's ok: false, result: null case) — this is a gateway
+    // failure, not a client input problem or a core-engine business
+    // outcome.
+    if (result.result === null) {
+      console.error(`[ATLAS] Personal analysis call failed for task ${task_id}: ${JSON.stringify(result.trace?.stages?.['core-engine']?.error)}`);
+      return res.status(502).json({
+        error: 'core-engine call did not succeed',
+        stoppedAt: result.stoppedAt,
+        detail: result.trace?.stages?.['core-engine']?.error ?? null,
+      });
+    }
+
+    // Beyond this point, core-engine was reached and returned an envelope.
+    // "complete" and non-"complete" (insufficient_data | reject) are both
+    // valid business outcomes of core-engine's own logic, not HTTP errors —
+    // both are reported as 200 with the envelope as the body.
+    console.log(`[ATLAS] ✓ personal-analysis task ${task_id} → status: ${result.result.status}`);
+    return res.status(200).json(result.result);
+
+  } catch (err) {
+    console.error(`[ATLAS] ${err.message}`);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// START
+// ══════════════════════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════
@@ -351,3 +428,7 @@ app.listen(PORT, () => {
   console.log(`  Assets: ${GENERATED_DIR}`);
   console.log('');
 });
+
+setInterval(() => {
+  console.log("Backend alive...");
+}, 5000);
