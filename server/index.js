@@ -6,6 +6,8 @@ import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createZip } from './zip-utils.js';
+import { callOpenAI } from './openai-client.js';
+import { generateAtlasChatResponse } from './atlas-chat-service.js';
 import { Runner } from '../runner/runner.js';
 import { routeTask } from '../runner/task-router.js';
 const __filename = fileURLToPath(import.meta.url);
@@ -23,13 +25,6 @@ if (!existsSync(GENERATED_DIR)) {
   mkdirSync(GENERATED_DIR, { recursive: true });
   console.log(`[ATLAS] Created ${GENERATED_DIR}`);
 }
-
-const COST_PER_1K = {
-  'gpt-4.1-mini': 0.0004,
-  'gpt-4.1': 0.002,
-  'gpt-4o': 0.0075,
-  'gpt-4o-mini': 0.0003,
-};
 
 const MIME_TYPES = {
   '.md': 'text/markdown',
@@ -62,69 +57,55 @@ app.post('/api/ai/complete', async (req, res) => {
     return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
   }
 
-  const selectedModel = model || DEFAULT_MODEL;
-  const start = performance.now();
-
   try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        instructions: systemPrompt || undefined,
-        input: userPrompt,
-        temperature: temperature ?? 0.7,
-        max_output_tokens: maxTokens ?? 2048,
-      }),
+    const result = await callOpenAI({
+      systemPrompt,
+      userPrompt,
+      model: model || DEFAULT_MODEL,
+      temperature,
+      maxTokens,
+      apiKey: OPENAI_API_KEY,
     });
-
-    const latencyMs = performance.now() - start;
-
-    if (!response.ok) {
-      const errText = await response.text();
-      let msg = `OpenAI error (${response.status})`;
-      try { msg = JSON.parse(errText).error?.message || msg; } catch {}
-      console.error(`[ATLAS] ${msg}`);
-      return res.status(response.status).json({ error: msg });
-    }
-
-    const data = await response.json();
-
-    let content = '';
-    if (data.output) {
-      for (const block of data.output) {
-        if (block.type === 'message' && block.content) {
-          for (const part of block.content) {
-            if (part.type === 'output_text') content += part.text;
-          }
-        }
-      }
-    }
-    if (!content) {
-      return res.status(502).json({ error: 'OpenAI returned empty output' });
-    }
-
-    const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
-    const costRate = COST_PER_1K[selectedModel] ?? 0.001;
-
-    const result = {
-      content,
-      model: data.model || selectedModel,
-      provider: 'openai',
-      tokensUsed: totalTokens || Math.ceil(content.length / 4),
-      costUsd: ((totalTokens || Math.ceil(content.length / 4)) / 1000) * costRate,
-      latencyMs: Math.round(latencyMs),
-    };
 
     console.log(`[ATLAS] ✓ ${result.model} | ${result.tokensUsed} tok | $${result.costUsd.toFixed(4)} | ${result.latencyMs}ms`);
     return res.json(result);
-
   } catch (err) {
     console.error(`[ATLAS] ${err.message}`);
-    return res.status(500).json({ error: err.message });
+    const status = err.status ?? 500;
+    return res.status(status).json({ error: err.message });
+  }
+});
+
+// ── Atlas Chat — Meta Synthesis Engine integrated conversational endpoint ──
+app.post('/api/chat', async (req, res) => {
+  const { message, history, mode, model, temperature, maxTokens } = req.body;
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: 'message is required and must be a non-empty string' });
+  }
+  if (history !== undefined && !Array.isArray(history)) {
+    return res.status(400).json({ error: 'history, if provided, must be an array' });
+  }
+  if (!OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
+  }
+
+  try {
+    const result = await generateAtlasChatResponse({
+      message: message.trim(),
+      history,
+      mode,
+      model: model || DEFAULT_MODEL,
+      temperature,
+      maxTokens,
+    });
+
+    console.log(`[ATLAS] ✓ chat (${result.profile}/${result.mode}) | ${result.model} | ${result.tokensUsed} tok | ${result.latencyMs}ms`);
+    return res.json(result);
+  } catch (err) {
+    console.error(`[ATLAS] chat error: ${err.message}`);
+    const status = err.status ?? 500;
+    return res.status(status).json({ error: err.message });
   }
 });
 

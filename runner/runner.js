@@ -22,7 +22,7 @@
 // sequencer) reads the result and decides.
 // ═══════════════════════════════════════════════════════════════════════
 
-import { loadAgentPrompt } from './agent-loader.js';
+import { loadAgentPrompt, loadCoreEnginePrompt } from './agent-loader.js';
 import { callProvider } from './provider-adapter.js';
 import { buildAgentEnvelope, extractJsonBlock, validateEnvelopeShape } from './envelope.js';
 
@@ -55,7 +55,9 @@ export class Runner {
   async callAgent(agentName, input, taskId) {
     let systemPrompt;
     try {
-      systemPrompt = loadAgentPrompt(agentName);
+      systemPrompt = agentName === 'core-engine'
+        ? loadCoreEnginePrompt()
+        : loadAgentPrompt(agentName);
     } catch (err) {
       return { ok: false, stage: 'prompt_loading', error: { type: 'unknown', message: err.message } };
     }

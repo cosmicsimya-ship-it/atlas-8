@@ -1,27 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════════
 // Agent Prompt Loader — ATLAS Runner (Phase 1)
-//
-// Responsibility (per runner-architecture.md, item 1 — "Prompt loading"):
-//   Read the correct .md file from /agents for a given agent name and use
-//   its full text as the system prompt for that step.
-//
-// This module does nothing else. It does not call a model, does not
-// sequence anything, and does not know about envelopes.
 // ═══════════════════════════════════════════════════════════════════════
 
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { getMetaSynthesisPrompt } from '../server/atlas-prompt-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const AGENTS_DIR = join(__dirname, '..', 'agents');
 
-// The nine Content Pipeline agents defined in atlas-core.md's canonical
-// envelope, plus core-engine — the Personal Analysis Pipeline's terminal
-// agent (atlas-core.md, "Pipeline Routing" / "Personal Analysis Pipeline").
-// core-engine is a separate pipeline from the nine below; listing it here
-// only makes its .md file loadable, it does not add it to the Content
-// Pipeline's flow (that remains pipeline-runner.js's fixed agent list).
 export const VALID_AGENTS = [
   'atlas-core',
   'pattern-engine',
@@ -35,15 +23,10 @@ export const VALID_AGENTS = [
   'core-engine',
 ];
 
-/**
- * Load the full text of an agent's .md file to use as its system prompt.
- * @param {string} agentName - one of VALID_AGENTS
- * @returns {string} the full markdown content of that agent's spec file
- */
 export function loadAgentPrompt(agentName) {
   if (!VALID_AGENTS.includes(agentName)) {
     throw new Error(
-      `Unknown agent "${agentName}". Must be one of: ${VALID_AGENTS.join(', ')}`
+      `Unknown agent "${agentName}". Must be one of: ${VALID_AGENTS.join(', ')}`,
     );
   }
 
@@ -54,4 +37,35 @@ export function loadAgentPrompt(agentName) {
   }
 
   return readFileSync(filePath, 'utf-8');
+}
+
+/**
+ * personal-analysis profile: core-engine agent spec + Meta Synthesis module.
+ * @returns {string}
+ */
+export function loadCoreEnginePrompt() {
+  const base = loadAgentPrompt('core-engine');
+  const metaSynthesis = getMetaSynthesisPrompt();
+  return `${base}
+
+---
+
+## Meta Synthesis Engine (personal-analysis profile)
+
+The following specification governs how you synthesize across symbolic systems.
+Apply these principles when building convergences, contradictions, and confidence scores.
+Map your JSON output fields to this structure where applicable:
+
+| Meta Synthesis Section | JSON Field |
+|------------------------|------------|
+| Ana Tema (Main Theme) | \`core_pattern\` |
+| Destekleyen Sistemler | \`convergences\`, \`source_systems\` |
+| Ayrışan Noktalar | \`contradictions\` |
+| Çelişkinin Anlamı | derive from \`contradictions\` resolution + \`warnings\` |
+| Kör Nokta | include in \`warnings\` or \`recommended_directions\` context |
+| Gerçeklik Kontrolü | reflect in \`confidence\` reasons and \`evidence_map\` |
+| Güven Seviyesi | \`confidence.overall\` and per-convergence \`confidence\` |
+| Sentez | \`life_architecture\`, \`development_axis\`, \`current_cycle\` |
+
+${metaSynthesis}`;
 }
