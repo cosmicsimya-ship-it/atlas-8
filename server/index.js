@@ -7,7 +7,24 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createZip } from './zip-utils.js';
 import { callOpenAI } from './openai-client.js';
-import { generateAtlasChatResponse } from './atlas-chat-service.js';
+import { processAtlasMessage } from './atlas-message-service.js';
+import { normalizeWebChatRequest, toWebChatResponse } from './channel-adapters.js';
+import {
+  deleteMemoryField,
+  deleteUserMemory,
+  getMemoryField,
+  getUserMemory,
+  isValidUserId,
+  setMemoryField,
+  setUserMemory,
+  updateUserMemory,
+} from './user-memory.js';
+import {
+  deleteAnalysisRecord,
+  getAnalysisRecord,
+  listUserAnalyses,
+  saveAnalysisRecord,
+} from './analysis-archive.js';
 import { Runner } from '../runner/runner.js';
 import { routeTask } from '../runner/task-router.js';
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +61,10 @@ app.get('/api/ai/health', (_req, res) => {
     status: 'ok',
     configured: OPENAI_API_KEY.length > 0,
     model: DEFAULT_MODEL,
+    webChat: true,
+    telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+    memory: true,
+    modelProvider: OPENAI_API_KEY.length > 0,
   });
 });
 
@@ -76,37 +97,264 @@ app.post('/api/ai/complete', async (req, res) => {
   }
 });
 
-// ── Atlas Chat — Meta Synthesis Engine integrated conversational endpoint ──
+// ── Atlas Chat — shared intelligence pipeline (Web + Telegram via HTTP) ──
 app.post('/api/chat', async (req, res) => {
-  const { message, history, mode, model, temperature, maxTokens } = req.body;
-
-  if (!message || typeof message !== 'string' || message.trim().length === 0) {
-    return res.status(400).json({ error: 'message is required and must be a non-empty string' });
-  }
-  if (history !== undefined && !Array.isArray(history)) {
-    return res.status(400).json({ error: 'history, if provided, must be an array' });
-  }
-  if (!OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
-  }
-
   try {
-    const result = await generateAtlasChatResponse({
-      message: message.trim(),
-      history,
-      mode,
-      model: model || DEFAULT_MODEL,
-      temperature,
-      maxTokens,
+    const normalized = normalizeWebChatRequest(req.body);
+    const result = await processAtlasMessage(normalized, {
+      mode: req.body.mode,
+      model: req.body.model || DEFAULT_MODEL,
+      temperature: req.body.temperature,
+      maxTokens: req.body.maxTokens,
+      runner,
     });
 
-    console.log(`[ATLAS] ✓ chat (${result.profile}/${result.mode}) | ${result.model} | ${result.tokensUsed} tok | ${result.latencyMs}ms`);
-    return res.json(result);
+    const response = toWebChatResponse(result);
+    const httpStatus = result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
+
+    console.log(
+      `[ATLAS] ✓ chat/${normalized.channel} (${response.profile}/${response.mode})` +
+        `${response.memoryHandled ? ' [memory]' : ''} | ${response.engine ?? response.model} | ${response.tokensUsed} tok`,
+    );
+    return res.status(httpStatus).json(response);
   } catch (err) {
+    if (err.message?.includes('userId must be') || err.message?.includes('message is required')) {
+      return res.status(400).json({ error: err.message });
+    }
     console.error(`[ATLAS] chat error: ${err.message}`);
     const status = err.status ?? 500;
     return res.status(status).json({ error: err.message });
   }
+});
+
+// ── Channel-neutral Atlas message endpoint (explicit adapter contract) ──
+app.post('/api/atlas/message', async (req, res) => {
+  const { channel = 'web' } = req.body ?? {};
+
+  try {
+    const normalized =
+      channel === 'telegram'
+        ? {
+            channel: 'telegram',
+            userId: String(req.body.userId ?? ''),
+            conversationId: String(req.body.conversationId ?? req.body.userId ?? ''),
+            message: String(req.body.message ?? '').trim(),
+            history: Array.isArray(req.body.history) ? req.body.history : [],
+            username: req.body.username,
+            displayName: req.body.displayName,
+            metadata: req.body.metadata ?? {},
+            context: req.body.context ?? {},
+          }
+        : normalizeWebChatRequest(req.body);
+
+    if (channel === 'telegram' && !normalized.message) {
+      return res.status(400).json({ error: 'message is required' });
+    }
+
+    const result = await processAtlasMessage(normalized, {
+      model: req.body.model || DEFAULT_MODEL,
+      temperature: req.body.temperature,
+      maxTokens: req.body.maxTokens,
+      runner,
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error(`[ATLAS] atlas/message error: ${err.message}`);
+    return res.status(400).json({
+      status: 'error',
+      reply: err.message,
+      errorCode: 'INVALID_INPUT',
+    });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// USER MEMORY ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════
+
+app.get('/api/memory/:userId', (req, res) => {
+  const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+
+  try {
+    const memory = getUserMemory(userId);
+    return res.json({ userId, memory });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/memory/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { memory } = req.body ?? {};
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  if (!memory || typeof memory !== 'object') {
+    return res.status(400).json({ error: 'memory object is required' });
+  }
+
+  const result = await setUserMemory(userId, memory);
+  if (!result.ok) {
+    return res.status(500).json({ error: result.error });
+  }
+  return res.json({ userId, memory: result.memory, saved: true });
+});
+
+app.patch('/api/memory/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const partial = req.body ?? {};
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+
+  const result = await updateUserMemory(userId, partial);
+  if (!result.ok) {
+    return res.status(500).json({ error: result.error });
+  }
+  return res.json({ userId, memory: result.memory, saved: true });
+});
+
+app.delete('/api/memory/:userId', async (req, res) => {
+  const { userId } = req.params;
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+
+  const result = await deleteUserMemory(userId);
+  if (!result.ok) {
+    const status = result.error === 'User memory not found' ? 404 : 500;
+    return res.status(status).json({ error: result.error });
+  }
+  return res.json({ userId, deleted: true });
+});
+
+app.get('/api/memory/:userId/field', (req, res) => {
+  const { userId } = req.params;
+  const path = req.query.path;
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  if (typeof path !== 'string' || !path.trim()) {
+    return res.status(400).json({ error: 'path query parameter is required' });
+  }
+
+  try {
+    const value = getMemoryField(userId, path);
+    if (value === undefined) {
+      return res.status(404).json({ error: 'Field not found' });
+    }
+    return res.json({ userId, path, value });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/memory/:userId/field', async (req, res) => {
+  const { userId } = req.params;
+  const path = req.query.path ?? req.body?.path;
+  const { value } = req.body ?? {};
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  if (typeof path !== 'string' || !path.trim()) {
+    return res.status(400).json({ error: 'path is required' });
+  }
+
+  const result = await setMemoryField(userId, path, value);
+  if (!result.ok) {
+    return res.status(500).json({ error: result.error });
+  }
+  return res.json({ userId, path, value, saved: true, memory: result.memory });
+});
+
+app.delete('/api/memory/:userId/field', async (req, res) => {
+  const { userId } = req.params;
+  const path = req.query.path;
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  if (typeof path !== 'string' || !path.trim()) {
+    return res.status(400).json({ error: 'path query parameter is required' });
+  }
+
+  const result = await deleteMemoryField(userId, path);
+  if (!result.ok) {
+    const status = result.error === 'Field not found' ? 404 : 500;
+    return res.status(status).json({ error: result.error });
+  }
+  return res.json({ userId, path, deleted: true, memory: result.memory });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// ANALYSIS ARCHIVE ENDPOINTS (separate from profile memory)
+// ══════════════════════════════════════════════════════════════════════
+
+app.get('/api/archive/:userId', (req, res) => {
+  const { userId } = req.params;
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  try {
+    const analyses = listUserAnalyses(userId);
+    return res.json({ userId, analyses });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/archive/:userId/:analysisId', (req, res) => {
+  const { userId, analysisId } = req.params;
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  const record = getAnalysisRecord(userId, analysisId);
+  if (!record) {
+    return res.status(404).json({ error: 'Analysis not found' });
+  }
+  return res.json(record);
+});
+
+app.post('/api/archive/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const { record } = req.body ?? {};
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  if (!record || typeof record !== 'object') {
+    return res.status(400).json({ error: 'record object is required' });
+  }
+
+  const result = await saveAnalysisRecord(userId, record);
+  if (!result.ok) {
+    return res.status(500).json({ error: result.error });
+  }
+  return res.json({ userId, record: result.record, saved: true });
+});
+
+app.delete('/api/archive/:userId/:analysisId', async (req, res) => {
+  const { userId, analysisId } = req.params;
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+
+  const result = await deleteAnalysisRecord(userId, analysisId);
+  if (!result.ok) {
+    const status = result.error === 'Analysis not found' ? 404 : 500;
+    return res.status(status).json({ error: result.error });
+  }
+  return res.json({ userId, analysisId, deleted: true });
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -407,9 +655,10 @@ app.listen(PORT, () => {
   console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
   console.log(`  Model:  ${DEFAULT_MODEL}`);
   console.log(`  Assets: ${GENERATED_DIR}`);
+  console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
+  console.log('  Memory: ✓ JSON persistence initialized');
+  console.log(`  Web Chat: ✓ shared pipeline active`);
+  console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);
   console.log('');
 });
-
-setInterval(() => {
-  console.log("Backend alive...");
-}, 5000);
+ 

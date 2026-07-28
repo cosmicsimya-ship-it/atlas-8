@@ -31,6 +31,53 @@ const DAILY_GUIDE_KEYWORDS = [
 
 const MULTI_SYSTEM_PATTERN = /\b(astroloji|numeroloji|tarot|kader|ebced|cifir|simya|arketip)\b.*\b(astroloji|numeroloji|tarot|kader|ebced|cifir|simya|arketip)\b/i;
 
+/** Explicit tarot spread commands from atlas_tarot_spread.md §2 */
+const TAROT_EXPLICIT_COMMANDS = [
+  'açılım yap',
+  'açılımı başlat',
+  'tarot aç',
+  'üç kart aç',
+  '3 kart aç',
+  'kart çek',
+  'bana kart çek',
+  'aklımdaki kişi için aç',
+  'duygularına bak',
+  'alandaki neler oluyor',
+  'alandaki neler',
+  'alandaki neler oluyor, bak',
+  'alandaki neler oluyor bak',
+  'alanda neler oluyor',
+  'şu anki enerjiye bak',
+  'classic tarot',
+  'bir açılım yap',
+  'kartları seç',
+  'hangi kartlar geldi',
+  'hangi kartlar çıktı',
+];
+
+/** Short follow-up commands — valid only when tarot context exists in history */
+const TAROT_SHORT_COMMANDS = ['aç', 'başla', 'çek', 'bak', 'devam'];
+
+const TAROT_CONTEXT_MARKERS = [
+  'tarot',
+  'açılım',
+  'classic tarot',
+  'kart çek',
+  'üç kart',
+  '3 kart',
+  'deste',
+  'kartları seç',
+  'kart yorum',
+];
+
+/**
+ * @typedef {'spread' | 'reveal-cards' | 'interpret' | 'continue'} TarotSpreadAction
+ */
+
+/**
+ * @typedef {{ active: boolean, intent: TarotSpreadAction|null }} TarotSpreadIntent
+ */
+
 /**
  * @typedef {'conversational' | 'meta-synthesis' | 'daily-guide'} AnalysisMode
  */
@@ -67,6 +114,86 @@ export function detectAnalysisMode(message) {
 }
 
 /**
+ * Whether recent conversation history establishes an active tarot context.
+ * @param {ChatTurn[]} history
+ * @returns {boolean}
+ */
+export function hasTarotContext(history = []) {
+  const corpus = history
+    .slice(-10)
+    .map((turn) => turn.content.toLowerCase())
+    .join('\n');
+
+  if (!corpus) {
+    return false;
+  }
+
+  return TAROT_CONTEXT_MARKERS.some((marker) => corpus.includes(marker));
+}
+
+function normalizeCommandText(text) {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[.!?…]+$/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function matchesShortTarotCommand(text) {
+  return TAROT_SHORT_COMMANDS.some(
+    (cmd) => text === cmd || text.startsWith(`${cmd} `) || text.endsWith(` ${cmd}`),
+  );
+}
+
+/**
+ * Detect tarot spread intent from the current message and conversation history.
+ * @param {string} message
+ * @param {ChatTurn[]} [history]
+ * @returns {TarotSpreadIntent}
+ */
+export function detectTarotSpreadIntent(message, history = []) {
+  const text = normalizeCommandText(message ?? '');
+  if (!text) {
+    return { active: false, intent: null };
+  }
+
+  if (/hangi kartlar/i.test(text)) {
+    return { active: true, intent: 'reveal-cards' };
+  }
+
+  if (/^yorumla$/i.test(text) || text.startsWith('yorumla ')) {
+    if (hasTarotContext(history) || TAROT_EXPLICIT_COMMANDS.some((cmd) => text.includes(cmd))) {
+      return { active: true, intent: 'interpret' };
+    }
+  }
+
+  if (TAROT_EXPLICIT_COMMANDS.some((cmd) => text.includes(cmd))) {
+    return { active: true, intent: 'spread' };
+  }
+
+  if (/^(tarot|kart)\b/.test(text) && /(aç|çek|seç|yap|başlat)/.test(text)) {
+    return { active: true, intent: 'spread' };
+  }
+
+  if (hasTarotContext(history)) {
+    if (/^(devam|bir de|şimdi de)/.test(text) && /(aç|bak|yorum|kart|eylem|duygu|ilişki|alan)/.test(text)) {
+      return { active: true, intent: 'continue' };
+    }
+
+    if (matchesShortTarotCommand(text)) {
+      return { active: true, intent: 'spread' };
+    }
+  }
+
+  // Current message may establish tarot context for a follow-up "Aç." in the same turn chain
+  if (TAROT_CONTEXT_MARKERS.some((marker) => text.includes(marker)) && /(aç|çek|seç|yap|başlat)/.test(text)) {
+    return { active: true, intent: 'spread' };
+  }
+
+  return { active: false, intent: null };
+}
+
+/**
  * @typedef {{ role: 'user' | 'assistant', content: string }} ChatTurn
  */
 
@@ -75,15 +202,33 @@ export function detectAnalysisMode(message) {
  * @param {string} message
  * @param {ChatTurn[]} [history]
  * @param {AnalysisMode} [mode]
+ * @param {TarotSpreadIntent|null} [tarotIntent]
+ * @param {string|null} [memoryContext]
  * @returns {string}
  */
-export function buildChatUserPrompt(message, history = [], mode = 'conversational') {
+export function buildChatUserPrompt(
+  message,
+  history = [],
+  mode = 'conversational',
+  tarotIntent = null,
+  memoryContext = null,
+) {
   const trimmed = (message ?? '').trim();
   if (!trimmed) {
     return '';
   }
 
   const parts = [];
+
+  if (memoryContext && memoryContext.trim()) {
+    parts.push(
+      '## Kalıcı Kullanıcı Hafızası',
+      'Aşağıdaki bilgiler kullanıcının daha önce kaydettiği kalıcı profil verileridir.',
+      'Konuşma geçmişi veya tarot bağlamı ile karıştırma.',
+      memoryContext.trim(),
+      '',
+    );
+  }
 
   if (history.length > 0) {
     parts.push('## Önceki Konuşma');
@@ -103,6 +248,25 @@ export function buildChatUserPrompt(message, history = [], mode = 'conversationa
       '',
       `Kullanıcı: ${trimmed}`,
     );
+  } else if (tarotIntent?.active) {
+    const taskLines = [
+      '## Görev',
+      'Aşağıdaki mesaj tarot açılım protokolü kapsamındadır.',
+      'atlas_tarot_spread.md kurallarını uygula; açıklama yapma, eylemi gerçekleştir.',
+    ];
+
+    if (tarotIntent.intent === 'reveal-cards') {
+      taskLines.push('Son seçilen kart isimlerini ve pozisyonlarını doğrudan listele.');
+    } else if (tarotIntent.intent === 'interpret') {
+      taskLines.push('Konuşmada zaten seçilmiş kartları yorumla; yeni kart seçme.');
+    } else if (tarotIntent.intent === 'continue') {
+      taskLines.push('Önceki tarot bağlamını koruyarak yeni alt açılım yap.');
+    } else {
+      taskLines.push('Classic Tarot destesinden sembolik kart seç ve açılımı tamamla.');
+    }
+
+    taskLines.push('', `Kullanıcı: ${trimmed}`);
+    parts.push(...taskLines);
   } else {
     parts.push(trimmed);
   }

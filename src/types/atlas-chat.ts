@@ -19,6 +19,7 @@ export interface AtlasChatTurn {
 export interface AtlasChatRequest {
   message: string;
   history?: AtlasChatTurn[];
+  userId?: string;
   mode?: AtlasAnalysisMode;
   profile?: AtlasPromptProfile;
   model?: string;
@@ -36,6 +37,8 @@ export interface AtlasChatResponse {
   tokensUsed: number;
   costUsd: number;
   latencyMs: number;
+  memoryUpdated?: boolean;
+  memoryHandled?: boolean;
 }
 
 export interface AtlasChatErrorResponse {

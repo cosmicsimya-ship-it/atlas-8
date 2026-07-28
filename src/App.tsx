@@ -1,8 +1,12 @@
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import AppLayout from "./components/layout/AppLayout";
 
 import Landing from "./pages/Landing";
+import AnalysisFlow from "./pages/AnalysisFlow";
+import AnalysisResult from "./pages/AnalysisResult";
+import ArchivePage from "./pages/ArchivePage";
+import AboutPage from "./pages/AboutPage";
 import Dashboard from "./pages/Dashboard";
 import AgentCenter from "./pages/AgentCenter";
 import AgentDetail from "./pages/AgentDetail";
@@ -22,7 +26,12 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route path="/" element={<Landing />} />
-        <Route path="chat" element={<Chat />} />
+        <Route path="analysis" element={<AnalysisFlow />} />
+        <Route path="analysis/result/:id" element={<AnalysisResult />} />
+        <Route path="archive" element={<ArchivePage />} />
+        <Route path="atlas" element={<Chat />} />
+        <Route path="chat" element={<Navigate to="/atlas" replace />} />
+        <Route path="about" element={<AboutPage />} />
 
         <Route element={<AppLayout />}>
           <Route path="dashboard" element={<Dashboard />} />

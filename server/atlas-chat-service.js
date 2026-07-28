@@ -1,20 +1,21 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Atlas Chat Service — profile-aware conversational AI
+// Atlas Chat Service — backward-compatible wrapper over shared pipeline
 //
-// Used by POST /api/chat (Telegram + Web Chat).
-// Meta Synthesis modules load only when mode resolves to meta-synthesis profile.
+// buildAtlasChatRequest remains for prompt assembly tests.
+// generateAtlasChatResponse delegates to processAtlasMessage().
 // ═══════════════════════════════════════════════════════════════════════
 
 import {
   buildAtlasSystemPrompt,
   resolveChatProfile,
 } from './atlas-prompt-loader.js';
-import { callOpenAI } from './openai-client.js';
-import { extractResponseText } from './atlas-response.js';
 import {
   detectAnalysisMode,
   buildChatUserPrompt,
+  detectTarotSpreadIntent,
 } from './symbolic-synthesis.js';
+import { processAtlasMessage } from './atlas-message-service.js';
+import { normalizeWebChatRequest, toWebChatResponse } from './channel-adapters.js';
 
 /**
  * @param {{
@@ -22,8 +23,8 @@ import {
  *   history?: Array<{ role: 'user' | 'assistant', content: string }>,
  *   mode?: string,
  *   profile?: string,
+ *   memoryContext?: string|null,
  * }} options
- * @returns {{ systemPrompt: string, userPrompt: string, mode: string, profile: string }}
  */
 export function buildAtlasChatRequest(options) {
   const message = (options.message ?? '').trim();
@@ -33,10 +34,17 @@ export function buildAtlasChatRequest(options) {
 
   const mode = options.mode ?? detectAnalysisMode(message);
   const profile = options.profile ?? resolveChatProfile(mode);
-  const systemPrompt = buildAtlasSystemPrompt({ profile, mode });
-  const userPrompt = buildChatUserPrompt(message, options.history ?? [], mode);
+  const tarotIntent = detectTarotSpreadIntent(message, options.history ?? []);
+  const systemPrompt = buildAtlasSystemPrompt({ profile, mode, tarotIntent });
+  const userPrompt = buildChatUserPrompt(
+    message,
+    options.history ?? [],
+    mode,
+    tarotIntent,
+    options.memoryContext ?? null,
+  );
 
-  return { systemPrompt, userPrompt, mode, profile };
+  return { systemPrompt, userPrompt, mode, profile, tarotIntent };
 }
 
 /**
@@ -48,30 +56,28 @@ export function buildAtlasChatRequest(options) {
  *   model?: string,
  *   temperature?: number,
  *   maxTokens?: number,
+ *   userId?: string,
+ *   channel?: 'web' | 'telegram',
+ *   conversationId?: string,
+ *   runner?: import('../runner/runner.js').Runner,
  * }} options
  */
 export async function generateAtlasChatResponse(options) {
-  const { systemPrompt, userPrompt, mode, profile } = buildAtlasChatRequest(options);
+  const normalized = normalizeWebChatRequest({
+    message: options.message,
+    history: options.history,
+    userId: options.userId,
+    conversationId: options.conversationId,
+    channel: options.channel ?? 'web',
+  });
 
-  const result = await callOpenAI({
-    systemPrompt,
-    userPrompt,
+  const result = await processAtlasMessage(normalized, {
+    mode: options.mode,
     model: options.model,
     temperature: options.temperature,
     maxTokens: options.maxTokens,
+    runner: options.runner,
   });
 
-  const reply = extractResponseText(result);
-
-  return {
-    reply,
-    content: result.content,
-    mode,
-    profile,
-    model: result.model,
-    provider: result.provider,
-    tokensUsed: result.tokensUsed,
-    costUsd: result.costUsd,
-    latencyMs: result.latencyMs,
-  };
+  return toWebChatResponse(result);
 }

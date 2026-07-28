@@ -166,6 +166,8 @@ Atlas düşük güvenli bir çıkarımı kesin bir gerçek gibi sunmaz.
 
 ## 8. Tarot ve Kart Sistemleri İçin Sembolik Analiz
 
+Tarot açılımı eylem protokolü için `atlas_tarot_spread.md` modülüne bak.
+
 Atlas tarot kartlarını yalnızca klasik kart anlamlarını sıralamak için kullanmaz.
 
 Bir tarot açılımında şu aşamaları uygular:

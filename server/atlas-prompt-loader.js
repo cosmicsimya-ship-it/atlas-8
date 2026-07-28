@@ -23,6 +23,7 @@ export const ATLAS_COMMON_MODULES = [
   'atlas_reasoning',
   'atlas_decision',
   'atlas_conversation',
+  'atlas_tarot_spread',
   'atlas_response_style',
   'atlas_personality',
   'atlas_response_examples',
@@ -34,12 +35,16 @@ export const ATLAS_COMMON_MODULES = [
 /** Meta synthesis module — injected only when profile requires it. */
 export const META_SYNTHESIS_MODULE = 'atlas_meta_synthesis';
 
+/** Tarot spread action protocol — always available in conversational chat. */
+export const TAROT_SPREAD_MODULE = 'atlas_tarot_spread';
+
 /** Profile → module list. Empty arrays mean caller supplies the full prompt. */
 export const PROMPT_PROFILE_MODULES = {
   conversational: ATLAS_COMMON_MODULES,
   'meta-synthesis': [
     'atlas_identity',
     META_SYNTHESIS_MODULE,
+    TAROT_SPREAD_MODULE,
     'atlas_reasoning',
     'atlas_decision',
     'atlas_conversation',
@@ -83,6 +88,10 @@ export function getMetaSynthesisPrompt() {
   return loadAtlasModule(META_SYNTHESIS_MODULE);
 }
 
+export function getTarotSpreadPrompt() {
+  return loadAtlasModule(TAROT_SPREAD_MODULE);
+}
+
 export function getCurrentDateTr() {
   return new Intl.DateTimeFormat('tr-TR', {
     timeZone: 'Europe/Istanbul',
@@ -107,13 +116,14 @@ export function resolveChatProfile(mode) {
 /**
  * Runtime rules appended to Atlas-powered chat profiles.
  * Symbolic / numerology / synthesis directives appear ONLY for meta-synthesis mode.
- * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile }} [options]
+ * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null }} [options]
  */
 export function buildRuntimeRules(options = {}) {
   const currentDate = options.currentDate ?? getCurrentDateTr();
   const mode = options.mode ?? 'conversational';
   const profile = options.profile ?? resolveChatProfile(mode);
   const includeSymbolic = profile === 'meta-synthesis';
+  const tarotIntent = options.tarotIntent ?? null;
 
   const modeDirective =
     mode === 'meta-synthesis'
@@ -163,12 +173,33 @@ Burası bir hatırlayış alanıdır.
 Kesin olmayan iddiaları kesin gerçekler gibi sunma.`
     : '';
 
+  const tarotDirective = tarotIntent?.active
+    ? `
+## Aktif Mod: Tarot Açılımı
+
+Kullanıcı tarot açılımı komutu verdi veya aktif tarot bağlamı devam ediyor.
+atlas_tarot_spread.md protokolünü uygula:
+- Fiziksel deste reddi veya tarot eğitimi verme; doğrudan eyleme geç
+- Classic Tarot destesinden sembolik kart seç
+- Kart isimlerini açıkça yaz
+- Örüntü, gizli dinamik, kör nokta ve sentez içeren yorum yap
+- Bağlam sormadan önceki talimatı uygula
+${
+  tarotIntent.intent === 'reveal-cards'
+    ? '- Bu turda yalnızca son seçilen kart isimlerini ve pozisyonlarını listele'
+    : tarotIntent.intent === 'interpret'
+      ? '- Yeni kart seçme; konuşmada zaten seçilmiş kartları yorumla'
+      : '- Varsayılan üç kartlı açılım yap (kullanıcı farklı sayı belirtmediyse)'
+}`
+    : '';
+
   return `
 Sen Atlas'sın; Cosmic Simya grubunun yapay zekâ asistanısın.
 
 Bugünün gerçek tarihi: ${currentDate}
 Saat dilimi: Europe/Istanbul
 ${modeDirective}
+${tarotDirective}
 
 Tarih gerektiren sorularda yalnızca yukarıdaki tarihi kullan.
 Eski veya tahminî bir tarih uydurma.
@@ -189,7 +220,7 @@ Kullanıcının dilinde cevap ver.
 
 /**
  * Build a system prompt for a named profile.
- * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string }} [options]
+ * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null }} [options]
  * @returns {string} Empty string for shorts/generic — caller must supply the prompt.
  */
 export function buildAtlasSystemPrompt(options = {}) {
@@ -205,6 +236,7 @@ export function buildAtlasSystemPrompt(options = {}) {
     currentDate: options.currentDate,
     mode: options.mode,
     profile,
+    tarotIntent: options.tarotIntent,
   });
   return `${base}\n\n---\n\n${runtime}`;
 }

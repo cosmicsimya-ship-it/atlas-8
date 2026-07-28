@@ -9,7 +9,7 @@ import { mockAgents } from '../../data/mockData';
 import { systemMetrics } from '../../data/mockData';
 
 const commands = [
-  { label: 'Dashboard', path: '/', section: 'Navigation' },
+  { label: 'Dashboard', path: '/dashboard', section: 'Navigation' },
   { label: 'Production Pipeline', path: '/produce', section: 'Navigation' },
   { label: 'Agent Center', path: '/agents', section: 'Navigation' },
   { label: 'Workflow Builder', path: '/workflows', section: 'Navigation' },

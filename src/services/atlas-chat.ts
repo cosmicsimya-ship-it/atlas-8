@@ -10,15 +10,16 @@ import type {
   AtlasChatResponse,
   AtlasChatTurn,
 } from '../types/atlas-chat';
+import { BACKEND_URL } from '../config';
 
-const BACKEND_URL = 'http://localhost:3001';
+const BACKEND = BACKEND_URL;
 
 export class AtlasChatService {
   private _backendStatus: 'unknown' | 'up' | 'down' = 'unknown';
 
   async checkBackend(): Promise<boolean> {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/ai/health`, {
+      const res = await fetch(`${BACKEND}/api/ai/health`, {
         signal: AbortSignal.timeout(3000),
       });
       if (!res.ok) {
@@ -44,12 +45,13 @@ export class AtlasChatService {
     history: AtlasChatTurn[] = [],
     options: Omit<AtlasChatRequest, 'message' | 'history'> = {},
   ): Promise<AtlasChatResponse> {
-    const res = await fetch(`${BACKEND_URL}/api/chat`, {
+    const res = await fetch(`${BACKEND}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
         history,
+        userId: options.userId,
         ...options,
       }),
     });

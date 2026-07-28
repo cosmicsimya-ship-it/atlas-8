@@ -1,0 +1,19 @@
+{
+  "users": {
+    "web:pipeline-memory": {
+      "profile": {
+        "name": "Test User",
+        "timezone": null,
+        "location": null,
+        "birthDate": null,
+        "birthTime": null,
+        "birthPlace": null,
+        "referenceDate": null,
+        "relationshipStatus": null
+      },
+      "preferences": {},
+      "facts": {},
+      "updatedAt": "2026-07-28T21:30:41.809Z"
+    }
+  }
+}
