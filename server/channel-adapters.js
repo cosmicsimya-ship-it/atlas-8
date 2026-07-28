@@ -164,6 +164,7 @@ export function toWebChatResponse(result) {
     tarotIntent: data.tarotIntent ?? null,
     memoryUpdated: result.memoryUpdated ?? false,
     memoryHandled: data.memoryHandled ?? false,
+    founderSession: data.founderSession ?? false,
     status: result.status,
     intent: result.intent ?? null,
     engine: result.engine ?? data.engine ?? null,

@@ -27,6 +27,10 @@ import {
 } from './memory-intents.js';
 import { routeTask } from '../runner/task-router.js';
 import { formatMetaSynthesisProse } from './symbolic-synthesis.js';
+import {
+  resolveFounderProfile,
+  mergeFounderWithUserMemoryContext,
+} from './founder-knowledge.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -274,13 +278,18 @@ export async function processAtlasMessage(input, options = {}) {
   }
 
   // ── Conversational / Meta Synthesis / Tarot via OpenAI ──
-  const memoryContext =
+  const founderProfile =
+    userId && userId !== 'web:anonymous' ? resolveFounderProfile(userId) : null;
+
+  const userMemoryContext =
     userId && userId !== 'web:anonymous'
       ? buildRelevantMemoryContext(userId, message, mode)
       : null;
 
+  const memoryContext = mergeFounderWithUserMemoryContext(userMemoryContext, founderProfile);
+
   const profile = resolveChatProfile(mode);
-  const systemPrompt = buildAtlasSystemPrompt({ profile, mode, tarotIntent });
+  const systemPrompt = buildAtlasSystemPrompt({ profile, mode, tarotIntent, founderProfile });
   const userPrompt = buildChatUserPrompt(message, history, mode, tarotIntent, memoryContext);
 
   try {
@@ -302,12 +311,14 @@ export async function processAtlasMessage(input, options = {}) {
     return {
       status: 'complete',
       reply,
-      intent,
+      intent: founderProfile ? `${intent}:founder` : intent,
       engine,
       memoryUpdated: false,
       data: {
         mode,
         profile,
+        founderSession: Boolean(founderProfile),
+        founderId: founderProfile?.id ?? null,
         tarotIntent: tarotIntent.active ? tarotIntent.intent : null,
         memoryHandled: false,
         model: result.model,

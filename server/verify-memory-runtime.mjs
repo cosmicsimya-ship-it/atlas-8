@@ -2,7 +2,8 @@
  * Memory system runtime verification.
  * Run: node server/verify-memory-runtime.mjs
  */
-import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
+import { join, dirname } from 'path';
 import {
   buildRelevantMemoryContext,
   detectMemoryIntent,
@@ -114,6 +115,19 @@ const backup = existsSync(memoryPath) ? readFileSync(memoryPath, 'utf-8') : null
 writeFileSync(memoryPath, '{ broken json !!!', 'utf-8');
 const recovered = loadMemory();
 assert('malformed JSON recovery', typeof recovered.users === 'object');
+
+// Clean up recovery archives created by the test (not for repo)
+const dataDir = dirname(memoryPath);
+for (const name of readdirSync(dataDir)) {
+  if (name.includes('.corrupt.')) {
+    try {
+      unlinkSync(join(dataDir, name));
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 if (backup !== null) {
   writeFileSync(memoryPath, backup, 'utf-8');
 } else {

@@ -9,6 +9,7 @@ import { createZip } from './zip-utils.js';
 import { callOpenAI } from './openai-client.js';
 import { processAtlasMessage } from './atlas-message-service.js';
 import { normalizeWebChatRequest, toWebChatResponse } from './channel-adapters.js';
+import { initializeFounderKnowledge, getFounderKnowledgeStatus } from './founder-knowledge.js';
 import {
   deleteMemoryField,
   deleteUserMemory,
@@ -37,6 +38,8 @@ const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const GENERATED_DIR = join(__dirname, 'generated');
 const runner = new Runner();
 
+const founderInit = initializeFounderKnowledge();
+
 // Ensure generated/ exists on startup
 if (!existsSync(GENERATED_DIR)) {
   mkdirSync(GENERATED_DIR, { recursive: true });
@@ -57,6 +60,7 @@ app.use(express.json({ limit: '2mb' }));
 // ══════════════════════════════════════════════════════════════════════
 
 app.get('/api/ai/health', (_req, res) => {
+  const founderStatus = getFounderKnowledgeStatus();
   res.json({
     status: 'ok',
     configured: OPENAI_API_KEY.length > 0,
@@ -64,6 +68,8 @@ app.get('/api/ai/health', (_req, res) => {
     webChat: true,
     telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     memory: true,
+    founderKnowledge: founderStatus.loaded && founderStatus.profileCount > 0,
+    founderProfiles: founderStatus.profileCount,
     modelProvider: OPENAI_API_KEY.length > 0,
   });
 });
@@ -657,6 +663,9 @@ app.listen(PORT, () => {
   console.log(`  Assets: ${GENERATED_DIR}`);
   console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
   console.log('  Memory: ✓ JSON persistence initialized');
+  console.log(
+    `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,
+  );
   console.log(`  Web Chat: ✓ shared pipeline active`);
   console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);
   console.log('');

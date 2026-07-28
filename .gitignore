@@ -4,3 +4,9 @@ dist/
 build/
 coverage/
 *.log
+
+# Runtime persistence — local data, not for repo
+data/user_memory.json.corrupt.*.json
+data/*.corrupt.*.json
+data/telegram.poll.lock
+data/*.tmp

@@ -9,6 +9,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { buildFounderRuntimeRules } from './founder-knowledge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = __dirname;
@@ -116,7 +117,7 @@ export function resolveChatProfile(mode) {
 /**
  * Runtime rules appended to Atlas-powered chat profiles.
  * Symbolic / numerology / synthesis directives appear ONLY for meta-synthesis mode.
- * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null }} [options]
+ * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null }} [options]
  */
 export function buildRuntimeRules(options = {}) {
   const currentDate = options.currentDate ?? getCurrentDateTr();
@@ -124,6 +125,9 @@ export function buildRuntimeRules(options = {}) {
   const profile = options.profile ?? resolveChatProfile(mode);
   const includeSymbolic = profile === 'meta-synthesis';
   const tarotIntent = options.tarotIntent ?? null;
+  const founderProfile = options.founderProfile ?? null;
+
+  const founderDirective = founderProfile ? buildFounderRuntimeRules(founderProfile) : '';
 
   const modeDirective =
     mode === 'meta-synthesis'
@@ -199,6 +203,7 @@ Sen Atlas'sın; Cosmic Simya grubunun yapay zekâ asistanısın.
 Bugünün gerçek tarihi: ${currentDate}
 Saat dilimi: Europe/Istanbul
 ${modeDirective}
+${founderDirective ? `\n${founderDirective}\n` : ''}
 ${tarotDirective}
 
 Tarih gerektiren sorularda yalnızca yukarıdaki tarihi kullan.
@@ -220,7 +225,7 @@ Kullanıcının dilinde cevap ver.
 
 /**
  * Build a system prompt for a named profile.
- * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null }} [options]
+ * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null }} [options]
  * @returns {string} Empty string for shorts/generic — caller must supply the prompt.
  */
 export function buildAtlasSystemPrompt(options = {}) {
@@ -237,6 +242,7 @@ export function buildAtlasSystemPrompt(options = {}) {
     mode: options.mode,
     profile,
     tarotIntent: options.tarotIntent,
+    founderProfile: options.founderProfile,
   });
   return `${base}\n\n---\n\n${runtime}`;
 }
