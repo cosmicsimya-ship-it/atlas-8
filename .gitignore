@@ -9,4 +9,6 @@ coverage/
 data/user_memory.json.corrupt.*.json
 data/*.corrupt.*.json
 data/telegram.poll.lock
-data/*.tmp
+data/atlas-*.pid
+data/atlas.startup.lock
+data/logs/

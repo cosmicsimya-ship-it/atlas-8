@@ -9,6 +9,37 @@ node server/index.js         # Terminal 1 — backend :3001
 npm run dev                  # Terminal 2 — frontend :5173
 ```
 
+## Atlas Startup Manager (Windows)
+
+Manage Frontend, Backend, and Telegram bot together:
+
+```bash
+npm run atlas:start          # start missing services only
+npm run atlas:status         # show service states
+npm run atlas:stop           # stop Atlas-owned services
+npm run atlas:restart        # restart via startup manager
+```
+
+### Windows autostart (Task Scheduler)
+
+Install once — runs `npm run atlas:start` when you log in to Windows (no extra terminal window):
+
+```bash
+npm run atlas:autostart:install
+npm run atlas:autostart:status
+npm run atlas:autostart:remove
+```
+
+Manual start anytime:
+
+```bash
+npm run atlas:start
+```
+
+**After reboot / logon:** the `AtlasStartupManager` scheduled task calls `npm run atlas:start`. The startup manager reuses existing PID/port checks and does not start duplicate services or a second Telegram poller.
+
+Logs: `data/logs/atlas-startup/atlas-startup.log` (rotated, secrets redacted).
+
 ## What's new in v7.1
 
 Generated content is now **persisted to disk**. After every successful pipeline run, 5 files are saved to a timestamped folder:
