@@ -5,6 +5,10 @@ build/
 coverage/
 *.log
 
+# Local credential recovery — never commit
+.atlas-local-founder-credentials.txt
+.atlas-local-*.txt
+
 # Runtime persistence — local data, not for repo
 data/user_memory.json
 data/user_memory.json.corrupt.*.json
@@ -13,4 +17,9 @@ data/telegram.poll.lock
 data/atlas-*.pid
 data/atlas.startup.lock
 data/logs/
-.env
+data/auth_accounts.json
+data/auth_sessions.json
+data/privacy_events.json
+data/_auth_test/
+data/_bad_founder_profile_test.json
+data/_missing_founder_profile_test.json

@@ -16,7 +16,6 @@
  * Never commit real credentials. Passwords are hashed with bcrypt before storage.
  */
 import 'dotenv/config';
-import { randomBytes } from 'crypto';
 import {
   upsertAccount,
   configureAccountStore,
@@ -73,10 +72,8 @@ try {
   console.log('');
   console.log('Password hash stored. Plaintext password was not written to disk.');
   if (!process.env.ATLAS_INTERNAL_BOT_SECRET) {
-    const suggested = randomBytes(32).toString('base64url');
     console.log('');
-    console.log('Set ATLAS_INTERNAL_BOT_SECRET in .env for Telegram bot auth, e.g.:');
-    console.log(`  ATLAS_INTERNAL_BOT_SECRET=${suggested}`);
+    console.log('Set ATLAS_INTERNAL_BOT_SECRET in .env for Telegram bot auth (do not commit it).');
   }
 } catch (err) {
   console.error('Provisioning failed:', err.message);

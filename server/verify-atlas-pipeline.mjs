@@ -19,7 +19,7 @@ import {
   ATLAS_PROMPT_LOAD_ORDER,
 } from './atlas-message-service.js';
 import { initializeFounderKnowledge } from './founder-knowledge.js';
-import { telegramUserId, webUserId, resetMemoryStoreForTests, updateUserMemory } from './user-memory.js';
+import { telegramUserId, webUserId, resetMemoryStoreForTests, updateUserMemory, getUserMemory } from './user-memory.js';
 
 const results = [];
 
@@ -285,7 +285,11 @@ const recall = await processAtlasMessage({
 });
 assert('memory recall via shared pipeline', recall.engine === 'memory' && recall.status === 'complete');
 
-await updateUserMemory(memoryUser, { profile: { name: 'Test User' } });
+const saved = await updateUserMemory(memoryUser, { profile: { name: 'Test User' } });
+assert('pipeline memory write ok', saved.ok === true);
+const confirm = getUserMemory(memoryUser);
+assert('pipeline memory name persisted', confirm.profile?.name === 'Test User');
+
 const recall2 = await processAtlasMessage({
   channel: 'telegram',
   userId: memoryUser,
@@ -293,7 +297,13 @@ const recall2 = await processAtlasMessage({
   message: 'Benim hakkımda ne biliyorsun?',
   history: [],
 });
-assert('same memory user cross-channel recall', recall2.reply.includes('Test User'));
+assert(
+  'same memory user cross-channel recall',
+  recall2.engine === 'memory' &&
+    recall2.status === 'complete' &&
+    String(recall2.reply || '').includes('Test User'),
+  `engine=${recall2.engine} replyLen=${String(recall2.reply || '').length}`,
+);
 
 const personal = await processAtlasMessage({
   channel: 'web',

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 import { cn } from '../../utils/cn';
+import AuthSessionControl from './AuthSessionControl';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Ana Kapı' },
@@ -81,16 +82,21 @@ export default function CosmicNav({ transparent = false }: CosmicNavProps) {
           })}
         </nav>
 
-        <button
-          type="button"
-          className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-[#f5f0e8]/80 md:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c9b37a]/70"
-          aria-expanded={open}
-          aria-controls="mobile-nav"
-          aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
-          onClick={() => setOpen((v) => !v)}
+        <div className="flex items-center gap-2">
+          <div className="hidden md:block">
+            <AuthSessionControl />
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 text-[#f5f0e8]/80 md:hidden focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#c9b37a]/70"
+            aria-expanded={open}
+            aria-controls="mobile-nav"
+            aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
+            onClick={() => setOpen((v) => !v)}
         >
           {open ? <X size={18} /> : <Menu size={18} />}
         </button>
+        </div>
       </div>
 
       {open && (
@@ -111,6 +117,9 @@ export default function CosmicNav({ transparent = false }: CosmicNavProps) {
               </li>
             ))}
           </ul>
+          <div className="mt-3 border-t border-white/8 pt-3">
+            <AuthSessionControl />
+          </div>
         </nav>
       )}
     </header>
