@@ -110,25 +110,128 @@ export function normalizeWebChatRequest(body) {
 }
 
 /**
+ * Extract usable text from a Telegram message.
+ * Accepts plain text and media captions (photo/video/document).
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @returns {{ text: string|null, mediaKind: string|null }}
+ */
+export function extractTelegramText(msg) {
+  const text = typeof msg?.text === 'string' ? msg.text.trim() : '';
+  if (text) return { text, mediaKind: null };
+
+  const caption = typeof msg?.caption === 'string' ? msg.caption.trim() : '';
+  if (caption) {
+    const mediaKind = msg.photo
+      ? 'photo'
+      : msg.video
+        ? 'video'
+        : msg.document
+          ? 'document'
+          : msg.audio
+            ? 'audio'
+            : msg.voice
+              ? 'voice'
+              : 'media';
+    return { text: caption, mediaKind };
+  }
+
+  const mediaKind = msg?.voice
+    ? 'voice'
+    : msg?.video_note
+      ? 'video_note'
+      : msg?.sticker
+        ? 'sticker'
+        : msg?.photo
+          ? 'photo'
+          : msg?.video
+            ? 'video'
+            : msg?.audio
+              ? 'audio'
+              : msg?.document
+                ? 'document'
+                : msg?.animation
+                  ? 'animation'
+                  : msg?.location
+                    ? 'location'
+                    : msg?.contact
+                      ? 'contact'
+                      : msg?.poll
+                        ? 'poll'
+                        : 'unknown';
+  return { text: null, mediaKind };
+}
+
+/**
+ * Whether a group/supergroup message is addressed to this bot.
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @param {string} text
+ * @param {{ id?: number, username?: string } | null} botIdentity
+ */
+export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = null) {
+  const lower = (text ?? '').toLowerCase();
+  if (lower.includes('atlas')) return true;
+
+  const replyFrom = msg.reply_to_message?.from;
+  if (replyFrom) {
+    if (botIdentity?.id != null && Number(replyFrom.id) === Number(botIdentity.id)) {
+      return true;
+    }
+    if (replyFrom.is_bot === true) return true;
+  }
+
+  const username = botIdentity?.username?.replace(/^@/, '').toLowerCase();
+  if (username) {
+    if (lower.includes(`@${username}`)) return true;
+  }
+
+  const entities = [...(msg.entities ?? []), ...(msg.caption_entities ?? [])];
+  for (const entity of entities) {
+    if (entity.type === 'mention' && username && text) {
+      const mention = text.slice(entity.offset, entity.offset + entity.length).toLowerCase();
+      if (mention === `@${username}`) return true;
+    }
+    if (
+      entity.type === 'text_mention' &&
+      botIdentity?.id != null &&
+      entity.user?.id != null &&
+      Number(entity.user.id) === Number(botIdentity.id)
+    ) {
+      return true;
+    }
+    if (entity.type === 'bot_command') return true;
+  }
+
+  return false;
+}
+
+/**
  * Normalize a Telegram message object.
  * Uses Telegram user ID for memory; chat ID for conversation history.
  * @param {import('node-telegram-bot-api').Message} msg
  * @param {Array<{ role: 'user' | 'assistant', content: string }>} history
+ * @param {{ id?: number, username?: string, requireGroupMention?: boolean } | null} [options]
  */
-export function normalizeTelegramMessage(msg, history = []) {
-  const text = msg.text?.trim();
+export function normalizeTelegramMessage(msg, history = [], options = null) {
+  const { text, mediaKind } = extractTelegramText(msg);
   if (!text) {
-    throw new Error('Unsupported message type — text messages only');
+    const kind = mediaKind && mediaKind !== 'unknown' ? mediaKind : 'non-text';
+    throw new Error(`Unsupported message type — text messages only (${kind})`);
   }
   if (!msg.from?.id) {
     throw new Error('Telegram message missing sender identity');
   }
 
   const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  if (isGroup) {
-    const calledAtlas = text.toLowerCase().includes('atlas');
-    const repliedToBot = msg.reply_to_message?.from?.is_bot === true;
-    if (!calledAtlas && !repliedToBot) {
+  const requireGroupMention =
+    options?.requireGroupMention === true ||
+    process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true';
+
+  if (isGroup && requireGroupMention) {
+    const botIdentity = {
+      id: options?.id,
+      username: options?.username,
+    };
+    if (!isTelegramGroupMessageAddressedToBot(msg, text, botIdentity)) {
       throw new Error('GROUP_MESSAGE_IGNORED');
     }
   }
@@ -145,8 +248,10 @@ export function normalizeTelegramMessage(msg, history = []) {
       chatType: msg.chat.type,
       chatTitle: msg.chat.title ?? null,
       messageId: msg.message_id,
+      messageThreadId: msg.message_thread_id ?? null,
       isGroup,
       telegramFromId: String(msg.from.id),
+      mediaKind: mediaKind ?? null,
     },
     context: {},
   };
@@ -235,7 +340,8 @@ export function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata 
     INVALID_INPUT: 'Geçersiz istek.',
     MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
     ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
-    UNSUPPORTED_MESSAGE: 'Bu mesaj türü desteklenmiyor.',
+    UNSUPPORTED_MESSAGE:
+      'Şimdilik yalnızca metin mesajlarını okuyabiliyorum. Ses, sticker veya metinsiz fotoğraf yerine yazarak gönder (fotoğrafa yazı eklersen caption olarak okurum).',
   };
   return map[errorCode] ?? fallback;
 }

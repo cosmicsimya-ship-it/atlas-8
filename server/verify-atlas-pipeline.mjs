@@ -71,13 +71,29 @@ const tgGroupIgnored = (() => {
         date: Date.now(),
       },
       [],
+      { requireGroupMention: true },
     );
     return false;
   } catch (e) {
     return e.message === 'GROUP_MESSAGE_IGNORED';
   }
 })();
-assert('telegram group ignores unrelated messages', tgGroupIgnored);
+assert('telegram group ignores unrelated messages when requireMention', tgGroupIgnored);
+
+const tgGroupDefaultReplies = normalizeTelegramMessage(
+  {
+    message_id: 21,
+    from: { id: 99, first_name: 'Ali' },
+    chat: { id: -1001, type: 'group', title: 'Test' },
+    text: 'selam herkese',
+    date: Date.now(),
+  },
+  [],
+);
+assert(
+  'telegram group replies by default when bot received the message',
+  tgGroupDefaultReplies.message === 'selam herkese',
+);
 
 const tgGroupUser = normalizeTelegramMessage(
   {
@@ -93,6 +109,39 @@ assert(
   'telegram group uses user id not chat id for memory',
   tgGroupUser.userId === telegramUserId(99) && tgGroupUser.conversationId === '-1001',
 );
+
+const tgCaption = normalizeTelegramMessage(
+  {
+    message_id: 4,
+    from: { id: 55, first_name: 'Lara' },
+    chat: { id: 55, type: 'private' },
+    photo: [{ file_id: 'abc', width: 100, height: 100 }],
+    caption: '  Bu foto hakkında ne düşünüyorsun?  ',
+    date: Date.now(),
+  },
+  [],
+);
+assert('telegram caption used as message text', tgCaption.message === 'Bu foto hakkında ne düşünüyorsun?');
+assert('telegram caption mediaKind recorded', tgCaption.metadata?.mediaKind === 'photo');
+
+const tgVoiceRejected = (() => {
+  try {
+    normalizeTelegramMessage(
+      {
+        message_id: 5,
+        from: { id: 55, first_name: 'Lara' },
+        chat: { id: 55, type: 'private' },
+        voice: { file_id: 'v', duration: 2 },
+        date: Date.now(),
+      },
+      [],
+    );
+    return false;
+  } catch (e) {
+    return String(e.message).includes('Unsupported message');
+  }
+})();
+assert('telegram voice without caption rejected', tgVoiceRejected);
 
 const tgHttpNorm = normalizeAtlasMessageRequest({
   channel: 'telegram',

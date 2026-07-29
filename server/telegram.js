@@ -104,6 +104,8 @@ if (!acquirePollLock()) {
 
 /** @type {TelegramBot | null} */
 let bot = null;
+/** @type {{ id: number, username?: string } | null} */
+let botIdentity = null;
 
 try {
   bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
@@ -113,12 +115,43 @@ try {
   process.exit(1);
 }
 
+bot
+  .getMe()
+  .then((me) => {
+    botIdentity = { id: me.id, username: me.username };
+    console.log(`[Telegram] Bot identity: @${me.username ?? 'unknown'} (id=${me.id})`);
+    console.log(
+      '[Telegram] Group mode: responds to all messages this bot receives. ' +
+        'If groups stay silent, disable Privacy Mode in BotFather (/setprivacy → Disable) ' +
+        'or @mention / reply to the bot.',
+    );
+  })
+  .catch((err) => {
+    console.warn('[Telegram] getMe failed:', err.message);
+  });
+
 /** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string }>>} */
 const chatHistories = new Map();
 const MAX_HISTORY_TURNS = 20;
-/** @type {Set<number>} */
+/** @type {Set<string>} */
 const inFlightChats = new Set();
 let firstFromIdLogged = false;
+
+function normalizeOptions() {
+  return {
+    id: botIdentity?.id,
+    username: botIdentity?.username,
+  };
+}
+
+function flightKey(msg) {
+  const chatId = msg.chat?.id;
+  const fromId = msg.from?.id;
+  if (msg.chat?.type === 'group' || msg.chat?.type === 'supergroup') {
+    return `${chatId}:${fromId ?? 'unknown'}`;
+  }
+  return String(chatId);
+}
 
 /**
  * Print Telegram from.id once — for ATLAS_FOUNDER_TELEGRAM_IDS in .env
@@ -160,7 +193,7 @@ function appendChatTurn(conversationId, role, content) {
 async function forwardToPipeline(msg) {
   const conversationId = String(msg.chat.id);
   const history = getChatHistory(conversationId);
-  const normalized = normalizeTelegramMessage(msg, history);
+  const normalized = normalizeTelegramMessage(msg, history, normalizeOptions());
   const fromId = String(msg.from.id);
 
   const founderSession = resolveFounderSession(normalized.userId);
@@ -214,10 +247,20 @@ async function forwardToPipeline(msg) {
   return response.data;
 }
 
-async function sendReply(chatId, reply) {
+async function sendReply(msg, reply) {
+  const chatId = msg.chat.id;
   const chunks = splitTelegramMessage(formatTelegramReply(reply));
+  const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  /** @type {import('node-telegram-bot-api').SendMessageOptions} */
+  const options = {};
+  if (isGroup && msg.message_id) {
+    options.reply_to_message_id = msg.message_id;
+  }
+  if (msg.message_thread_id != null) {
+    options.message_thread_id = msg.message_thread_id;
+  }
   for (const chunk of chunks) {
-    await bot.sendMessage(chatId, chunk);
+    await bot.sendMessage(chatId, chunk, options);
   }
 }
 
@@ -226,8 +269,9 @@ async function handleMessage(msg) {
 
   const chatId = msg.chat.id;
   const conversationId = String(chatId);
+  const key = flightKey(msg);
 
-  if (inFlightChats.has(chatId)) {
+  if (inFlightChats.has(key)) {
     return;
   }
 
@@ -241,16 +285,22 @@ async function handleMessage(msg) {
 
   let text;
   try {
-    text = normalizeTelegramMessage(msg, getChatHistory(conversationId)).message;
+    text = normalizeTelegramMessage(msg, getChatHistory(conversationId), normalizeOptions()).message;
   } catch (err) {
-    if (err.message === 'GROUP_MESSAGE_IGNORED') return;
+    if (err.message === 'GROUP_MESSAGE_IGNORED') {
+      console.log(
+        `[Telegram] Group message ignored (mention/reply required): chat=${chatId} from=${msg.from?.id}`,
+      );
+      return;
+    }
     if (err.message?.includes('Unsupported message')) {
+      console.warn(`[Telegram] Unsupported inbound message: ${err.message}`);
       await bot.sendMessage(chatId, normalizeErrorReply('UNSUPPORTED_MESSAGE'));
     }
     return;
   }
 
-  inFlightChats.add(chatId);
+  inFlightChats.add(key);
 
   try {
     await bot.sendChatAction(chatId, 'typing');
@@ -260,7 +310,7 @@ async function handleMessage(msg) {
 
     appendChatTurn(conversationId, 'user', text);
     appendChatTurn(conversationId, 'assistant', reply);
-    await sendReply(chatId, reply);
+    await sendReply(msg, reply);
   } catch (error) {
     if (isBackendUnreachable(error)) {
       console.error('[Telegram] Backend unreachable:', error.message);
@@ -289,7 +339,7 @@ async function handleMessage(msg) {
     console.error('[Telegram] Unexpected error:', error.message ?? error);
     await bot.sendMessage(chatId, UNEXPECTED_ERROR);
   } finally {
-    inFlightChats.delete(chatId);
+    inFlightChats.delete(key);
   }
 }
 
