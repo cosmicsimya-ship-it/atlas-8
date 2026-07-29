@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 
 import CosmicShell from '../components/cosmic/CosmicShell';
 import { atlasChat } from '../services/atlas-chat';
-import { getWebUserId } from '../utils/atlas-session';
+import { ensureAtlasSession } from '../utils/atlas-session';
 import type { AtlasAnalysisMode, AtlasChatMessage } from '../types/atlas-chat';
 
 function createId() {
@@ -31,6 +31,9 @@ export default function Chat() {
 
   useEffect(() => {
     atlasChat.checkBackend().then(setBackendReady);
+    ensureAtlasSession().catch(() => {
+      /* session will retry on send */
+    });
   }, []);
 
   useEffect(() => {
@@ -75,9 +78,7 @@ export default function Chat() {
     ]);
 
     try {
-      const response = await atlasChat.sendMessage(text, history, {
-        userId: getWebUserId(),
-      });
+      const response = await atlasChat.sendMessage(text, history);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingId

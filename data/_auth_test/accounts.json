@@ -1,0 +1,33 @@
+{
+  "accounts": {
+    "acc_test_founder": {
+      "id": "acc_test_founder",
+      "username": "founder_test",
+      "passwordHash": "$2b$12$Ec9sqHZrn3Go4RR3r.Kdu.UYLTZ98Ge8OFMq94Dco4kY47Eha4t7e",
+      "roles": [
+        "founder",
+        "user"
+      ],
+      "userId": "web:founder-test",
+      "telegramBindings": [
+        "telegram:424242"
+      ],
+      "disabled": false,
+      "updatedAt": "2026-07-29T22:19:49.318Z",
+      "createdAt": "2026-07-29T22:19:49.318Z"
+    },
+    "acc_regular": {
+      "id": "acc_regular",
+      "username": "regular_user",
+      "passwordHash": "$2b$12$EILWoXXLB8NqWEmN2Vn8EOoRSg87ViAtdD.xrBW70K.lIlncl/c1i",
+      "roles": [
+        "user"
+      ],
+      "userId": "web:regular-user",
+      "telegramBindings": [],
+      "disabled": false,
+      "updatedAt": "2026-07-29T22:19:53.402Z",
+      "createdAt": "2026-07-29T22:19:53.402Z"
+    }
+  }
+}

@@ -19,7 +19,7 @@ import {
   validateStep,
 } from '../utils/analysis-form';
 import { clearFormDraft, loadFormDraft, saveFormDraft } from '../utils/intro-prefs';
-import { getWebUserId } from '../utils/atlas-session';
+import { ensureAtlasSession, getWebUserId } from '../utils/atlas-session';
 
 function createAnalysisId() {
   return `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -43,8 +43,8 @@ export default function AnalysisFlow() {
   }, [form]);
 
   useEffect(() => {
-    const userId = getWebUserId();
-    fetchUserMemory(userId)
+    ensureAtlasSession()
+      .then((session) => fetchUserMemory(session.userId || getWebUserId()))
       .then((memory) => {
         setForm((prev) => {
           const next = { ...prev };

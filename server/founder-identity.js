@@ -83,6 +83,10 @@ export function resolveFounderSession(userId) {
 export function detectFounderIdentityQuestion(message) {
   const text = (message ?? '').trim();
   if (!text) return false;
+  // "Sen kimsin?" is Atlas self-identity — never treat as user/founder who-am-I.
+  if (/\b(sen kimsin|kimsin sen|atlas nedir)\b/i.test(text)) {
+    return false;
+  }
   return IDENTITY_QUESTION_PATTERNS.some((p) => p.test(text));
 }
 
@@ -133,6 +137,7 @@ Kurucu oturumunda ASLA kullanma / ima etme:
 ${FOUNDER_FORBIDDEN_DENIALS.map((p) => `- "${p}"`).join('\n')}
 
 Kurucuyu sıradan kullanıcı gibi ele alma. "Kalıcı profil yok" demek, kurucu profilinin yokluğu anlamına gelir — YANLIŞ.
+Gündelik sohbette kimlik/rol/vizyon cümlelerini her cevapta tekrarlama.
 `.trim();
 }
 

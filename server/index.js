@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
@@ -30,6 +32,31 @@ import {
 } from './analysis-archive.js';
 import { Runner } from '../runner/runner.js';
 import { routeTask } from '../runner/task-router.js';
+import {
+  canAccessUserMemory,
+  evaluatePrivacyRequest,
+  shouldShortCircuitPrivacy,
+  sanitizeFounderResponse,
+  logPrivacyEvent,
+  SAFE_RESPONSES,
+} from './privacy/index.js';
+import {
+  getAllowedOrigins,
+  isAllowedOrigin,
+  attachAuthFromSession,
+  requireTelegramBotSecret,
+  requireCsrfProtection,
+  requireAuthenticated,
+  readSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  ensureCsrfCookie,
+  requesterContextFromRequest,
+  loginWithPassword,
+  logoutSession,
+  rateLimitMiddleware,
+} from './auth/index.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -43,6 +70,48 @@ const runner = new Runner();
 const founderInit = initializeFounderKnowledge();
 const founderProfileInit = initializeFounderProfiles();
 
+/**
+ * Memory ACL — uses server auth only. Path userId must match req.auth.userId.
+ * @param {import('express').Request} req
+ * @param {string} targetUserId
+ */
+function assertMemoryRouteAccess(req, targetUserId) {
+  const auth = req.auth;
+  if (!auth?.authenticated || !auth.userId) {
+    try {
+      logPrivacyEvent({
+        channel: 'api',
+        eventType: 'unauthorized_route_access',
+        action: 'blocked',
+        requestType: 'memory_access',
+        reason: 'not_authenticated',
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return { ok: false, status: 401, error: 'Authentication required' };
+  }
+
+  const ctx = requesterContextFromRequest(req);
+  if (!canAccessUserMemory(ctx, targetUserId)) {
+    try {
+      logPrivacyEvent({
+        channel: 'api',
+        requesterId: auth.userId,
+        eventType: 'cross_user_memory_attempt',
+        action: 'blocked',
+        requestType: 'memory_access',
+        reason: 'owner_mismatch',
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return { ok: false, status: 403, error: 'Cross-user memory access denied.' };
+  }
+
+  return { ok: true };
+}
+
 // Ensure generated/ exists on startup
 if (!existsSync(GENERATED_DIR)) {
   mkdirSync(GENERATED_DIR, { recursive: true });
@@ -55,11 +124,129 @@ const MIME_TYPES = {
   '.txt': 'text/plain',
 };
 
-app.use(cors({ origin: true }));
+const allowedOrigins = getAllowedOrigins();
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Vite/dev UI served separately
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
+app.use((req, res, next) => {
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production' || process.env.ATLAS_SECURE_COOKIES === 'true') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+const loginRateLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  failClosed: true,
+  message: 'Too many login attempts',
+  keyFn: (req) => `login:${req.ip || 'unknown'}`,
+});
+
+const memoryRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyFn: (req) => `memory:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const founderSensitiveRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyFn: (req) => `founder-sensitive:${req.auth?.userId || req.ip || 'unknown'}`,
+});
 
 // ══════════════════════════════════════════════════════════════════════
-// AI ENDPOINTS (unchanged)
+// AUTH ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════
+
+app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (req, res) => {
+  const csrf = ensureCsrfCookie(res, req);
+  return res.json({
+    authenticated: Boolean(req.auth?.authenticated),
+    userId: req.auth?.userId ?? null,
+    roles: req.auth?.roles ?? [],
+    isFounder: Boolean(req.auth?.isFounder),
+    isAnonymous: Boolean(req.auth?.isAnonymous),
+    authMethod: req.auth?.authMethod ?? null,
+    csrfToken: csrf,
+  });
+});
+
+app.post(
+  '/api/auth/login',
+  loginRateLimit,
+  attachAuthFromSession({ createAnonymous: false }),
+  requireCsrfProtection,
+  async (req, res) => {
+    const username = String(req.body?.username ?? '');
+    const password = String(req.body?.password ?? '');
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
+    try {
+      const previous = readSessionToken(req);
+      const result = await loginWithPassword({
+        username,
+        password,
+        previousRawToken: previous,
+      });
+      if (!result.ok) {
+        return res.status(401).json({ error: result.error });
+      }
+      setSessionCookie(res, result.rawToken);
+      const csrf = ensureCsrfCookie(res, req);
+      return res.json({
+        ok: true,
+        userId: result.identity.userId,
+        roles: result.identity.roles,
+        isFounder: result.identity.isFounder,
+        csrfToken: csrf,
+      });
+    } catch (err) {
+      console.error('[ATLAS] login error:', err.message);
+      return res.status(503).json({ error: 'Authentication service unavailable' });
+    }
+  },
+);
+
+app.post(
+  '/api/auth/logout',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireCsrfProtection,
+  (req, res) => {
+    try {
+      logoutSession(readSessionToken(req));
+    } catch {
+      /* ignore */
+    }
+    clearSessionCookie(res);
+    return res.json({ ok: true });
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// AI ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════
 
 app.get('/api/ai/health', (_req, res) => {
@@ -72,6 +259,7 @@ app.get('/api/ai/health', (_req, res) => {
     webChat: true,
     telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
     memory: true,
+    auth: true,
     founderKnowledge: founderStatus.loaded && founderStatus.profileCount > 0,
     founderProfiles: founderStatus.profileCount,
     founderBiography: founderProfileStatus.loaded && founderProfileStatus.profileCount > 0,
@@ -80,279 +268,521 @@ app.get('/api/ai/health', (_req, res) => {
   });
 });
 
-app.post('/api/ai/complete', async (req, res) => {
-  const { systemPrompt, userPrompt, model, temperature, maxTokens } = req.body;
+/**
+ * /api/ai/complete — no longer a public raw-model bypass.
+ * Option B: founder/admin session required + privacy evaluation on prompts.
+ */
+app.post(
+  '/api/ai/complete',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  founderSensitiveRateLimit,
+  async (req, res) => {
+    if (!req.auth?.roles?.includes('founder') && !req.auth?.roles?.includes('admin')) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth?.userId ?? null,
+          eventType: 'ai_complete_blocked',
+          action: 'blocked',
+          reason: 'admin_or_founder_required',
+        });
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
-  if (!userPrompt) {
-    return res.status(400).json({ error: 'userPrompt is required' });
-  }
-  if (!OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
-  }
+    const { systemPrompt, userPrompt, model, temperature, maxTokens } = req.body ?? {};
+    if (!userPrompt) {
+      return res.status(400).json({ error: 'userPrompt is required' });
+    }
+    if (!OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
+    }
 
-  try {
-    const result = await callOpenAI({
-      systemPrompt,
-      userPrompt,
-      model: model || DEFAULT_MODEL,
-      temperature,
-      maxTokens,
-      apiKey: OPENAI_API_KEY,
+    const combined = `${systemPrompt ?? ''}\n${userPrompt}`;
+    const privacyEval = evaluatePrivacyRequest({
+      message: combined,
+      requesterContext: requesterContextFromRequest(req),
     });
 
-    console.log(`[ATLAS] ✓ ${result.model} | ${result.tokensUsed} tok | $${result.costUsd.toFixed(4)} | ${result.latencyMs}ms`);
-    return res.json(result);
-  } catch (err) {
-    console.error(`[ATLAS] ${err.message}`);
-    const status = err.status ?? 500;
-    return res.status(status).json({ error: err.message });
-  }
-});
+    if (shouldShortCircuitPrivacy(privacyEval) && !privacyEval.authorized) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth.userId,
+          eventType: 'ai_complete_privacy_blocked',
+          action: 'blocked',
+          requestType: privacyEval.requestType,
+          reason: privacyEval.reason,
+        });
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).json({
+        error: 'Privacy policy blocked this request',
+        reply: privacyEval.safeReply ?? SAFE_RESPONSES.PRIVACY,
+      });
+    }
 
-// ── Atlas Chat — shared intelligence pipeline (Web + Telegram via HTTP) ──
-app.post('/api/chat', async (req, res) => {
-  try {
-    const normalized = normalizeAtlasMessageRequest(req.body);
-    const result = await processAtlasMessage(normalized, {
-      mode: req.body.mode,
-      model: req.body.model || DEFAULT_MODEL,
-      temperature: req.body.temperature,
-      maxTokens: req.body.maxTokens,
-      runner,
-    });
+    try {
+      const result = await callOpenAI({
+        systemPrompt,
+        userPrompt,
+        model: model || DEFAULT_MODEL,
+        temperature,
+        maxTokens,
+        apiKey: OPENAI_API_KEY,
+      });
 
-    const response = toWebChatResponse(result);
-    const httpStatus = result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
+      const text = typeof result?.content === 'string' ? result.content : '';
 
-    console.log(
-      `[ATLAS] ✓ chat/${normalized.channel} (${response.profile}/${response.mode})` +
-        `${response.memoryHandled ? ' [memory]' : ''} | ${response.engine ?? response.model} | ${response.tokensUsed} tok`,
-    );
-    return res.status(httpStatus).json(response);
-  } catch (err) {
-    if (err.message?.includes('userId must be') || err.message?.includes('message is required')) {
+      const guarded = sanitizeFounderResponse(text, {
+        requesterContext: requesterContextFromRequest(req),
+        evaluation: privacyEval,
+        channel: 'api',
+      });
+
+      if (guarded.blocked) {
+        return res.status(403).json({
+          error: 'Privacy policy blocked model output',
+          reply: guarded.reply,
+        });
+      }
+
+      console.log(
+        `[ATLAS] ✓ ai/complete ${result.model} | ${result.tokensUsed} tok | $${result.costUsd.toFixed(4)}`,
+      );
+      return res.json({ ...result, content: guarded.reply, text: guarded.reply });
+    } catch (err) {
+      console.error(`[ATLAS] ${err.message}`);
+      const status = err.status ?? 500;
+      return res.status(status).json({ error: err.message });
+    }
+  },
+);
+
+// ── Atlas Chat — server-resolved identity only ──
+app.post(
+  '/api/chat',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
+    try {
+      const body = {
+        ...(req.body ?? {}),
+        channel: 'web',
+        // Ignore client userId — session identity wins
+        userId: req.auth.userId,
+      };
+      const normalized = normalizeAtlasMessageRequest(body);
+      normalized.userId = req.auth.userId;
+
+      const result = await processAtlasMessage(normalized, {
+        mode: req.body?.mode,
+        model: req.body?.model || DEFAULT_MODEL,
+        temperature: req.body?.temperature,
+        maxTokens: req.body?.maxTokens,
+        runner,
+        auth: req.auth,
+        requesterContext: requesterContextFromRequest(req),
+      });
+
+      const response = toWebChatResponse(result);
+      const httpStatus =
+        result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
+
+      console.log(
+        `[ATLAS] ✓ chat/${normalized.channel} (${response.profile}/${response.mode})` +
+          `${response.memoryHandled ? ' [memory]' : ''} | ${response.engine ?? response.model} | ${response.tokensUsed} tok`,
+      );
+      return res.status(httpStatus).json(response);
+    } catch (err) {
+      if (err.message?.includes('userId must be') || err.message?.includes('message is required')) {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.message === 'CORS origin denied') {
+        return res.status(403).json({ error: 'Origin not allowed' });
+      }
+      console.error(`[ATLAS] chat error: ${err.message}`);
+      const status = err.status ?? 500;
+      return res.status(status).json({ error: err.message });
+    }
+  },
+);
+
+// ── Telegram bot → backend (shared secret) OR authenticated web ──
+app.post(
+  '/api/atlas/message',
+  requireTelegramBotSecret,
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return attachAuthFromSession({ createAnonymous: true })(req, res, next);
+  },
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return requireAuthenticated(req, res, next);
+  },
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return requireCsrfProtection(req, res, next);
+  },
+  async (req, res) => {
+    try {
+      const body = {
+        ...(req.body ?? {}),
+        userId: req.auth.userId,
+        channel: req.atlasBotVerified ? 'telegram' : req.body?.channel || 'web',
+      };
+      const normalized = normalizeAtlasMessageRequest(body);
+      normalized.userId = req.auth.userId;
+      if (req.atlasBotVerified) normalized.channel = 'telegram';
+
+      const result = await processAtlasMessage(normalized, {
+        model: req.body?.model || DEFAULT_MODEL,
+        temperature: req.body?.temperature,
+        maxTokens: req.body?.maxTokens,
+        runner,
+        auth: req.auth,
+        requesterContext: requesterContextFromRequest(req),
+      });
+
+      if (result.data?.pipelineDebug) {
+        logFounderPipelineDebug(result.data.pipelineDebug, `Backend/${normalized.channel}`);
+      }
+
+      return res.json(result);
+    } catch (err) {
+      console.error(`[ATLAS] atlas/message error: ${err.message}`);
+      return res.status(400).json({
+        status: 'error',
+        reply: err.message,
+        errorCode: 'INVALID_INPUT',
+      });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// USER MEMORY ENDPOINTS — owner = req.auth.userId only
+// ══════════════════════════════════════════════════════════════════════
+
+app.get(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  memoryRateLimit,
+  (req, res) => {
+    const { userId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    try {
+      const memory = getUserMemory(req.auth.userId);
+      return res.json({ userId: req.auth.userId, memory });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
+
+app.put(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const { memory } = req.body ?? {};
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    if (!memory || typeof memory !== 'object') {
+      return res.status(400).json({ error: 'memory object is required' });
+    }
+
+    const result = await setUserMemory(req.auth.userId, memory);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, memory: result.memory, saved: true });
+  },
+);
+
+app.patch(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const partial = req.body ?? {};
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const result = await updateUserMemory(req.auth.userId, partial);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, memory: result.memory, saved: true });
+  },
+);
+
+app.delete(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const result = await deleteUserMemory(req.auth.userId);
+    if (!result.ok) {
+      const status = result.error === 'User memory not found' ? 404 : 500;
+      return res.status(status).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, deleted: true });
+  },
+);
+
+app.get(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  memoryRateLimit,
+  (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path;
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path query parameter is required' });
+    }
+
+    try {
+      const value = getMemoryField(req.auth.userId, path);
+      if (value === undefined) {
+        return res.status(404).json({ error: 'Field not found' });
+      }
+      return res.json({ userId: req.auth.userId, path, value });
+    } catch (err) {
       return res.status(400).json({ error: err.message });
     }
-    console.error(`[ATLAS] chat error: ${err.message}`);
-    const status = err.status ?? 500;
-    return res.status(status).json({ error: err.message });
-  }
-});
+  },
+);
 
-// ── Channel-neutral Atlas message endpoint (explicit adapter contract) ──
-app.post('/api/atlas/message', async (req, res) => {
-  try {
-    const normalized = normalizeAtlasMessageRequest(req.body ?? {});
+app.put(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path ?? req.body?.path;
+    const { value } = req.body ?? {};
 
-    const result = await processAtlasMessage(normalized, {
-      model: req.body.model || DEFAULT_MODEL,
-      temperature: req.body.temperature,
-      maxTokens: req.body.maxTokens,
-      runner,
-    });
-
-    if (result.data?.pipelineDebug) {
-      logFounderPipelineDebug(result.data.pipelineDebug, `Backend/${normalized.channel}`);
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path is required' });
     }
 
-    return res.json(result);
-  } catch (err) {
-    console.error(`[ATLAS] atlas/message error: ${err.message}`);
-    return res.status(400).json({
-      status: 'error',
-      reply: err.message,
-      errorCode: 'INVALID_INPUT',
-    });
-  }
-});
-
-// ══════════════════════════════════════════════════════════════════════
-// USER MEMORY ENDPOINTS
-// ══════════════════════════════════════════════════════════════════════
-
-app.get('/api/memory/:userId', (req, res) => {
-  const { userId } = req.params;
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-
-  try {
-    const memory = getUserMemory(userId);
-    return res.json({ userId, memory });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
-app.put('/api/memory/:userId', async (req, res) => {
-  const { userId } = req.params;
-  const { memory } = req.body ?? {};
-
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  if (!memory || typeof memory !== 'object') {
-    return res.status(400).json({ error: 'memory object is required' });
-  }
-
-  const result = await setUserMemory(userId, memory);
-  if (!result.ok) {
-    return res.status(500).json({ error: result.error });
-  }
-  return res.json({ userId, memory: result.memory, saved: true });
-});
-
-app.patch('/api/memory/:userId', async (req, res) => {
-  const { userId } = req.params;
-  const partial = req.body ?? {};
-
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-
-  const result = await updateUserMemory(userId, partial);
-  if (!result.ok) {
-    return res.status(500).json({ error: result.error });
-  }
-  return res.json({ userId, memory: result.memory, saved: true });
-});
-
-app.delete('/api/memory/:userId', async (req, res) => {
-  const { userId } = req.params;
-
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-
-  const result = await deleteUserMemory(userId);
-  if (!result.ok) {
-    const status = result.error === 'User memory not found' ? 404 : 500;
-    return res.status(status).json({ error: result.error });
-  }
-  return res.json({ userId, deleted: true });
-});
-
-app.get('/api/memory/:userId/field', (req, res) => {
-  const { userId } = req.params;
-  const path = req.query.path;
-
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  if (typeof path !== 'string' || !path.trim()) {
-    return res.status(400).json({ error: 'path query parameter is required' });
-  }
-
-  try {
-    const value = getMemoryField(userId, path);
-    if (value === undefined) {
-      return res.status(404).json({ error: 'Field not found' });
+    const result = await setMemoryField(req.auth.userId, path, value);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
     }
-    return res.json({ userId, path, value });
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  }
-});
+    return res.json({
+      userId: req.auth.userId,
+      path,
+      value,
+      saved: true,
+      memory: result.memory,
+    });
+  },
+);
 
-app.put('/api/memory/:userId/field', async (req, res) => {
-  const { userId } = req.params;
-  const path = req.query.path ?? req.body?.path;
-  const { value } = req.body ?? {};
+app.delete(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path;
 
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  if (typeof path !== 'string' || !path.trim()) {
-    return res.status(400).json({ error: 'path is required' });
-  }
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path query parameter is required' });
+    }
 
-  const result = await setMemoryField(userId, path, value);
-  if (!result.ok) {
-    return res.status(500).json({ error: result.error });
-  }
-  return res.json({ userId, path, value, saved: true, memory: result.memory });
-});
-
-app.delete('/api/memory/:userId/field', async (req, res) => {
-  const { userId } = req.params;
-  const path = req.query.path;
-
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  if (typeof path !== 'string' || !path.trim()) {
-    return res.status(400).json({ error: 'path query parameter is required' });
-  }
-
-  const result = await deleteMemoryField(userId, path);
-  if (!result.ok) {
-    const status = result.error === 'Field not found' ? 404 : 500;
-    return res.status(status).json({ error: result.error });
-  }
-  return res.json({ userId, path, deleted: true, memory: result.memory });
-});
+    const result = await deleteMemoryField(req.auth.userId, path);
+    if (!result.ok) {
+      const status = result.error === 'Field not found' ? 404 : 500;
+      return res.status(status).json({ error: result.error });
+    }
+    return res.json({
+      userId: req.auth.userId,
+      path,
+      deleted: true,
+      memory: result.memory,
+    });
+  },
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // ANALYSIS ARCHIVE ENDPOINTS (separate from profile memory)
 // ══════════════════════════════════════════════════════════════════════
 
-app.get('/api/archive/:userId', (req, res) => {
-  const { userId } = req.params;
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  try {
-    const analyses = listUserAnalyses(userId);
-    return res.json({ userId, analyses });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
+app.get(
+  '/api/archive/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  (req, res) => {
+    const { userId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    try {
+      const analyses = listUserAnalyses(req.auth.userId);
+      return res.json({ userId: req.auth.userId, analyses });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
 
-app.get('/api/archive/:userId/:analysisId', (req, res) => {
-  const { userId, analysisId } = req.params;
-  if (!isValidUserId(userId)) {
-    return res.status(400).json({ error: 'Invalid userId' });
-  }
-  const record = getAnalysisRecord(userId, analysisId);
-  if (!record) {
-    return res.status(404).json({ error: 'Analysis not found' });
-  }
-  return res.json(record);
-});
+app.get(
+  '/api/archive/:userId/:analysisId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  (req, res) => {
+    const { userId, analysisId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    const record = getAnalysisRecord(req.auth.userId, analysisId);
+    if (!record) {
+      return res.status(404).json({ error: 'Analysis not found' });
+    }
+    return res.json({ userId: req.auth.userId, analysis: record });
+  },
+);
 
-app.post('/api/archive/:userId', async (req, res) => {
+app.post(
+  '/api/archive/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
   const { userId } = req.params;
   const { record } = req.body ?? {};
 
   if (!isValidUserId(userId)) {
     return res.status(400).json({ error: 'Invalid userId' });
   }
+  const access = assertMemoryRouteAccess(req, userId);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
   if (!record || typeof record !== 'object') {
     return res.status(400).json({ error: 'record object is required' });
   }
 
-  const result = await saveAnalysisRecord(userId, record);
+  const result = await saveAnalysisRecord(req.auth.userId, record);
   if (!result.ok) {
     return res.status(500).json({ error: result.error });
   }
-  return res.json({ userId, record: result.record, saved: true });
-});
+  return res.json({ userId: req.auth.userId, record: result.record, saved: true });
+  },
+);
 
-app.delete('/api/archive/:userId/:analysisId', async (req, res) => {
+app.delete(
+  '/api/archive/:userId/:analysisId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
   const { userId, analysisId } = req.params;
 
   if (!isValidUserId(userId)) {
     return res.status(400).json({ error: 'Invalid userId' });
   }
 
-  const result = await deleteAnalysisRecord(userId, analysisId);
+  const access = assertMemoryRouteAccess(req, userId);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
+
+  const result = await deleteAnalysisRecord(req.auth.userId, analysisId);
   if (!result.ok) {
     const status = result.error === 'Analysis not found' ? 404 : 500;
     return res.status(status).json({ error: result.error });
   }
-  return res.json({ userId, analysisId, deleted: true });
-});
+  return res.json({ userId: req.auth.userId, analysisId, deleted: true });
+  },
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // ASSET PERSISTENCE ENDPOINTS
@@ -574,20 +1004,24 @@ app.get('/api/assets/:folder/download-zip', (req, res) => {
 // is never read from the request body — this route exists for exactly
 // one purpose, and this guarantees it can never fall through to the
 // Content Pipeline regardless of what a caller sends.
-app.post('/api/personal-analysis', async (req, res) => {
+app.post(
+  '/api/personal-analysis',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
   const body = req.body;
 
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return res.status(400).json({ error: 'Request body must be a JSON object' });
   }
 
-  const { task_id, subject_id, subject_profile, analysis_inputs, constraints } = body;
+  const { task_id, subject_profile, analysis_inputs, constraints } = body;
+  // subject_id is always the authenticated user — never client-supplied
+  const subject_id = req.auth.userId;
 
   if (typeof task_id !== 'string' || task_id.trim().length === 0) {
     return res.status(400).json({ error: 'task_id is required and must be a non-empty string' });
-  }
-  if (typeof subject_id !== 'string' || subject_id.trim().length === 0) {
-    return res.status(400).json({ error: 'subject_id is required and must be a non-empty string' });
   }
   if (typeof subject_profile !== 'object' || subject_profile === null || Array.isArray(subject_profile)) {
     return res.status(400).json({ error: 'subject_profile is required and must be an object' });
@@ -636,32 +1070,36 @@ app.post('/api/personal-analysis', async (req, res) => {
     console.error(`[ATLAS] ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
-});
+  },
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════
-// START
-// ══════════════════════════════════════════════════════════════════════
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('  ATLAS Backend');
-  console.log(`  http://localhost:${PORT}`);
-  console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
-  console.log(`  Model:  ${DEFAULT_MODEL}`);
-  console.log(`  Assets: ${GENERATED_DIR}`);
-  console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
-  console.log('  Memory: ✓ JSON persistence initialized');
-  console.log(
-    `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,
-  );
-  console.log(
-    `  Founder Profile:   ${founderProfileInit.ok ? '✓' : '✗'} ${founderProfileInit.profileCount} biography profile(s)`,
-  );
-  console.log(`  Web Chat: ✓ shared pipeline active`);
-  console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);
-  console.log('');
-});
+export { app };
+
+if (process.env.ATLAS_NO_LISTEN !== '1') {
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('  ATLAS Backend');
+    console.log(`  http://localhost:${PORT}`);
+    console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
+    console.log(`  Model:  ${DEFAULT_MODEL}`);
+    console.log(`  Assets: ${GENERATED_DIR}`);
+    console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
+    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
+    console.log('  Memory: ✓ JSON persistence initialized');
+    console.log(
+      `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,
+    );
+    console.log(
+      `  Founder Profile:   ${founderProfileInit.ok ? '✓' : '✗'} ${founderProfileInit.profileCount} biography profile(s)`,
+    );
+    console.log(`  Web Chat: ✓ shared pipeline active`);
+    console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);
+    console.log(`  CORS origins: ${allowedOrigins.join(', ')}`);
+    console.log('');
+  });
+}
  

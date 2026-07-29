@@ -227,9 +227,17 @@ async function forwardToPipeline(msg) {
       history: normalized.history,
       username: normalized.username,
       displayName: normalized.displayName,
-      metadata: normalized.metadata,
+      metadata: {
+        ...(normalized.metadata ?? {}),
+        telegramFromId: fromId,
+      },
     },
-    { timeout: 180_000 },
+    {
+      timeout: 180_000,
+      headers: {
+        'X-Atlas-Bot-Secret': process.env.ATLAS_INTERNAL_BOT_SECRET || '',
+      },
+    },
   );
 
   const backendDebug = response.data?.data?.pipelineDebug;

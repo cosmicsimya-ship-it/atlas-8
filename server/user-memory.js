@@ -23,7 +23,7 @@ const MEMORY_FILE = join(DATA_DIR, 'user_memory.json');
 /** @type {Promise<void>} */
 let writeLock = Promise.resolve();
 
-const USER_ID_PATTERN = /^(telegram|web):[a-zA-Z0-9_-]{1,128}$/;
+const USER_ID_PATTERN = /^(telegram|web|anonymous):[a-zA-Z0-9_-]{1,128}$/;
 
 /** @typedef {Record<string, unknown>} JsonObject */
 
@@ -245,6 +245,12 @@ function normalizeUserMemory(raw) {
       : {};
 
   base.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : null;
+
+  // Preserve optional ownership metadata (backward compatible).
+  if (raw.ownership && typeof raw.ownership === 'object' && !Array.isArray(raw.ownership)) {
+    base.ownership = { ...raw.ownership };
+  }
+
   return base;
 }
 

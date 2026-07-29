@@ -84,6 +84,7 @@ const TAROT_CONTEXT_MARKERS = [
 
 /**
  * Detect which analysis mode best fits the user message.
+ * Bare "bugün" / "günaydın" alone must NOT force a long sky reading.
  * @param {string} message
  * @returns {AnalysisMode}
  */
@@ -93,7 +94,13 @@ export function detectAnalysisMode(message) {
     return 'conversational';
   }
 
-  if (DAILY_GUIDE_KEYWORDS.some((kw) => text.includes(kw))) {
+  const hasDayCue = DAILY_GUIDE_KEYWORDS.some((kw) => text.includes(kw));
+  const hasSymbolicCue =
+    /astroloj|numerol|bur[cç]|g[oö]ky[uü]z|transit|hicr|kozmik|cosmic|harita|sinastri|g[uü]nl[uü]k analiz|g[uü]n[uü]n etkisi/.test(
+      text,
+    );
+
+  if (hasDayCue && hasSymbolicCue) {
     return 'daily-guide';
   }
 

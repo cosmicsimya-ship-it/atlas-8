@@ -1,4 +1,5 @@
 import { apiRequest } from './api-client';
+import { ensureAtlasSession, getWebUserId } from '../utils/atlas-session';
 
 export interface UserMemoryProfile {
   name: string | null;
@@ -18,20 +19,31 @@ export interface UserMemory {
   updatedAt: string | null;
 }
 
-export async function fetchUserMemory(userId: string): Promise<UserMemory> {
+/**
+ * Memory is scoped to the authenticated session cookie.
+ * Path userId must match the server session; requester headers are not used for auth.
+ */
+export async function fetchUserMemory(userId?: string): Promise<UserMemory> {
+  const session = await ensureAtlasSession();
+  const id = userId && userId !== 'anonymous:pending' ? userId : session.userId || getWebUserId();
   const data = await apiRequest<{ userId: string; memory: UserMemory }>(
-    `/api/memory/${encodeURIComponent(userId)}`,
+    `/api/memory/${encodeURIComponent(id!)}`,
   );
   return data.memory;
 }
 
 export async function patchUserMemory(
-  userId: string,
+  userId: string | undefined,
   partial: Partial<UserMemory>,
 ): Promise<UserMemory> {
+  const session = await ensureAtlasSession();
+  const id = userId && userId !== 'anonymous:pending' ? userId : session.userId || getWebUserId();
   const data = await apiRequest<{ memory: UserMemory }>(
-    `/api/memory/${encodeURIComponent(userId)}`,
-    { method: 'PATCH', body: JSON.stringify(partial) },
+    `/api/memory/${encodeURIComponent(id!)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(partial),
+    },
   );
   return data.memory;
 }

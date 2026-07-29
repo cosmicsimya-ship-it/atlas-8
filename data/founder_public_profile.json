@@ -1,0 +1,23 @@
+{
+  "founderId": "lara",
+  "displayName": "Lara",
+  "publicProfile": {
+    "role": "Founder and creative director of Cosmicsimya.com!",
+    "bio": "Lara develops systems that combine astrology, numerology, destiny matrix studies and pattern analysis.",
+    "atlasRelationship": "Atlas was created from Lara's vision of making hidden behavioral patterns and decision mechanisms more visible through a structured analysis system.",
+    "publicTraits": [
+      "creative",
+      "research-oriented",
+      "system thinker",
+      "focused on patterns and interdisciplinary connections"
+    ]
+  },
+  "allowedPublicFields": [
+    "displayName",
+    "role",
+    "bio",
+    "atlasRelationship",
+    "publicTraits"
+  ],
+  "updatedAt": "2026-07-30T00:00:00.000Z"
+}

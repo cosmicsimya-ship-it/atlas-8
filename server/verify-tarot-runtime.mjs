@@ -88,13 +88,38 @@ const genericPrompt = buildAtlasSystemPrompt({ profile: 'generic' });
 assert('generic system prompt is empty', genericPrompt === '');
 
 const convPrompt = buildAtlasSystemPrompt({ profile: 'conversational', mode: 'conversational' });
-assert('conversational includes tarot module', convPrompt.includes('Tarot Eylem ve Sembolik Açılım'));
+assert(
+  'conversational excludes always-on tarot module',
+  !convPrompt.includes('Tarot Eylem ve Sembolik Açılım'),
+);
 assert('conversational excludes meta synthesis motor section', !convPrompt.includes('Meta Sentez ve Sembolik Analiz Motoru'));
+
+const convTarotPrompt = buildAtlasSystemPrompt({
+  profile: 'conversational',
+  mode: 'conversational',
+  tarotIntent: { active: true, intent: 'spread' },
+});
+assert(
+  'conversational loads tarot module when intent active',
+  convTarotPrompt.includes('Tarot Eylem ve Sembolik Açılım'),
+);
 
 const metaPrompt = buildAtlasSystemPrompt({ profile: 'meta-synthesis', mode: 'meta-synthesis' });
 assert('meta-synthesis includes meta synthesis', metaPrompt.includes('Meta Sentez'));
-assert('meta-synthesis includes tarot module', metaPrompt.includes('Tarot Eylem ve Sembolik Açılım'));
+assert(
+  'meta-synthesis excludes always-on tarot module',
+  !metaPrompt.includes('Tarot Eylem ve Sembolik Açılım'),
+);
 
+const metaTarotPrompt = buildAtlasSystemPrompt({
+  profile: 'meta-synthesis',
+  mode: 'meta-synthesis',
+  tarotIntent: { active: true, intent: 'spread' },
+});
+assert(
+  'meta-synthesis loads tarot module when intent active',
+  metaTarotPrompt.includes('Tarot Eylem ve Sembolik Açılım'),
+);
 const coreEngine = loadCoreEnginePrompt();
 assert('core-engine prompt includes meta synthesis', coreEngine.includes('Meta Synthesis Engine'));
 assert('core-engine unchanged tarot cross-ref', coreEngine.includes('tarot') || coreEngine.includes('Tarot'));

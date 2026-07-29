@@ -4,6 +4,7 @@
  *
  * No paid API calls — mocks OpenAI and routeTask where needed.
  */
+process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
 import {
   normalizeWebChatRequest,
   normalizeTelegramMessage,
@@ -306,11 +307,14 @@ assert(
   personal.status === 'insufficient_data' && personal.engine === 'core-engine',
 );
 
+// Non-deterministic message so missing-key path hits the OpenAI client
+const llmProbeMessage = 'Bugün hava nasıl, kısaca söyle.';
+
 const convWeb = await processAtlasMessage({
   channel: 'web',
   userId: webUserId('conv-test'),
   conversationId: webUserId('conv-test'),
-  message: 'Merhaba Atlas',
+  message: llmProbeMessage,
   history: [],
 });
 assert(
@@ -323,7 +327,7 @@ const convTg = await processAtlasMessage({
   channel: 'telegram',
   userId: telegramUserId(555),
   conversationId: '777',
-  message: 'Merhaba Atlas',
+  message: llmProbeMessage,
   history: [],
 });
 assert(
@@ -335,6 +339,19 @@ assert(
 if (!process.env.OPENAI_API_KEY) {
   assert('missing key returns MODEL_UNAVAILABLE', convWeb.errorCode === 'MODEL_UNAVAILABLE');
 }
+
+const greetingDet = await processAtlasMessage({
+  channel: 'web',
+  userId: webUserId('style-greet'),
+  conversationId: webUserId('style-greet'),
+  message: 'Merhaba',
+  history: [],
+});
+assert(
+  'simple greeting can complete without OpenAI',
+  greetingDet.status === 'complete' && greetingDet.reply && greetingDet.reply.split(/\s+/).filter(Boolean).length <= 10,
+  `status=${greetingDet.status} reply=${greetingDet.reply}`,
+);
 
 console.log('\n=== Response formatting ===\n');
 

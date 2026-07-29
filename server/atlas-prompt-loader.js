@@ -15,6 +15,7 @@ import {
   buildConversationStyleRuntimeBlock,
   shouldInjectFounderContextBlocks,
 } from './atlas-conversation-style.js';
+import { PRIVACY_SYSTEM_INSTRUCTION } from './privacy/privacy-policy.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = __dirname;
@@ -159,38 +160,28 @@ atlas_meta_synthesis.md içindeki motoru uygula:
 - Fal dili ve kesin kehanet kullanma`
       : mode === 'daily-guide'
         ? `
-## Aktif Mod: Günlük Rehber
+## Aktif Mod: Günlük Rehber (sembolik)
 
-Günaydın / günlük analiz isteği algılandı.
-Astroloji ve numerolojiyi birlikte değerlendir; ortak temayı sentezle.
+Kullanıcı türü netleşmiş bir günlük/sembolik analiz istedi.
+Önce VERIFIED DATA bloklarındaki tarih ve gökyüzü verilerini kullan; uydurma.
+Analiz türü belirsizse uzun yorum yazma; netleştirme sor.
 Kesin kehanet sunma; sembolik farkındalık odaklı kal.`
         : '';
 
   const symbolicRules = includeSymbolic
     ? `
-Numeroloji hesabında işlemleri rakam rakam göster ve sonucu kontrol et.
-Numeroloji sorularında:
-- Önce kullanılan tarihi veya sayıları açıkça yaz.
-- Hesabı adım adım göster.
-- Sonucu belirgin şekilde belirt.
-- Sonunda Cosmic Simya yaklaşımıyla kısa ve özgün bir yorum yap.
+Numeroloji hesabında yalnızca VERIFIED NUMEROLOGY DATA varsa onu kullan; işlemleri gerektiğinde kısaca göster.
 
-## Günlük Astrolojik Rehber
+## Astroloji / Günlük Sembolik Analiz Kuralları
 
-Kullanıcı günlük astrolojik değerlendirme istediğinde:
-- Günün genel gökyüzü etkilerini sade ve anlaşılır şekilde açıkla.
-- Burç burç yorum yapmak yerine kolektif enerjiyi değerlendir.
-- Astrolojiyi kesin gerçek veya kehanet gibi sunma.
-
-## Günaydın ve Günlük Cosmic Simya Analizi
-
-Kullanıcı "Günaydın", "Bugün beni neler bekliyor?" veya günlük analiz istediğinde:
-- Astroloji ve numerolojiyi birlikte değerlendirerek günün ortak mesajını sentezle.
-- Kesin kehanet olarak sunma.
-
-Astroloji, numeroloji, semboller ve farkındalık çalışmaları hakkında açık cevaplar ver.
-Burası bir hatırlayış alanıdır.
-Kesin olmayan iddiaları kesin gerçekler gibi sunma.`
+- Analiz türü (genel / natal transit / ilişki / konu) açık değilse uzun gökyüzü yorumu YAZMA; kısa netleştirme sor.
+- Gezegen, Ay burcu, Ay fazı ve Hicri tarihi yalnızca VERIFIED DATA bloklarından al; model hafızasından uydurma.
+- Varsayılan analiz konumunu belirt (veya kullanıcıdan şehir iste).
+- Astroloji/numeroloji sembolik/yorumlayıcıdır; tıbbi, hukuki, finansal kararların yerine geçmez.
+- "Kesin olacak", "kaçınılmaz", "başına gelecek" gibi kader dili kullanma.
+- Her cevapta zorunlu "Destekleyen sistemler / ayrışan noktalar / kör nokta / gerçeklik kontrolü" başlıkları açma.
+- Varsayılan uzunluk: kısa özet ~150 kelime, standart 300–500; "detaylı" istenirse daha kapsamlı.
+- İlk paragrafta ana temayı söyle; aynı temayı tekrar etme.`
     : '';
 
   const tarotDirective = tarotIntent?.active
@@ -294,6 +285,9 @@ export function buildAtlasSystemPrompt(options = {}) {
   const parts = [styleOverride, '---', base + tarotExtra];
   if (founderSystemSection) {
     parts.push('---', founderSystemSection);
+  }
+  if (options.includePrivacyInstructions !== false) {
+    parts.push('---', PRIVACY_SYSTEM_INSTRUCTION);
   }
   parts.push('---', runtime);
   parts.push('---', styleOverride);

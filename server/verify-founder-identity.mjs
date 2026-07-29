@@ -2,6 +2,7 @@
  * Founder Identity consistency verification.
  * Run: node server/verify-founder-identity.mjs
  */
+process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
 import { buildAtlasPromptBundle } from './atlas-message-service.js';
 import { processAtlasMessage } from './atlas-message-service.js';
 import { initializeFounderKnowledge } from './founder-knowledge.js';

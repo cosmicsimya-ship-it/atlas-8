@@ -1,4 +1,5 @@
 import { BACKEND_URL, REQUEST_TIMEOUT_MS } from '../config';
+import { getCachedCsrfToken, ensureAtlasSession } from '../utils/atlas-session';
 
 export class ApiError extends Error {
   status: number;
@@ -23,14 +24,35 @@ export async function apiRequest<T>(
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort);
 
+  const method = (init.method ?? 'GET').toUpperCase();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  // Cookie session + double-submit CSRF for unsafe methods
+  if (method !== 'GET' && method !== 'HEAD') {
+    let csrf = getCachedCsrfToken();
+    if (!csrf && path !== '/api/auth/session') {
+      try {
+        await ensureAtlasSession();
+        csrf = getCachedCsrfToken();
+      } catch {
+        /* session bootstrap may fail; server will reject CSRF */
+      }
+    }
+    if (csrf) {
+      headers['X-Atlas-Csrf'] = csrf;
+    }
+  }
+
   try {
     const res = await fetch(`${BACKEND_URL}${path}`, {
       ...init,
+      method,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(init.headers ?? {}),
-      },
+      credentials: 'include',
+      headers,
     });
 
     let body: unknown = null;
@@ -49,6 +71,16 @@ export async function apiRequest<T>(
           ? String((body as { error: string }).error)
           : `Request failed (${res.status})`;
       throw new ApiError(message, res.status, body);
+    }
+
+    // Refresh CSRF if server returned one
+    if (
+      typeof body === 'object' &&
+      body !== null &&
+      'csrfToken' in body &&
+      typeof (body as { csrfToken: unknown }).csrfToken === 'string'
+    ) {
+      sessionStorage.setItem('atlas_csrf', (body as { csrfToken: string }).csrfToken);
     }
 
     return body as T;
