@@ -40,6 +40,16 @@ import {
   detectFounderIdentityQuestion,
   PIPELINE_VERSION,
 } from './founder-identity.js';
+import {
+  detectConversationIntent,
+  tryDeterministicConversationReply,
+  shouldInjectFounderContextBlocks,
+  resolveReplyMaxTokens,
+  CONVERSATION_STYLE_VERSION,
+  STYLE_PROCESS_STARTED_AT,
+  getStyleCodeVersion,
+} from './atlas-conversation-style.js';
+import { PROMPT_PROFILE_MODULES, TAROT_SPREAD_MODULE } from './atlas-prompt-loader.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -49,12 +59,15 @@ const ERROR_REPLIES = {
   INVALID_INPUT: 'Geçersiz istek.',
   MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
   ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
-  UNSUPPORTED_MESSAGE: 'Bu mesaj türü desteklenmiyor.',
+  UNSUPPORTED_MESSAGE:
+    'Şimdilik yalnızca metin mesajlarını okuyabiliyorum. Ses, sticker veya metinsiz fotoğraf yerine yazarak gönder (fotoğrafa yazı eklersen caption olarak okurum).',
 };
 
 function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu.') {
   return ERROR_REPLIES[errorCode] ?? fallback;
 }
+
+export { resolveReplyMaxTokens } from './atlas-conversation-style.js';
 
 /** @typedef {'complete' | 'insufficient_data' | 'reject' | 'error'} AtlasMessageStatus */
 
@@ -109,13 +122,54 @@ function resolveIntentLabel(message, tarotIntent, memoryIntent) {
 }
 
 /**
+ * Runtime style debug — no secrets. Shared by Web + Telegram responses.
+ * @param {{
+ *   channel?: string,
+ *   userId?: string,
+ *   founderSession?: import('./founder-identity.js').FounderSession|null,
+ *   conversationIntent: string,
+ *   responseMode: string,
+ *   maxTokens: number|null,
+ *   profile?: string,
+ *   tarotActive?: boolean,
+ * }} opts
+ */
+function buildStyleRuntimeDebug(opts) {
+  const profile = opts.profile ?? 'conversational';
+  const modules = [...(PROMPT_PROFILE_MODULES[profile] ?? [])];
+  if (opts.tarotActive && !modules.includes(TAROT_SPREAD_MODULE)) {
+    modules.push(TAROT_SPREAD_MODULE);
+  }
+  return {
+    channel: opts.channel ?? 'web',
+    userId: opts.userId ?? null,
+    founderResolved: Boolean(opts.founderSession),
+    intent: opts.conversationIntent,
+    selectedResponseMode: opts.responseMode,
+    selectedMaxTokens: opts.maxTokens,
+    loadedPromptFiles: modules.map((m) => `${m}.md`),
+    conversationStyleVersion: CONVERSATION_STYLE_VERSION,
+    processStartTime: STYLE_PROCESS_STARTED_AT,
+    runningCodeVersion: getStyleCodeVersion(),
+    pipelineVersion: PIPELINE_VERSION,
+  };
+}
+
+function logStyleRuntimeDebug(debug) {
+  console.log(
+    `[Atlas/style-debug] channel=${debug.channel} userId=${debug.userId} founderResolved=${debug.founderResolved} intent=${debug.intent} mode=${debug.selectedResponseMode} maxTokens=${debug.selectedMaxTokens} style=${debug.conversationStyleVersion} code=${debug.runningCodeVersion} started=${debug.processStartTime} prompts=${(debug.loadedPromptFiles || []).join(',')}`,
+  );
+}
+
+/**
  * Canonical prompt assembly order — Web, Telegram, and future channels
  * must use buildAtlasPromptBundle(); channel affects delivery only, not prompts.
  */
 export const ATLAS_PROMPT_LOAD_ORDER = [
+  'conversation-style-override',
+  'user-intent',
   'founder-resolution',
-  'founder-identity-block',
-  'founder-profile-knowledge-block',
+  'founder-identity-block-conditional',
   'user-memory-context',
   'system-prompt-assembly',
   'user-prompt-assembly',
@@ -137,7 +191,6 @@ export const ATLAS_PROMPT_LOAD_ORDER = [
 
 /**
  * Shared prompt builder — single source of truth for all channels.
- * Loading order: Founder Knowledge → Founder Profile → User Memory → System → User prompt.
  *
  * @param {NormalizedAtlasMessage} input
  * @param {{ mode?: string }} [options]
@@ -156,17 +209,16 @@ export function buildAtlasPromptBundle(input, options = {}) {
 
   const founderProfile = founderSession?.knowledge ?? null;
   const founderBiographyProfile = founderSession?.biography ?? null;
+  const injectFounder = shouldInjectFounderContextBlocks(message, founderSession);
 
-  const founderIdentityContext = founderSession
-    ? buildFounderIdentityBlock(founderSession)
-    : null;
+  const founderIdentityContext =
+    injectFounder && founderSession ? buildFounderIdentityBlock(founderSession) : null;
 
-  const founderProfileKnowledgeContext = founderSession
-    ? buildFounderProfileKnowledgeBlock(founderSession)
-    : null;
+  const founderProfileKnowledgeContext =
+    injectFounder && founderSession ? buildFounderProfileKnowledgeBlock(founderSession) : null;
 
   const founderQuestionDirective =
-    founderSession && detectFounderIdentityQuestion(message)
+    injectFounder && founderSession && detectFounderIdentityQuestion(message)
       ? buildFounderQuestionDirective(founderSession, message)
       : null;
 
@@ -179,7 +231,8 @@ export function buildAtlasPromptBundle(input, options = {}) {
     profile,
     mode,
     tarotIntent,
-    founderSession,
+    founderSession: injectFounder ? founderSession : null,
+    message,
   });
 
   const userPrompt = buildChatUserPrompt(message, history, mode, tarotIntent, {
@@ -287,10 +340,54 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
-  // ── Personal Analysis (explicit only, requires profile data) ──
+  // ── Deterministic casual / identity replies (shared Web + Telegram) ──
   const wantsPersonalAnalysis =
     detectPersonalAnalysisIntent(message) || shouldRouteToPersonalAnalysis(message);
 
+  if (!tarotIntent.active && !wantsPersonalAnalysis) {
+    const deterministic = tryDeterministicConversationReply({
+      message,
+      userId,
+      founderSession,
+    });
+    if (deterministic) {
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: deterministic.intent,
+        responseMode: 'deterministic',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: false,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return {
+        status: 'complete',
+        reply: deterministic.reply,
+        intent: `conversation:${deterministic.intent}`,
+        engine: 'conversation-style',
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          conversationIntent: deterministic.intent,
+          founderSession: Boolean(founderSession),
+          founderId: founderSession?.knowledge.id ?? null,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+          styleDebug,
+          model: 'deterministic',
+          provider: 'atlas-conversation-style',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+        },
+      };
+    }
+  }
+
+  // ── Personal Analysis (explicit only, requires profile data) ──
   if (wantsPersonalAnalysis && userId && userId !== 'web:anonymous') {
     const memory = getUserMemory(userId);
     const birthIso = parseBirthDateToIso(memory.profile.birthDate);
@@ -395,17 +492,34 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
-  // ── Conversational / Meta Synthesis / Tarot via OpenAI ──
+  const conversationIntent = detectConversationIntent(message);
   const promptBundle = buildAtlasPromptBundle(input, { mode });
   const { systemPrompt, userPrompt, profile, founderProfile } = promptBundle;
+  const maxTokens = resolveReplyMaxTokens(message, {
+    maxTokens: options.maxTokens,
+    mode,
+    tarotActive: tarotIntent.active,
+    intent: conversationIntent,
+  });
+  const styleDebug = buildStyleRuntimeDebug({
+    channel: input.channel,
+    userId,
+    founderSession,
+    conversationIntent,
+    responseMode: tarotIntent.active ? `llm:tarot:${tarotIntent.intent}` : `llm:${profile}`,
+    maxTokens,
+    profile,
+    tarotActive: tarotIntent.active,
+  });
+  logStyleRuntimeDebug(styleDebug);
 
   try {
     const result = await callOpenAI({
       systemPrompt,
       userPrompt,
       model: options.model,
-      temperature: options.temperature,
-      maxTokens: options.maxTokens,
+      temperature: options.temperature ?? 0.4,
+      maxTokens,
     });
 
     const reply = extractResponseText(result);
@@ -424,11 +538,13 @@ export async function processAtlasMessage(input, options = {}) {
       data: {
         mode,
         profile,
+        conversationIntent,
         founderSession: Boolean(founderProfile),
         founderId: founderProfile?.id ?? null,
         founderBiographyLoaded: Boolean(promptBundle.founderBiographyProfile),
         pipelineDebug,
         pipelineVersion: PIPELINE_VERSION,
+        styleDebug,
         tarotIntent: tarotIntent.active ? tarotIntent.intent : null,
         memoryHandled: false,
         model: result.model,

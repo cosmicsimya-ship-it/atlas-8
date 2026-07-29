@@ -244,6 +244,17 @@ async function forwardToPipeline(msg) {
     );
   }
 
+  const styleDebug = response.data?.data?.styleDebug;
+  if (styleDebug) {
+    console.log(
+      `[Telegram/style-debug] intent=${styleDebug.intent} mode=${styleDebug.selectedResponseMode} maxTokens=${styleDebug.selectedMaxTokens} founderResolved=${styleDebug.founderResolved} style=${styleDebug.conversationStyleVersion} code=${styleDebug.runningCodeVersion} started=${styleDebug.processStartTime}`,
+    );
+  } else {
+    console.warn(
+      '[Telegram] style-debug missing — backend may be running old code; restart node server/index.js',
+    );
+  }
+
   return response.data;
 }
 
@@ -278,7 +289,7 @@ async function handleMessage(msg) {
   if (msg.text?.trim() === '/start') {
     await bot.sendMessage(
       chatId,
-      'Merhaba. Ben Atlas — Cosmicsimya.com! zekâ katmanı. Sorularını yazabilir, tarot açılımı isteyebilir veya hafıza komutları kullanabilirsin.',
+      'Merhaba. Sorularını yazabilirsin.',
     );
     return;
   }

@@ -278,11 +278,14 @@ export async function inspectAllServices(root = getProjectRoot()) {
 }
 
 function spawnDetached(command, args, root) {
+  // Windows: spawning *.cmd/*.bat with detached:true without shell throws EINVAL.
+  const needsShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
   const child = spawn(command, args, {
     cwd: root,
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
+    shell: needsShell,
     env: { ...process.env },
   });
   child.unref();

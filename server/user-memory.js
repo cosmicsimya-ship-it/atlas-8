@@ -119,7 +119,12 @@ export function loadMemory() {
   ensureDataDir();
 
   if (!existsSync(MEMORY_FILE)) {
-    return createEmptyStore();
+    const empty = createEmptyStore();
+    const bootstrap = saveMemory(empty);
+    if (!bootstrap.ok) {
+      console.error(`[Memory] Failed to create ${MEMORY_FILE}: ${bootstrap.error}`);
+    }
+    return empty;
   }
 
   let raw;
@@ -130,7 +135,9 @@ export function loadMemory() {
   }
 
   if (!raw.trim()) {
-    return createEmptyStore();
+    const empty = createEmptyStore();
+    saveMemory(empty);
+    return empty;
   }
 
   try {

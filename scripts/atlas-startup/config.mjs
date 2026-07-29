@@ -19,7 +19,8 @@ export const SERVICES = {
     label: 'Frontend',
     port: Number(process.env.VITE_PORT) || 5173,
     pidFile: 'atlas-frontend.pid',
-    npmScript: 'dev',
+    // Prefer node+vite on Windows — npm.cmd + detached spawn is unreliable (EINVAL / early exit).
+    scriptArgs: ['node_modules/vite/bin/vite.js'],
     healthUrl: (port) => `http://127.0.0.1:${port}/`,
     healthTimeoutMs: 45_000,
     startTimeoutMs: 40_000,

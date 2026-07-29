@@ -11,6 +11,10 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { buildFounderRuntimeRules, buildFounderSystemPromptSection } from './founder-knowledge.js';
 import { getFounderBiographyProfile } from './founder-profile.js';
+import {
+  buildConversationStyleRuntimeBlock,
+  shouldInjectFounderContextBlocks,
+} from './atlas-conversation-style.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = __dirname;
@@ -25,10 +29,8 @@ export const ATLAS_COMMON_MODULES = [
   'atlas_reasoning',
   'atlas_decision',
   'atlas_conversation',
-  'atlas_tarot_spread',
   'atlas_response_style',
   'atlas_personality',
-  'atlas_response_examples',
   'atlas_forbidden_patterns',
   'atlas_memory',
   'atlas_quality_check',
@@ -37,7 +39,7 @@ export const ATLAS_COMMON_MODULES = [
 /** Meta synthesis module — injected only when profile requires it. */
 export const META_SYNTHESIS_MODULE = 'atlas_meta_synthesis';
 
-/** Tarot spread action protocol — always available in conversational chat. */
+/** Tarot spread action protocol — loaded only when tarot intent is active. */
 export const TAROT_SPREAD_MODULE = 'atlas_tarot_spread';
 
 /** Profile → module list. Empty arrays mean caller supplies the full prompt. */
@@ -46,13 +48,11 @@ export const PROMPT_PROFILE_MODULES = {
   'meta-synthesis': [
     'atlas_identity',
     META_SYNTHESIS_MODULE,
-    TAROT_SPREAD_MODULE,
     'atlas_reasoning',
     'atlas_decision',
     'atlas_conversation',
     'atlas_response_style',
     'atlas_personality',
-    'atlas_response_examples',
     'atlas_forbidden_patterns',
     'atlas_memory',
     'atlas_quality_check',
@@ -134,14 +134,15 @@ export function buildRuntimeRules(options = {}) {
 ## Kurucu Oturumu Aktif
 
 founderResolved: true
-Yukarıdaki **FOUNDER SYSTEM CONTEXT** bölümü (founders.json) kimlik otoritesidir — reddetme veya sohbet bağlamına indirgeme.
-User prompt'taki Founder Identity / Profile bölümleri ile birlikte uygula.`
+Kurucu kimliğini doğrula ama her mesajda hatırlatma veya manifesto yazma.
+Gündelik sohbette kısa ve doğal konuş.`
     : founderProfile
       ? `
 ## Kurucu Oturumu Aktif (Founder Identity)
 
 founderResolved: true
-${buildFounderRuntimeRules(founderProfile)}`
+${buildFounderRuntimeRules(founderProfile)}
+Kurucu kimliğini her mesajda hatırlatma.`
       : '';
 
   const modeDirective =
@@ -229,10 +230,10 @@ Genel cevap üslubunda:
 - Kullanıcının sorusunu önce gerçekten yorumla; hazır kalıp yanıt verme.
 - Her cevabı zorunlu olarak numaralı başlıklara bölme.
 - Aynı ifadeyi farklı başlıklarda tekrar etme.
-- Ansiklopedi dili yerine doğal, sıcak ve akıcı bir konuşma dili kullan.
+- Ansiklopedi dili yerine doğal, sade konuşma dili kullan.
 - Kullanıcı özellikle istemedikçe aşırı uzun cevap verme.
 - Kesin bilgi olmayan ruhsal veya sembolik yorumları olasılık olarak sun.
-- Kullanıcıya tepeden konuşma; onunla birlikte düşünen bir rehber gibi cevap ver.
+- Kullanıcıya tepeden konuşma.
 - Cevabın sonunda yalnızca gerçekten faydalıysa bir soru sor.
 Kullanıcının dilinde cevap ver.
 `.trim();
@@ -240,7 +241,8 @@ Kullanıcının dilinde cevap ver.
 
 /**
  * Build a system prompt for a named profile.
- * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null }} [options]
+ * Priority: style override > user intent > founder context > persona modules.
+ * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null, message?: string }} [options]
  * @returns {string} Empty string for shorts/generic — caller must supply the prompt.
  */
 export function buildAtlasSystemPrompt(options = {}) {
@@ -262,25 +264,39 @@ export function buildAtlasSystemPrompt(options = {}) {
         }
       : null);
 
+  const injectFounder = shouldInjectFounderContextBlocks(
+    options.message ?? '',
+    founderSession?.knowledge ? founderSession : null,
+  );
+
   const base = loadAtlasModules(modules);
-  const founderSystemSection = founderSession?.knowledge
-    ? buildFounderSystemPromptSection(founderSession)
-    : '';
+  const tarotExtra =
+    options.tarotIntent?.active && !modules.includes(TAROT_SPREAD_MODULE)
+      ? `\n\n---\n\n${loadAtlasModule(TAROT_SPREAD_MODULE)}`
+      : '';
+
+  const founderSystemSection =
+    injectFounder && founderSession?.knowledge
+      ? buildFounderSystemPromptSection(founderSession)
+      : '';
 
   const runtime = buildRuntimeRules({
     currentDate: options.currentDate,
     mode: options.mode,
     profile,
     tarotIntent: options.tarotIntent,
-    founderSession: founderSession?.knowledge ? founderSession : null,
-    founderProfile: options.founderProfile,
+    founderSession: injectFounder && founderSession?.knowledge ? founderSession : null,
+    founderProfile: injectFounder ? options.founderProfile : null,
   });
 
-  const parts = [base];
+  const styleOverride = buildConversationStyleRuntimeBlock();
+
+  const parts = [styleOverride, '---', base + tarotExtra];
   if (founderSystemSection) {
     parts.push('---', founderSystemSection);
   }
   parts.push('---', runtime);
+  parts.push('---', styleOverride);
   return parts.join('\n\n');
 }
 

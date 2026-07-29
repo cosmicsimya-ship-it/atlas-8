@@ -43,7 +43,7 @@ export async function callOpenAI(options) {
       instructions: options.systemPrompt || undefined,
       input: options.userPrompt,
       temperature: options.temperature ?? 0.7,
-      max_output_tokens: options.maxTokens ?? 2048,
+      max_output_tokens: options.maxTokens ?? 700,
     }),
   });
 
