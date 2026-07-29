@@ -198,12 +198,69 @@ export function detectTarotSpreadIntent(message, history = []) {
  */
 
 /**
+ * @typedef {{
+ *   founderIdentityContext?: string|null,
+ *   founderProfileKnowledgeContext?: string|null,
+ *   founderQuestionDirective?: string|null,
+ *   identityContext?: string|null,
+ *   userMemoryContext?: string|null,
+ * }|string|null} ChatPromptContext
+ */
+
+function normalizePromptContext(context) {
+  if (!context) {
+    return {
+      founderIdentityContext: null,
+      founderProfileKnowledgeContext: null,
+      founderQuestionDirective: null,
+      identityContext: null,
+      userMemoryContext: null,
+    };
+  }
+  if (typeof context === 'string') {
+    const trimmed = context.trim();
+    if (!trimmed) {
+      return {
+        founderIdentityContext: null,
+        founderProfileKnowledgeContext: null,
+        founderQuestionDirective: null,
+        identityContext: null,
+        userMemoryContext: null,
+      };
+    }
+    if (trimmed.includes('## Founder Profile') || trimmed.includes('## Founder Identity')) {
+      return {
+        founderIdentityContext: trimmed,
+        founderProfileKnowledgeContext: null,
+        founderQuestionDirective: null,
+        identityContext: null,
+        userMemoryContext: null,
+      };
+    }
+    return {
+      founderIdentityContext: null,
+      founderProfileKnowledgeContext: null,
+      founderQuestionDirective: null,
+      identityContext: null,
+      userMemoryContext: trimmed,
+    };
+  }
+  return {
+    founderIdentityContext: context.founderIdentityContext?.trim() || null,
+    founderProfileKnowledgeContext: context.founderProfileKnowledgeContext?.trim() || null,
+    founderQuestionDirective: context.founderQuestionDirective?.trim() || null,
+    identityContext: context.identityContext?.trim() || null,
+    userMemoryContext: context.userMemoryContext?.trim() || null,
+  };
+}
+
+/**
  * Build the user prompt with optional conversation history.
  * @param {string} message
  * @param {ChatTurn[]} [history]
  * @param {AnalysisMode} [mode]
  * @param {TarotSpreadIntent|null} [tarotIntent]
- * @param {string|null} [memoryContext]
+ * @param {ChatPromptContext} [context]
  * @returns {string}
  */
 export function buildChatUserPrompt(
@@ -211,7 +268,7 @@ export function buildChatUserPrompt(
   history = [],
   mode = 'conversational',
   tarotIntent = null,
-  memoryContext = null,
+  context = null,
 ) {
   const trimmed = (message ?? '').trim();
   if (!trimmed) {
@@ -219,13 +276,34 @@ export function buildChatUserPrompt(
   }
 
   const parts = [];
+  const {
+    founderIdentityContext,
+    founderProfileKnowledgeContext,
+    founderQuestionDirective,
+    identityContext,
+    userMemoryContext,
+  } = normalizePromptContext(context);
 
-  if (memoryContext && memoryContext.trim()) {
+  if (founderIdentityContext) {
+    parts.push(founderIdentityContext, '');
+  } else if (identityContext) {
+    parts.push(identityContext, '');
+  }
+
+  if (founderProfileKnowledgeContext) {
+    parts.push(founderProfileKnowledgeContext, '');
+  }
+
+  if (founderQuestionDirective) {
+    parts.push(founderQuestionDirective, '');
+  }
+
+  if (userMemoryContext) {
     parts.push(
-      '## Kalıcı Kullanıcı Hafızası',
+      '## Kişisel Profil Hafızası (ek koordinat — Founder Profile yerine geçmez)',
       'Aşağıdaki bilgiler kullanıcının daha önce kaydettiği kalıcı profil verileridir.',
       'Konuşma geçmişi veya tarot bağlamı ile karıştırma.',
-      memoryContext.trim(),
+      userMemoryContext,
       '',
     );
   }

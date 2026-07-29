@@ -9,6 +9,12 @@ import { existsSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { isValidUserId } from './user-memory.js';
+import {
+  buildFounderProfilePromptSection,
+  buildFounderProfileIdentityHeader,
+  getFounderBiographyProfile,
+  initializeFounderProfiles,
+} from './founder-profile.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const KNOWLEDGE_DIR = join(__dirname, '..', 'knowledge');
@@ -33,24 +39,26 @@ let registry = null;
 
 function parseEnvUserIds() {
   const ids = new Set();
+  const PLACEHOLDER = /^(YOUR_|PLACEHOLDER|example|test)/i;
 
   const combined = process.env.ATLAS_FOUNDER_USER_IDS ?? '';
   for (const part of combined.split(',')) {
     const trimmed = part.trim();
-    if (trimmed && isValidUserId(trimmed)) ids.add(trimmed);
+    if (trimmed && isValidUserId(trimmed) && !PLACEHOLDER.test(trimmed)) ids.add(trimmed);
   }
 
   const telegramIds = process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '';
   for (const part of telegramIds.split(',')) {
     const trimmed = part.trim();
-    if (trimmed) ids.add(`telegram:${trimmed}`);
+    if (trimmed && /^\d+$/.test(trimmed)) ids.add(`telegram:${trimmed}`);
   }
 
   const webIds = process.env.ATLAS_FOUNDER_WEB_USER_IDS ?? '';
   for (const part of webIds.split(',')) {
     const trimmed = part.trim();
+    if (!trimmed || PLACEHOLDER.test(trimmed)) continue;
     if (trimmed.startsWith('web:')) ids.add(trimmed);
-    else if (trimmed) ids.add(`web:${trimmed}`);
+    else ids.add(`web:${trimmed}`);
   }
 
   return ids;
@@ -87,6 +95,8 @@ function normalizeProfile(raw) {
  * @returns {{ ok: boolean, profileCount: number, error?: string }}
  */
 export function initializeFounderKnowledge() {
+  initializeFounderProfiles();
+
   try {
     if (!existsSync(FOUNDERS_FILE)) {
       registry = { version: 1, profiles: [], identityIndex: new Map() };
@@ -145,7 +155,7 @@ export function listFounderProfiles() {
  */
 export function resolveFounderProfile(userId) {
   if (!userId || !isValidUserId(userId)) return null;
-  if (!registry) initializeFounderKnowledge();
+  initializeFounderKnowledge();
   if (!registry) return null;
 
   const profileId = registry.identityIndex.get(userId.trim());
@@ -162,6 +172,65 @@ export function isFounderUser(userId) {
 }
 
 /**
+ * Resolve biography profile for a verified founder userId.
+ * @param {string} userId
+ */
+export function resolveFounderBiographyProfile(userId) {
+  const knowledge = resolveFounderProfile(userId);
+  if (!knowledge) return null;
+  return getFounderBiographyProfile(knowledge.id);
+}
+
+/**
+ * Full founders.json + biography block for SYSTEM prompt (mandatory when founder resolved).
+ * @param {{ knowledge: FounderProfile, biography: import('./founder-profile.js').FounderBiographyProfile|null }} session
+ */
+export function buildFounderSystemPromptSection(session) {
+  if (!session?.knowledge) return '';
+
+  const profile = session.knowledge;
+  const biography = session.biography;
+  const displayName = biography?.preferredName ?? profile.founderName;
+  const principles = profile.designPrinciples.map((p) => `- ${p}`).join('\n');
+  const rules = profile.interactionRules.map((r) => `- ${r}`).join('\n');
+  const profileSection = biography ? `\n\n${buildFounderProfilePromptSection(biography)}` : '';
+
+  return `
+## FOUNDER SYSTEM CONTEXT (knowledge/founders.json — ZORUNLU)
+
+founderResolved: true
+founderId: ${profile.id}
+sourceFile: knowledge/founders.json
+profileFile: knowledge/founders/founder-profile.json
+
+Bu bölüm backend tarafından doğrulanmış kurucu oturumunda SYSTEM prompt'a otomatik eklenir.
+LLM bu veriyi yeniden yorumlamaz, reddetmez veya user_memory.json sanmaz.
+
+Kimlik:
+- Kurucu adı: ${displayName} (founders.json → founderName: ${profile.founderName})
+- Rol: ${profile.role}
+- Görev: ${profile.mission}
+- Otorite: ${profile.authority}
+- İletişim: ${profile.communicationStyle}
+- Mimari vizyon: ${profile.architecturalVision}
+- Hafıza önceliği: ${profile.memoryPriority}
+
+Tasarım ilkeleri (founders.json):
+${principles}
+
+Etkileşim kuralları (founders.json):
+${rules}
+
+Kurucu oturumu kuralları:
+- Konuşan sıradan kullanıcı değildir — ${displayName}
+- Kimlik sorularında ("Ben kimim?", "Kurucu musun?") founders.json profilini esas al
+- "Kalıcı profilin yok", "seni ayırmıyorum", "yalnızca bu sohbetten biliyorum" DEME
+- Kurucu kimliği sohbet bağlamından bağımsız sistem verisidir
+${profileSection}
+`.trim();
+}
+
+/**
  * System-prompt block for founder sessions.
  * @param {FounderProfile} profile
  */
@@ -171,10 +240,17 @@ export function buildFounderRuntimeRules(profile) {
   const principles = profile.designPrinciples.map((p) => `- ${p}`).join('\n');
   const rules = profile.interactionRules.map((r) => `- ${r}`).join('\n');
 
+  const biographyProfile = getFounderBiographyProfile(profile.id);
+  const profileSection = biographyProfile
+    ? `\n\n${buildFounderProfilePromptSection(biographyProfile)}`
+    : '';
+
+  const displayName = biographyProfile?.preferredName ?? profile.founderName;
+
   return `
 ## Aktif Mod: Kurucu Oturumu (Founder Knowledge Layer)
 
-Konuşan kişi sıradan bir kullanıcı değildir — ${profile.founderName}, ${profile.role}.
+Konuşan kişi sıradan bir kullanıcı değildir — ${displayName}, ${profile.role}.
 
 Görev: ${profile.mission}
 
@@ -199,6 +275,7 @@ Kurucu oturumunda:
 - Doğrulanabilir teknik/gerçek bilgiyi sembolik yorumdan açıkça ayır
 - Gereksiz onaylayıcı veya boş motivasyon cümleleri kullanma
 - Kurucu bilgi katmanı kimlik otoritesidir; kullanıcı profil hafızası yalnızca kişisel koordinat ekler
+${profileSection}
 `.trim();
 }
 
@@ -213,16 +290,21 @@ export function mergeFounderWithUserMemoryContext(userMemoryContext, founderProf
     return userMemoryContext;
   }
 
-  const parts = [
-    '## Oturum Kimliği',
-    `Konuşan: ${founderProfile.founderName} (${founderProfile.role})`,
-    'Bu oturum Founder Knowledge Layer ile yönetilir; kurucu profili kullanıcı belleğinin üzerindedir.',
-  ];
+  const biographyProfile = getFounderBiographyProfile(founderProfile.id);
+  const identityHeader = biographyProfile
+    ? buildFounderProfileIdentityHeader(biographyProfile)
+    : [
+        '## Oturum Kimliği',
+        `Konuşan: ${founderProfile.founderName} (${founderProfile.role})`,
+        'Bu oturum Founder Knowledge Layer ile yönetilir; kurucu profili kullanıcı belleğinin üzerindedir.',
+      ].join('\n');
+
+  const parts = [identityHeader];
 
   if (userMemoryContext?.trim()) {
     parts.push(
       '',
-      '## Kişisel Profil Hafızası (ek koordinat — kurucu kimliğinin yerine geçmez)',
+      '## Kişisel Profil Hafızası (ek koordinat — Founder Profile yerine geçmez)',
       userMemoryContext.trim(),
     );
   }

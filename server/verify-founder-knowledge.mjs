@@ -77,7 +77,7 @@ assert('rules include design principles', rules.includes('boru hattı') || rules
 
 const merged = mergeFounderWithUserMemoryContext('Ad: Test\nDoğum tarihi: 01.01.1990', testProfile);
 assert('merge preserves user memory', merged.includes('01.01.1990'));
-assert('merge adds founder identity', merged.includes('Founder Knowledge Layer'));
+assert('merge adds founder identity', merged.includes('Founder Profile') || merged.includes('Founder Identity'));
 assert('merge does not replace with user-only header', merged.includes('Kurucu') || merged.includes(testProfile.founderName));
 
 // Re-init with test env for prompt test
@@ -89,7 +89,7 @@ const systemPrompt = buildAtlasSystemPrompt({
   mode: 'conversational',
   founderProfile: founderForPrompt,
 });
-assert('system prompt includes founder layer', systemPrompt.includes('Founder Knowledge Layer'));
+assert('system prompt includes founder layer', systemPrompt.includes('FOUNDER SYSTEM CONTEXT'));
 
 console.log('\n=== Status ===\n');
 const status = getFounderKnowledgeStatus();

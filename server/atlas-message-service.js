@@ -29,8 +29,17 @@ import { routeTask } from '../runner/task-router.js';
 import { formatMetaSynthesisProse } from './symbolic-synthesis.js';
 import {
   resolveFounderProfile,
-  mergeFounderWithUserMemoryContext,
 } from './founder-knowledge.js';
+import {
+  resolveFounderSession,
+  buildFounderIdentityBlock,
+  buildFounderProfileKnowledgeBlock,
+  buildFounderQuestionDirective,
+  buildFounderPipelineDebug,
+  logFounderPipelineDebug,
+  detectFounderIdentityQuestion,
+  PIPELINE_VERSION,
+} from './founder-identity.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -100,6 +109,103 @@ function resolveIntentLabel(message, tarotIntent, memoryIntent) {
 }
 
 /**
+ * Canonical prompt assembly order — Web, Telegram, and future channels
+ * must use buildAtlasPromptBundle(); channel affects delivery only, not prompts.
+ */
+export const ATLAS_PROMPT_LOAD_ORDER = [
+  'founder-resolution',
+  'founder-identity-block',
+  'founder-profile-knowledge-block',
+  'user-memory-context',
+  'system-prompt-assembly',
+  'user-prompt-assembly',
+];
+
+/**
+ * @typedef {Object} AtlasPromptBundle
+ * @property {string} systemPrompt
+ * @property {string} userPrompt
+ * @property {string} mode
+ * @property {string} profile
+ * @property {import('./symbolic-synthesis.js').TarotSpreadIntent} tarotIntent
+ * @property {import('./founder-identity.js').FounderSession|null} founderSession
+ * @property {string|null} founderIdentityContext
+ * @property {string|null} founderProfileKnowledgeContext
+ * @property {string|null} userMemoryContext
+ * @property {readonly string[]} loadOrder
+ */
+
+/**
+ * Shared prompt builder — single source of truth for all channels.
+ * Loading order: Founder Knowledge → Founder Profile → User Memory → System → User prompt.
+ *
+ * @param {NormalizedAtlasMessage} input
+ * @param {{ mode?: string }} [options]
+ * @returns {AtlasPromptBundle}
+ */
+export function buildAtlasPromptBundle(input, options = {}) {
+  const message = (input.message ?? '').trim();
+  const history = input.history ?? [];
+  const userId = input.userId?.trim();
+  const mode = options.mode ?? detectAnalysisMode(message);
+  const tarotIntent = detectTarotSpreadIntent(message, history);
+  const profile = resolveChatProfile(mode);
+
+  const founderSession =
+    userId && userId !== 'web:anonymous' ? resolveFounderSession(userId) : null;
+
+  const founderProfile = founderSession?.knowledge ?? null;
+  const founderBiographyProfile = founderSession?.biography ?? null;
+
+  const founderIdentityContext = founderSession
+    ? buildFounderIdentityBlock(founderSession)
+    : null;
+
+  const founderProfileKnowledgeContext = founderSession
+    ? buildFounderProfileKnowledgeBlock(founderSession)
+    : null;
+
+  const founderQuestionDirective =
+    founderSession && detectFounderIdentityQuestion(message)
+      ? buildFounderQuestionDirective(founderSession, message)
+      : null;
+
+  const userMemoryContext =
+    userId && userId !== 'web:anonymous'
+      ? buildRelevantMemoryContext(userId, message, mode)
+      : null;
+
+  const systemPrompt = buildAtlasSystemPrompt({
+    profile,
+    mode,
+    tarotIntent,
+    founderSession,
+  });
+
+  const userPrompt = buildChatUserPrompt(message, history, mode, tarotIntent, {
+    founderIdentityContext,
+    founderProfileKnowledgeContext,
+    founderQuestionDirective,
+    userMemoryContext,
+  });
+
+  return {
+    systemPrompt,
+    userPrompt,
+    mode,
+    profile,
+    tarotIntent,
+    founderSession,
+    founderProfile,
+    founderBiographyProfile,
+    founderIdentityContext,
+    founderProfileKnowledgeContext,
+    userMemoryContext,
+    loadOrder: ATLAS_PROMPT_LOAD_ORDER,
+  };
+}
+
+/**
  * Shared Atlas intelligence pipeline.
  * @param {NormalizedAtlasMessage} input
  * @param {{
@@ -136,6 +242,12 @@ export async function processAtlasMessage(input, options = {}) {
 
   const history = input.history ?? [];
   const mode = options.mode ?? detectAnalysisMode(message);
+  const founderSession =
+    userId && userId !== 'web:anonymous' ? resolveFounderSession(userId) : null;
+  const pipelineDebug = buildFounderPipelineDebug(input, founderSession);
+
+  logFounderPipelineDebug(pipelineDebug, `Atlas/${input.channel ?? 'web'}`);
+
   const memoryIntent = userId && userId !== 'web:anonymous' ? detectMemoryIntent(message) : { type: null };
   const tarotIntent = detectTarotSpreadIntent(message, history);
   const intent = resolveIntentLabel(message, tarotIntent, memoryIntent);
@@ -143,7 +255,9 @@ export async function processAtlasMessage(input, options = {}) {
   // ── Memory commands ──
   if (userId && userId !== 'web:anonymous') {
     if (memoryIntent.type && !(memoryIntent.type === 'profile-update' && messageRequestsAnalysis(message))) {
-      const memoryResult = await processMemoryIntent(userId, message, memoryIntent);
+      const memoryResult = await processMemoryIntent(userId, message, memoryIntent, {
+        founderSession,
+      });
       if (memoryResult.handled) {
         return {
           status: memoryResult.error ? 'error' : 'complete',
@@ -161,6 +275,10 @@ export async function processAtlasMessage(input, options = {}) {
             tokensUsed: 0,
             costUsd: 0,
             latencyMs: 0,
+            founderSession: Boolean(founderSession),
+            founderId: founderSession?.knowledge.id ?? null,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
           },
         };
       }
@@ -278,19 +396,8 @@ export async function processAtlasMessage(input, options = {}) {
   }
 
   // ── Conversational / Meta Synthesis / Tarot via OpenAI ──
-  const founderProfile =
-    userId && userId !== 'web:anonymous' ? resolveFounderProfile(userId) : null;
-
-  const userMemoryContext =
-    userId && userId !== 'web:anonymous'
-      ? buildRelevantMemoryContext(userId, message, mode)
-      : null;
-
-  const memoryContext = mergeFounderWithUserMemoryContext(userMemoryContext, founderProfile);
-
-  const profile = resolveChatProfile(mode);
-  const systemPrompt = buildAtlasSystemPrompt({ profile, mode, tarotIntent, founderProfile });
-  const userPrompt = buildChatUserPrompt(message, history, mode, tarotIntent, memoryContext);
+  const promptBundle = buildAtlasPromptBundle(input, { mode });
+  const { systemPrompt, userPrompt, profile, founderProfile } = promptBundle;
 
   try {
     const result = await callOpenAI({
@@ -319,6 +426,9 @@ export async function processAtlasMessage(input, options = {}) {
         profile,
         founderSession: Boolean(founderProfile),
         founderId: founderProfile?.id ?? null,
+        founderBiographyLoaded: Boolean(promptBundle.founderBiographyProfile),
+        pipelineDebug,
+        pipelineVersion: PIPELINE_VERSION,
         tarotIntent: tarotIntent.active ? tarotIntent.intent : null,
         memoryHandled: false,
         model: result.model,
@@ -347,9 +457,17 @@ export async function processAtlasMessage(input, options = {}) {
       status,
       reply: normalizeErrorReply(errorCode, msg),
       errorCode,
-      intent,
+      intent: founderSession ? `${intent}:founder` : intent,
       engine: 'openai',
-      data: { mode, profile },
+      data: {
+        mode,
+        profile,
+        founderSession: Boolean(founderSession),
+        founderId: founderSession?.knowledge.id ?? null,
+        founderBiographyLoaded: Boolean(founderSession?.biography),
+        pipelineDebug,
+        pipelineVersion: PIPELINE_VERSION,
+      },
     };
   }
 }

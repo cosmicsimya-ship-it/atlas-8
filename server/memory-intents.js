@@ -7,6 +7,7 @@ import {
   getUserMemory,
   updateUserMemory,
 } from './user-memory.js';
+import { resolveFounderSession, formatFounderAwareMemoryRecall } from './founder-identity.js';
 
 /** @typedef {'save' | 'recall' | 'forget' | 'profile-update' | null} MemoryIntentType */
 
@@ -252,14 +253,25 @@ export function formatMemorySummary(memory) {
  * @param {string} userId
  * @param {string} message
  * @param {MemoryIntent} intent
+ * @param {{ founderSession?: import('./founder-identity.js').FounderSession|null }} [options]
  * @returns {Promise<{ handled: boolean, reply?: string, memoryUpdated?: boolean, error?: string }>}
  */
-export async function processMemoryIntent(userId, message, intent) {
+export async function processMemoryIntent(userId, message, intent, options = {}) {
   if (!intent.type) {
     return { handled: false };
   }
 
+  const founderSession = options.founderSession ?? resolveFounderSession(userId);
+
   if (intent.type === 'recall') {
+    if (founderSession) {
+      return {
+        handled: true,
+        reply: formatFounderAwareMemoryRecall(userId, founderSession),
+        memoryUpdated: false,
+      };
+    }
+
     const memory = getUserMemory(userId);
     return {
       handled: true,

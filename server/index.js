@@ -8,8 +8,10 @@ import { dirname } from 'path';
 import { createZip } from './zip-utils.js';
 import { callOpenAI } from './openai-client.js';
 import { processAtlasMessage } from './atlas-message-service.js';
-import { normalizeWebChatRequest, toWebChatResponse } from './channel-adapters.js';
+import { normalizeAtlasMessageRequest, toWebChatResponse } from './channel-adapters.js';
 import { initializeFounderKnowledge, getFounderKnowledgeStatus } from './founder-knowledge.js';
+import { initializeFounderProfiles, getFounderProfileStatus } from './founder-profile.js';
+import { logFounderPipelineDebug } from './founder-identity.js';
 import {
   deleteMemoryField,
   deleteUserMemory,
@@ -39,6 +41,7 @@ const GENERATED_DIR = join(__dirname, 'generated');
 const runner = new Runner();
 
 const founderInit = initializeFounderKnowledge();
+const founderProfileInit = initializeFounderProfiles();
 
 // Ensure generated/ exists on startup
 if (!existsSync(GENERATED_DIR)) {
@@ -61,6 +64,7 @@ app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/ai/health', (_req, res) => {
   const founderStatus = getFounderKnowledgeStatus();
+  const founderProfileStatus = getFounderProfileStatus();
   res.json({
     status: 'ok',
     configured: OPENAI_API_KEY.length > 0,
@@ -70,6 +74,8 @@ app.get('/api/ai/health', (_req, res) => {
     memory: true,
     founderKnowledge: founderStatus.loaded && founderStatus.profileCount > 0,
     founderProfiles: founderStatus.profileCount,
+    founderBiography: founderProfileStatus.loaded && founderProfileStatus.profileCount > 0,
+    founderBiographyProfiles: founderProfileStatus.profileCount,
     modelProvider: OPENAI_API_KEY.length > 0,
   });
 });
@@ -106,7 +112,7 @@ app.post('/api/ai/complete', async (req, res) => {
 // ── Atlas Chat — shared intelligence pipeline (Web + Telegram via HTTP) ──
 app.post('/api/chat', async (req, res) => {
   try {
-    const normalized = normalizeWebChatRequest(req.body);
+    const normalized = normalizeAtlasMessageRequest(req.body);
     const result = await processAtlasMessage(normalized, {
       mode: req.body.mode,
       model: req.body.model || DEFAULT_MODEL,
@@ -135,27 +141,8 @@ app.post('/api/chat', async (req, res) => {
 
 // ── Channel-neutral Atlas message endpoint (explicit adapter contract) ──
 app.post('/api/atlas/message', async (req, res) => {
-  const { channel = 'web' } = req.body ?? {};
-
   try {
-    const normalized =
-      channel === 'telegram'
-        ? {
-            channel: 'telegram',
-            userId: String(req.body.userId ?? ''),
-            conversationId: String(req.body.conversationId ?? req.body.userId ?? ''),
-            message: String(req.body.message ?? '').trim(),
-            history: Array.isArray(req.body.history) ? req.body.history : [],
-            username: req.body.username,
-            displayName: req.body.displayName,
-            metadata: req.body.metadata ?? {},
-            context: req.body.context ?? {},
-          }
-        : normalizeWebChatRequest(req.body);
-
-    if (channel === 'telegram' && !normalized.message) {
-      return res.status(400).json({ error: 'message is required' });
-    }
+    const normalized = normalizeAtlasMessageRequest(req.body ?? {});
 
     const result = await processAtlasMessage(normalized, {
       model: req.body.model || DEFAULT_MODEL,
@@ -163,6 +150,10 @@ app.post('/api/atlas/message', async (req, res) => {
       maxTokens: req.body.maxTokens,
       runner,
     });
+
+    if (result.data?.pipelineDebug) {
+      logFounderPipelineDebug(result.data.pipelineDebug, `Backend/${normalized.channel}`);
+    }
 
     return res.json(result);
   } catch (err) {
@@ -665,6 +656,9 @@ app.listen(PORT, () => {
   console.log('  Memory: ✓ JSON persistence initialized');
   console.log(
     `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,
+  );
+  console.log(
+    `  Founder Profile:   ${founderProfileInit.ok ? '✓' : '✗'} ${founderProfileInit.profileCount} biography profile(s)`,
   );
   console.log(`  Web Chat: ✓ shared pipeline active`);
   console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);

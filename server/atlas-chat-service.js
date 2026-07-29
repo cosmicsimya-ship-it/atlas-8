@@ -14,8 +14,8 @@ import {
   buildChatUserPrompt,
   detectTarotSpreadIntent,
 } from './symbolic-synthesis.js';
-import { processAtlasMessage } from './atlas-message-service.js';
-import { normalizeWebChatRequest, toWebChatResponse } from './channel-adapters.js';
+import { processAtlasMessage, buildAtlasPromptBundle } from './atlas-message-service.js';
+import { normalizeWebChatRequest, normalizeAtlasMessageRequest, toWebChatResponse } from './channel-adapters.js';
 
 /**
  * @param {{
@@ -30,6 +30,17 @@ export function buildAtlasChatRequest(options) {
   const message = (options.message ?? '').trim();
   if (!message) {
     throw new Error('message is required');
+  }
+
+  if (options.userId) {
+    const normalized = normalizeAtlasMessageRequest({
+      channel: options.channel ?? 'web',
+      message,
+      history: options.history,
+      userId: options.userId,
+      conversationId: options.conversationId ?? options.userId,
+    });
+    return buildAtlasPromptBundle(normalized, { mode: options.mode });
   }
 
   const mode = options.mode ?? detectAnalysisMode(message);

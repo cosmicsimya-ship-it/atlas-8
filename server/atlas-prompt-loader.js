@@ -9,7 +9,8 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { buildFounderRuntimeRules } from './founder-knowledge.js';
+import { buildFounderRuntimeRules, buildFounderSystemPromptSection } from './founder-knowledge.js';
+import { getFounderBiographyProfile } from './founder-profile.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = __dirname;
@@ -117,7 +118,7 @@ export function resolveChatProfile(mode) {
 /**
  * Runtime rules appended to Atlas-powered chat profiles.
  * Symbolic / numerology / synthesis directives appear ONLY for meta-synthesis mode.
- * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null }} [options]
+ * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null }} [options]
  */
 export function buildRuntimeRules(options = {}) {
   const currentDate = options.currentDate ?? getCurrentDateTr();
@@ -125,9 +126,23 @@ export function buildRuntimeRules(options = {}) {
   const profile = options.profile ?? resolveChatProfile(mode);
   const includeSymbolic = profile === 'meta-synthesis';
   const tarotIntent = options.tarotIntent ?? null;
-  const founderProfile = options.founderProfile ?? null;
+  const founderSession = options.founderSession ?? null;
+  const founderProfile = founderSession?.knowledge ?? options.founderProfile ?? null;
 
-  const founderDirective = founderProfile ? buildFounderRuntimeRules(founderProfile) : '';
+  const founderDirective = founderSession
+    ? `
+## Kurucu Oturumu Aktif
+
+founderResolved: true
+Yukarıdaki **FOUNDER SYSTEM CONTEXT** bölümü (founders.json) kimlik otoritesidir — reddetme veya sohbet bağlamına indirgeme.
+User prompt'taki Founder Identity / Profile bölümleri ile birlikte uygula.`
+    : founderProfile
+      ? `
+## Kurucu Oturumu Aktif (Founder Identity)
+
+founderResolved: true
+${buildFounderRuntimeRules(founderProfile)}`
+      : '';
 
   const modeDirective =
     mode === 'meta-synthesis'
@@ -225,7 +240,7 @@ Kullanıcının dilinde cevap ver.
 
 /**
  * Build a system prompt for a named profile.
- * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null }} [options]
+ * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null }} [options]
  * @returns {string} Empty string for shorts/generic — caller must supply the prompt.
  */
 export function buildAtlasSystemPrompt(options = {}) {
@@ -236,15 +251,37 @@ export function buildAtlasSystemPrompt(options = {}) {
     return '';
   }
 
+  const founderSession =
+    options.founderSession ??
+    (options.founderProfile
+      ? {
+          knowledge: options.founderProfile,
+          biography: getFounderBiographyProfile(options.founderProfile.id),
+          userId: '',
+          resolved: true,
+        }
+      : null);
+
   const base = loadAtlasModules(modules);
+  const founderSystemSection = founderSession?.knowledge
+    ? buildFounderSystemPromptSection(founderSession)
+    : '';
+
   const runtime = buildRuntimeRules({
     currentDate: options.currentDate,
     mode: options.mode,
     profile,
     tarotIntent: options.tarotIntent,
+    founderSession: founderSession?.knowledge ? founderSession : null,
     founderProfile: options.founderProfile,
   });
-  return `${base}\n\n---\n\n${runtime}`;
+
+  const parts = [base];
+  if (founderSystemSection) {
+    parts.push('---', founderSystemSection);
+  }
+  parts.push('---', runtime);
+  return parts.join('\n\n');
 }
 
 /** @deprecated Use buildAtlasSystemPrompt with profile instead. */

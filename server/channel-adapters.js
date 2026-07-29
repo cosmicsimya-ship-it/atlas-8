@@ -21,6 +21,49 @@ import { webUserId, telegramUserId, isValidUserId } from './user-memory.js';
  */
 
 /**
+ * Normalize any channel request body into NormalizedAtlasMessage.
+ * Web uses full validation; Telegram HTTP payloads are pre-filtered by the bot.
+ * @param {Record<string, unknown>} body
+ * @returns {NormalizedAtlasMessage}
+ */
+export function normalizeAtlasMessageRequest(body) {
+  const channel = body?.channel === 'telegram' ? 'telegram' : 'web';
+
+  if (channel === 'telegram') {
+    const message = String(body.message ?? '').trim();
+    if (!message) {
+      throw new Error('message is required and must be a non-empty string');
+    }
+
+    const userId = String(body.userId ?? '').trim();
+    if (!userId || !isValidUserId(userId)) {
+      throw new Error('userId must be a valid identifier (telegram:ID or web:ID)');
+    }
+
+    const history = Array.isArray(body.history) ? body.history : [];
+
+    return {
+      channel: 'telegram',
+      userId,
+      conversationId: String(body.conversationId ?? userId),
+      message,
+      history: history
+        .filter((t) => t && typeof t === 'object')
+        .map((t) => ({
+          role: t.role === 'assistant' ? 'assistant' : 'user',
+          content: String(t.content ?? ''),
+        })),
+      username: body.username ? String(body.username) : undefined,
+      displayName: body.displayName ? String(body.displayName) : undefined,
+      metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
+      context: body.context && typeof body.context === 'object' ? body.context : {},
+    };
+  }
+
+  return normalizeWebChatRequest(body);
+}
+
+/**
  * Normalize Web Chat POST /api/chat body.
  * @param {Record<string, unknown>} body
  * @returns {NormalizedAtlasMessage}
@@ -103,6 +146,7 @@ export function normalizeTelegramMessage(msg, history = []) {
       chatTitle: msg.chat.title ?? null,
       messageId: msg.message_id,
       isGroup,
+      telegramFromId: String(msg.from.id),
     },
     context: {},
   };

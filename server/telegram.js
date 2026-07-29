@@ -10,6 +10,11 @@ import {
   normalizeErrorReply,
   splitTelegramMessage,
 } from './channel-adapters.js';
+import {
+  resolveFounderSession,
+  buildFounderPipelineDebug,
+  logFounderPipelineDebug,
+} from './founder-identity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -73,6 +78,35 @@ const chatHistories = new Map();
 const MAX_HISTORY_TURNS = 20;
 /** @type {Set<number>} */
 const inFlightChats = new Set();
+let firstFromIdLogged = false;
+
+/**
+ * Print Telegram from.id once — for ATLAS_FOUNDER_TELEGRAM_IDS in .env
+ * @param {import('node-telegram-bot-api').Message} msg
+ */
+function logFirstTelegramFromId(msg) {
+  if (firstFromIdLogged || !msg.from?.id) {
+    return;
+  }
+  firstFromIdLogged = true;
+
+  const fromId = String(msg.from.id);
+  const name = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || '—';
+  const username = msg.from.username ? `@${msg.from.username}` : '—';
+
+  console.log('');
+  console.log('══════════════════════════════════════════════════════════');
+  console.log('[Telegram] İlk mesaj — kurucu ID (from.id)');
+  console.log(`  from.id:  ${fromId}`);
+  console.log(`  userId:   telegram:${fromId}`);
+  console.log(`  isim:     ${name}`);
+  console.log(`  username: ${username}`);
+  console.log('');
+  console.log('  .env dosyanıza ekleyin:');
+  console.log(`  ATLAS_FOUNDER_TELEGRAM_IDS=${fromId}`);
+  console.log('══════════════════════════════════════════════════════════');
+  console.log('');
+}
 
 function getChatHistory(conversationId) {
   return chatHistories.get(conversationId) ?? [];
@@ -87,6 +121,20 @@ async function forwardToPipeline(msg) {
   const conversationId = String(msg.chat.id);
   const history = getChatHistory(conversationId);
   const normalized = normalizeTelegramMessage(msg, history);
+  const fromId = String(msg.from.id);
+
+  const preDebug = buildFounderPipelineDebug(
+    {
+      channel: 'telegram',
+      userId: normalized.userId,
+      conversationId: normalized.conversationId,
+      message: normalized.message,
+      history: normalized.history,
+      metadata: { telegramFromId: fromId },
+    },
+    resolveFounderSession(normalized.userId),
+  );
+  logFounderPipelineDebug(preDebug, 'Telegram/inbound');
 
   const response = await axios.post(
     BACKEND_MESSAGE_URL,
@@ -103,6 +151,18 @@ async function forwardToPipeline(msg) {
     { timeout: 180_000 },
   );
 
+  const backendDebug = response.data?.data?.pipelineDebug;
+  if (backendDebug) {
+    logFounderPipelineDebug(
+      { ...backendDebug, telegramFromId: fromId, userId: normalized.userId },
+      'Telegram/backend-response',
+    );
+  } else {
+    console.warn(
+      `[Telegram] founder-debug missing in backend response — is node server/index.js running on ${BACKEND_URL}?`,
+    );
+  }
+
   return response.data;
 }
 
@@ -114,6 +174,8 @@ async function sendReply(chatId, reply) {
 }
 
 async function handleMessage(msg) {
+  logFirstTelegramFromId(msg);
+
   const chatId = msg.chat.id;
   const conversationId = String(chatId);
 
@@ -215,3 +277,9 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 console.log('[Telegram] Bot started — shared Atlas pipeline via POST /api/atlas/message');
 console.log(`[Telegram] Backend: ${BACKEND_URL}`);
+console.log(
+  `[Telegram] Founder env: ATLAS_FOUNDER_TELEGRAM_IDS=${process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '(not set)'}`,
+);
+console.log(
+  `[Telegram] İlk mesaj geldiğinde from.id burada yazdırılır → ATLAS_FOUNDER_TELEGRAM_IDS`,
+);

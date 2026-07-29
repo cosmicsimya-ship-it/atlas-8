@@ -216,14 +216,16 @@ assert(
   irrelevant.includes('Ayşe') && !irrelevant.includes('Doğum tarihi'),
 );
 
-const prompt = buildChatUserPrompt('test', [], 'meta-synthesis', null, relevant);
-assert('memory context in user prompt', prompt.includes('## Kalıcı Kullanıcı Hafızası'));
+const prompt = buildChatUserPrompt('test', [], 'meta-synthesis', null, {
+  userMemoryContext: relevant,
+});
+assert('memory context in user prompt', prompt.includes('## Kişisel Profil Hafızası'));
 
 const chatReq = buildAtlasChatRequest({
   message: 'numeroloji',
   memoryContext: relevant,
 });
-assert('chat request preserves memory context path', chatReq.userPrompt.includes('Kalıcı Kullanıcı Hafızası'));
+assert('chat request preserves memory context path', chatReq.userPrompt.includes('Kişisel Profil Hafızası'));
 
 console.log('\n=== Verification examples ===\n');
 

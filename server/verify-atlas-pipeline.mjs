@@ -7,11 +7,17 @@
 import {
   normalizeWebChatRequest,
   normalizeTelegramMessage,
+  normalizeAtlasMessageRequest,
   splitTelegramMessage,
   toWebChatResponse,
   formatTelegramReply,
 } from './channel-adapters.js';
-import { processAtlasMessage } from './atlas-message-service.js';
+import {
+  processAtlasMessage,
+  buildAtlasPromptBundle,
+  ATLAS_PROMPT_LOAD_ORDER,
+} from './atlas-message-service.js';
+import { initializeFounderKnowledge } from './founder-knowledge.js';
 import { telegramUserId, webUserId, resetMemoryStoreForTests, updateUserMemory } from './user-memory.js';
 
 const results = [];
@@ -87,6 +93,133 @@ assert(
   'telegram group uses user id not chat id for memory',
   tgGroupUser.userId === telegramUserId(99) && tgGroupUser.conversationId === '-1001',
 );
+
+const tgHttpNorm = normalizeAtlasMessageRequest({
+  channel: 'telegram',
+  userId: telegramUserId(12345),
+  conversationId: '12345',
+  message: 'Merhaba Atlas',
+  history: [],
+});
+assert('atlas/message telegram normalize matches adapter', tgHttpNorm.userId === tgPrivate.userId);
+
+console.log('\n=== Prompt parity (Web vs Telegram) ===\n');
+
+const parityUser = webUserId('prompt-parity-user');
+const parityMessage = 'Atlas mimarisini değerlendir';
+const parityHistory = [{ role: 'user', content: 'önceki soru' }];
+
+await resetMemoryStoreForTests({ users: {} });
+await updateUserMemory(parityUser, { profile: { name: 'Parity Test', location: 'Berlin' } });
+
+const webBundle = buildAtlasPromptBundle(
+  {
+    channel: 'web',
+    userId: parityUser,
+    conversationId: parityUser,
+    message: parityMessage,
+    history: parityHistory,
+  },
+  { mode: 'meta-synthesis' },
+);
+
+const tgBundle = buildAtlasPromptBundle(
+  {
+    channel: 'telegram',
+    userId: parityUser,
+    conversationId: '999888',
+    message: parityMessage,
+    history: parityHistory,
+  },
+  { mode: 'meta-synthesis' },
+);
+
+assert('load order is canonical', JSON.stringify(webBundle.loadOrder) === JSON.stringify(ATLAS_PROMPT_LOAD_ORDER));
+assert('web/telegram system prompt identical', webBundle.systemPrompt === tgBundle.systemPrompt);
+assert('web/telegram user prompt identical', webBundle.userPrompt === tgBundle.userPrompt);
+assert('memory context in both bundles', webBundle.userMemoryContext?.includes('Berlin'));
+assert('channel does not affect profile mode', webBundle.profile === tgBundle.profile && webBundle.profile === 'meta-synthesis');
+
+console.log('\n=== Founder recognition (Web + Telegram) ===\n');
+
+const prevFounderEnv = {
+  telegram: process.env.ATLAS_FOUNDER_TELEGRAM_IDS,
+  web: process.env.ATLAS_FOUNDER_WEB_USER_IDS,
+  combined: process.env.ATLAS_FOUNDER_USER_IDS,
+};
+
+process.env.ATLAS_FOUNDER_TELEGRAM_IDS = '888001';
+process.env.ATLAS_FOUNDER_WEB_USER_IDS = 'founder-web-session';
+process.env.ATLAS_FOUNDER_USER_IDS = '';
+initializeFounderKnowledge();
+
+const founderWebId = webUserId('founder-web-session');
+const founderTgId = telegramUserId(888001);
+const founderQuestion = 'Kurucu oturumunda hangi katmanlar aktif?';
+
+const founderWebBundle = buildAtlasPromptBundle({
+  channel: 'web',
+  userId: founderWebId,
+  conversationId: founderWebId,
+  message: founderQuestion,
+  history: [],
+});
+
+const founderTgBundle = buildAtlasPromptBundle({
+  channel: 'telegram',
+  userId: founderTgId,
+  conversationId: '555001',
+  message: founderQuestion,
+  history: [],
+});
+
+assert('web founder resolved', founderWebBundle.founderProfile?.id === 'founder-primary');
+assert('telegram founder resolved', founderTgBundle.founderProfile?.id === 'founder-primary');
+assert('web founder biography loaded', founderWebBundle.founderBiographyProfile?.preferredName === 'Lara');
+assert('telegram founder biography loaded', founderTgBundle.founderBiographyProfile?.preferredName === 'Lara');
+assert(
+  'founder system prompt includes Knowledge + Profile',
+  founderWebBundle.systemPrompt.includes('FOUNDER SYSTEM CONTEXT') &&
+    founderWebBundle.systemPrompt.includes('knowledge/founders.json') &&
+    founderWebBundle.systemPrompt.includes('Founder Profile & Biography'),
+);
+assert(
+  'founder user prompt has identity block',
+  founderWebBundle.userPrompt.includes('## Founder Identity') &&
+    founderWebBundle.userPrompt.includes('## Founder Profile & Founder Knowledge'),
+);
+assert(
+  'founder web/telegram system prompt parity',
+  founderWebBundle.systemPrompt === founderTgBundle.systemPrompt,
+);
+assert(
+  'founder web/telegram user prompt parity',
+  founderWebBundle.userPrompt === founderTgBundle.userPrompt,
+);
+
+const regularWeb = buildAtlasPromptBundle({
+  channel: 'web',
+  userId: webUserId('regular-user'),
+  conversationId: webUserId('regular-user'),
+  message: 'Merhaba',
+  history: [],
+});
+const regularTg = buildAtlasPromptBundle({
+  channel: 'telegram',
+  userId: telegramUserId(111222),
+  conversationId: '333',
+  message: 'Merhaba',
+  history: [],
+});
+assert('regular web not founder', regularWeb.founderProfile === null);
+assert('regular telegram not founder', regularTg.founderProfile === null);
+assert('regular web no founder layer', !regularWeb.systemPrompt.includes('FOUNDER SYSTEM CONTEXT'));
+assert('regular telegram no founder layer', !regularTg.systemPrompt.includes('FOUNDER SYSTEM CONTEXT'));
+
+process.env.ATLAS_FOUNDER_TELEGRAM_IDS = prevFounderEnv.telegram ?? '';
+process.env.ATLAS_FOUNDER_WEB_USER_IDS = prevFounderEnv.web ?? '';
+process.env.ATLAS_FOUNDER_USER_IDS = prevFounderEnv.combined ?? '';
+initializeFounderKnowledge();
 
 console.log('\n=== Shared pipeline ===\n');
 
