@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
 import axios from 'axios';
-import { existsSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
@@ -30,19 +30,59 @@ function isBackendUnreachable(error) {
   return axios.isAxiosError(error) && !error.response;
 }
 
-function acquirePollLock() {
-  if (existsSync(POLL_LOCK_FILE)) {
-    console.error('[Telegram] Another polling instance may be running (lock file exists).');
-    console.error('[Telegram] Remove data/telegram.poll.lock if no other bot is running.');
-    return false;
+function isProcessRunning(pid) {
+  if (!pid || Number.isNaN(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === 'EPERM';
   }
+}
+
+function readLockOwnerPid() {
+  try {
+    return parseInt(readFileSync(POLL_LOCK_FILE, 'utf-8').trim(), 10);
+  } catch {
+    return NaN;
+  }
+}
+
+function acquirePollLock() {
+  const dataDir = join(__dirname, '..', 'data');
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
+  if (existsSync(POLL_LOCK_FILE)) {
+    const ownerPid = readLockOwnerPid();
+    if (isProcessRunning(ownerPid)) {
+      console.error('[Telegram] Another polling instance is running.');
+      console.error(`[Telegram] Lock held by PID ${ownerPid}. Stop that process first.`);
+      return false;
+    }
+    console.warn(
+      `[Telegram] Stale poll lock removed (PID ${ownerPid || 'unknown'} is not running).`,
+    );
+    try {
+      unlinkSync(POLL_LOCK_FILE);
+    } catch {
+      console.error('[Telegram] Could not remove stale lock file:', POLL_LOCK_FILE);
+      return false;
+    }
+  }
+
   writeFileSync(POLL_LOCK_FILE, String(process.pid), 'utf-8');
   return true;
 }
 
 function releasePollLock() {
   try {
-    if (existsSync(POLL_LOCK_FILE)) unlinkSync(POLL_LOCK_FILE);
+    if (!existsSync(POLL_LOCK_FILE)) return;
+    const ownerPid = readLockOwnerPid();
+    if (ownerPid === process.pid || !isProcessRunning(ownerPid)) {
+      unlinkSync(POLL_LOCK_FILE);
+    }
   } catch {
     /* ignore */
   }
@@ -123,6 +163,7 @@ async function forwardToPipeline(msg) {
   const normalized = normalizeTelegramMessage(msg, history);
   const fromId = String(msg.from.id);
 
+  const founderSession = resolveFounderSession(normalized.userId);
   const preDebug = buildFounderPipelineDebug(
     {
       channel: 'telegram',
@@ -132,9 +173,16 @@ async function forwardToPipeline(msg) {
       history: normalized.history,
       metadata: { telegramFromId: fromId },
     },
-    resolveFounderSession(normalized.userId),
+    founderSession,
   );
   logFounderPipelineDebug(preDebug, 'Telegram/inbound');
+  if (!founderSession) {
+    const configured = process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '(not set)';
+    console.warn(
+      `[Telegram] Founder not matched — from.id=${fromId} is not in ATLAS_FOUNDER_TELEGRAM_IDS=${configured}. ` +
+        `memoryLoaded reflects user_memory only (not founder knowledge).`,
+    );
+  }
 
   const response = await axios.post(
     BACKEND_MESSAGE_URL,
