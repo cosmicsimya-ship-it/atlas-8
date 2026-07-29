@@ -13,3 +13,4 @@ data/telegram.poll.lock
 data/atlas-*.pid
 data/atlas.startup.lock
 data/logs/
+.env
