@@ -68,7 +68,8 @@ const RELATIONSHIP_CLAIM_RE = [
   /\bhakk[ıi]mda\s+ne\s*(düşün|dusun|söyle|soyle|dedi)/i,
   /\bkiminle\s+konu[sş]uyor/i,
   /\bkimi\s+seviyor/i,
-  /\bkocas[ıi]|e[sş]i|partneri|sevgilisi\b/i,
+  // Word-bounded: bare e[sş]i must not match inside "kesin".
+  /\b(kocas[ıi]|e[sş]i|partneri|sevgilisi)\b/i,
 ];
 
 const RELATIONSHIP_INFERENCE_RE = [

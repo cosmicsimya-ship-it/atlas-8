@@ -94,14 +94,20 @@ record(
 
 // ── Calendar / Hijri ──
 const hijri = gregorianToHijri(2026, 7, 29);
-record('hijri converts', hijri.hy > 1400 && hijri.hm >= 1 && hijri.hm <= 12, JSON.stringify(hijri));
+record(
+  'hijri converts UAQ 15 Safer 1448',
+  hijri.hy === 1448 && hijri.hm === 2 && hijri.hd === 15,
+  JSON.stringify(hijri),
+);
 record('hijri section 1-10', hijriMonthSection(5) === 'baslangic');
 record('hijri section 11-20', hijriMonthSection(15) === 'orta');
 record('hijri section 21+', hijriMonthSection(25) === 'son');
 
 const cal = buildSymbolicCalendarContext(new Date('2026-07-29T12:00:00+03:00'));
 record('calendar ok', cal.ok === true, cal.hijri?.display);
-record('calendar method declared', cal.metadata?.method === 'kuwaiti-arithmetic');
+record('calendar method declared', cal.metadata?.method === 'islamic-umalqura');
+record('calendar month not Receb', cal.hijri?.monthName !== 'Receb');
+record('calendar display Safer', cal.hijri?.display === '15 Safer 1448', cal.hijri?.display);
 
 const num = numerologyDayNumber(2026, 7, 29);
 record('numerology has day number', Number.isFinite(num.dayNumber), String(num.dayNumber));
@@ -211,7 +217,7 @@ if (process.env.OPENAI_API_KEY) {
   record(
     'llm multi has dates/layers cues',
     multi.engine === 'astrology-analysis' &&
-      (/20\d{2}|Hicri|Muharrem|Safer|Rebi|Cemazi|Receb|Şaban|Ramazan|Şevval|Zil/i.test(body) ||
+      (/20\d{2}|Hicri|Muharrem|Safer|Rebi|Cemazi|Recep|Şaban|Ramazan|Şevval|Zil/i.test(body) ||
         /Ay|Güneş|numer/i.test(body)),
     body.slice(0, 200),
   );

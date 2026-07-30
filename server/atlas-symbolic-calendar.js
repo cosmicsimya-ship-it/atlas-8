@@ -1,8 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Symbolic calendar layer — Gregorian + calculated Hijri (not LLM memory)
+// Symbolic calendar layer — Gregorian + Hijri (not LLM memory)
 //
-// Hijri method: Kuwaiti / Fliegel–Van Flandern arithmetic algorithm
-// (common computational approximation; may differ ±1 day from local hilal).
+// Primary Hijri method: ICU / Intl islamic-umalqura (Umm al-Qura),
+// matching Saudi civil calendar and AlAdhan UAQ reference.
+// Fallback: Kuwaiti arithmetic algorithm (±1 day vs Umm al-Qura possible).
 // ═══════════════════════════════════════════════════════════════════════
 
 const WEEKDAYS_TR = [
@@ -15,20 +16,24 @@ const WEEKDAYS_TR = [
   'Cumartesi',
 ];
 
-const HIJRI_MONTHS_TR = [
+/**
+ * Turkish Hijri month names (Diyanet / common TR orthography).
+ * Note: month 7 is Recep (not Receb).
+ */
+export const HIJRI_MONTHS_TR = Object.freeze([
   'Muharrem',
   'Safer',
   'Rebiülevvel',
   'Rebiülahir',
   'Cemaziyelevvel',
   'Cemaziyelahir',
-  'Receb',
+  'Recep',
   'Şaban',
   'Ramazan',
   'Şevval',
   'Zilkade',
   'Zilhicce',
-];
+]);
 
 /** Symbolic themes for analysis framing — not religious rulings. */
 const HIJRI_MONTH_THEMES = {
@@ -47,13 +52,22 @@ const HIJRI_MONTH_THEMES = {
 };
 
 /**
- * Kuwaiti algorithm: Gregorian → Hijri.
+ * @param {number} month 1-12
+ * @returns {string}
+ */
+export function hijriMonthNameTr(month) {
+  const m = Number(month);
+  return HIJRI_MONTHS_TR[m - 1] ?? `Ay ${m}`;
+}
+
+/**
+ * Kuwaiti arithmetic fallback: Gregorian → Hijri.
  * @param {number} gy
  * @param {number} gm 1-12
  * @param {number} gd
  * @returns {{ hy: number, hm: number, hd: number }}
  */
-export function gregorianToHijri(gy, gm, gd) {
+export function gregorianToHijriKuwaiti(gy, gm, gd) {
   const jd =
     Math.floor((1461 * (gy + 4800 + Math.floor((gm - 14) / 12))) / 4) +
     Math.floor((367 * (gm - 2 - 12 * Math.floor((gm - 14) / 12))) / 12) -
@@ -67,11 +81,61 @@ export function gregorianToHijri(gy, gm, gd) {
   const j =
     Math.floor((10985 - l2) / 5316) * Math.floor((50 * l2) / 17719) +
     Math.floor(l2 / 5670) * Math.floor((43 * l2) / 15238);
-  const l3 = l2 - Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) - Math.floor(j / 16) * Math.floor((15238 * j) / 43) + 29;
+  const l3 =
+    l2 -
+    Math.floor((30 - j) / 15) * Math.floor((17719 * j) / 50) -
+    Math.floor(j / 16) * Math.floor((15238 * j) / 43) +
+    29;
   const hm = Math.floor((24 * l3) / 709);
   const hd = l3 - Math.floor((709 * hm) / 24);
   const hy = 30 * n + j - 30;
   return { hy, hm, hd };
+}
+
+/**
+ * Umm al-Qura via ICU (Intl). Converts a civil Gregorian Y-M-D.
+ * @param {number} gy
+ * @param {number} gm 1-12
+ * @param {number} gd
+ * @returns {{ hy: number, hm: number, hd: number } | null}
+ */
+export function gregorianToHijriUmmAlQura(gy, gm, gd) {
+  try {
+    const date = new Date(Date.UTC(Number(gy), Number(gm) - 1, Number(gd), 12, 0, 0));
+    if (Number.isNaN(date.getTime())) return null;
+
+    const parts = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', {
+      timeZone: 'UTC',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    }).formatToParts(date);
+
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+    const hy = get('year');
+    const hm = get('month');
+    const hd = get('day');
+    if (![hy, hm, hd].every((n) => Number.isFinite(n) && n > 0)) return null;
+    if (hm < 1 || hm > 12 || hd < 1 || hd > 30) return null;
+    return { hy, hm, hd };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Preferred Gregorian → Hijri conversion (Umm al-Qura, Kuwaiti fallback).
+ * @param {number} gy
+ * @param {number} gm 1-12
+ * @param {number} gd
+ * @returns {{ hy: number, hm: number, hd: number, method: string }}
+ */
+export function gregorianToHijri(gy, gm, gd) {
+  const umalqura = gregorianToHijriUmmAlQura(gy, gm, gd);
+  if (umalqura) {
+    return { ...umalqura, method: 'islamic-umalqura' };
+  }
+  return { ...gregorianToHijriKuwaiti(gy, gm, gd), method: 'kuwaiti-arithmetic' };
 }
 
 /**
@@ -125,7 +189,9 @@ export function buildSymbolicCalendarContext(when = new Date(), timeZone = 'Euro
 
   const hijri = gregorianToHijri(gy, gm, gd);
   const section = hijriMonthSection(hijri.hd);
-  const monthName = HIJRI_MONTHS_TR[hijri.hm - 1] ?? `Ay ${hijri.hm}`;
+  const monthName = hijriMonthNameTr(hijri.hm);
+  const method = hijri.method || 'islamic-umalqura';
+  const approximate = method !== 'islamic-umalqura';
 
   return {
     ok: true,
@@ -149,11 +215,14 @@ export function buildSymbolicCalendarContext(when = new Date(), timeZone = 'Euro
       display: `${hijri.hd} ${monthName} ${hijri.hy}`,
     },
     metadata: {
-      method: 'kuwaiti-arithmetic',
+      method,
       methodLabel:
-        'Hesaplanan Hicri tarih (Kuwaiti / aritmetik algoritma). Hilal gözlemine göre ±1 gün fark olabilir; dini/resmî işlemlerde yerel resmî takvim esas alınmalıdır.',
+        method === 'islamic-umalqura'
+          ? 'Hesaplanan Hicri tarih (Umm al-Qura / ICU islamic-umalqura). Hilal gözlemine veya yerel resmî takvime göre ±1 gün fark olabilir; dini/resmî işlemlerde yerel resmî takvim esas alınmalıdır.'
+          : 'Hesaplanan Hicri tarih (Kuwaiti / aritmetik yedek algoritma). Umm al-Qura veya hilal gözlemine göre ±1 gün fark olabilir; dini/resmî işlemlerde yerel resmî takvim esas alınmalıdır.',
       source: 'atlas-symbolic-calendar',
-      approximate: true,
+      approximate,
+      reference: 'Umm al-Qura (AlAdhan calendarMethod=UAQ / ICU)',
     },
   };
 }
