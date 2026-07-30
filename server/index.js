@@ -56,6 +56,7 @@ import {
   logoutSession,
   rateLimitMiddleware,
 } from './auth/index.js';
+import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -173,6 +174,19 @@ const founderSensitiveRateLimit = rateLimitMiddleware({
   windowMs: 60 * 1000,
   max: 30,
   keyFn: (req) => `founder-sensitive:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const atlasLiveRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 120,
+  keyFn: (req) => `atlas-live:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+mountAtlasLiveRoutes(app, {
+  attachAuth: attachAuthFromSession({ createAnonymous: true }),
+  requireAuth: requireAuthenticated,
+  requireCsrf: requireCsrfProtection,
+  rateLimit: atlasLiveRateLimit,
 });
 
 // ══════════════════════════════════════════════════════════════════════
