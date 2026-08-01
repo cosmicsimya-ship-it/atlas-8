@@ -34,8 +34,44 @@ const FOUNDERS_FILE = join(KNOWLEDGE_DIR, 'founders.json');
  * @property {string[]} [linkedUserIds]
  */
 
-/** @type {{ version: number, profiles: FounderProfile[], identityIndex: Map<string, string> } | null} */
+/**
+ * @typedef {'not_found'|'matched'|'ambiguous'} FounderIdentityLookupStatus
+ * @typedef {{
+ *   status: FounderIdentityLookupStatus,
+ *   profile: FounderProfile|null,
+ *   matchCount: number,
+ *   reasonCode: string|null,
+ * }} FounderIdentityLookup
+ */
+
+/** @type {{
+ *   version: number,
+ *   profiles: FounderProfile[],
+ *   identityIndex: Map<string, string>,
+ *   ambiguousIds: Set<string>,
+ *   duplicateLinkCount: number,
+ * } | null} */
 let registry = null;
+
+/** When true, initializeFounderKnowledge will not reload from disk (test harness). */
+let testRegistryLocked = false;
+
+export const DUPLICATE_LINKED_USER_ID = 'DUPLICATE_LINKED_USER_ID';
+export const AMBIGUOUS_IDENTITY_USER_REPLY =
+  'Hesap eşleştirmesi şu anda doğrulanamadı. Yetkili hesap yapılandırmasının kontrol edilmesi gerekiyor.';
+
+/**
+ * Normalize to canonical namespaced user id. Bare numerics are rejected
+ * (must be telegram:… / web:… / anonymous:…).
+ * @param {unknown} userId
+ * @returns {string|null}
+ */
+export function normalizeCanonicalUserId(userId) {
+  if (userId == null) return null;
+  const trimmed = String(userId).trim();
+  if (!trimmed || !isValidUserId(trimmed)) return null;
+  return trimmed;
+}
 
 function parseEnvUserIds() {
   const ids = new Set();
@@ -43,22 +79,26 @@ function parseEnvUserIds() {
 
   const combined = process.env.ATLAS_FOUNDER_USER_IDS ?? '';
   for (const part of combined.split(',')) {
-    const trimmed = part.trim();
-    if (trimmed && isValidUserId(trimmed) && !PLACEHOLDER.test(trimmed)) ids.add(trimmed);
+    const normalized = normalizeCanonicalUserId(part);
+    if (normalized && !PLACEHOLDER.test(part.trim())) ids.add(normalized);
   }
 
   const telegramIds = process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '';
   for (const part of telegramIds.split(',')) {
     const trimmed = part.trim();
-    if (trimmed && /^\d+$/.test(trimmed)) ids.add(`telegram:${trimmed}`);
+    if (trimmed && /^\d+$/.test(trimmed)) {
+      const normalized = normalizeCanonicalUserId(`telegram:${trimmed}`);
+      if (normalized) ids.add(normalized);
+    }
   }
 
   const webIds = process.env.ATLAS_FOUNDER_WEB_USER_IDS ?? '';
   for (const part of webIds.split(',')) {
     const trimmed = part.trim();
     if (!trimmed || PLACEHOLDER.test(trimmed)) continue;
-    if (trimmed.startsWith('web:')) ids.add(trimmed);
-    else ids.add(`web:${trimmed}`);
+    const candidate = trimmed.startsWith('web:') ? trimmed : `web:${trimmed}`;
+    const normalized = normalizeCanonicalUserId(candidate);
+    if (normalized) ids.add(normalized);
   }
 
   return ids;
@@ -83,7 +123,13 @@ function normalizeProfile(raw) {
     memoryPriority: String(raw.memoryPriority ?? ''),
     architecturalVision: String(raw.architecturalVision ?? ''),
     linkedUserIds: Array.isArray(raw.linkedUserIds)
-      ? raw.linkedUserIds.filter((id) => isValidUserId(String(id)))
+      ? [
+          ...new Set(
+            raw.linkedUserIds
+              .map((id) => normalizeCanonicalUserId(id))
+              .filter(Boolean),
+          ),
+        ]
       : [],
   };
 
@@ -91,17 +137,94 @@ function normalizeProfile(raw) {
 }
 
 /**
- * Load founder knowledge registry (idempotent).
- * @returns {{ ok: boolean, profileCount: number, error?: string }}
+ * Build identity index with fail-closed duplicate detection.
+ * Env-linked IDs attach only to founder-primary (or first profile), not every profile.
+ * @param {FounderProfile[]} profiles
+ * @param {Set<string>} envIds
  */
-export function initializeFounderKnowledge() {
+function buildIdentityMaps(profiles, envIds) {
+  /** @type {Map<string, Set<string>>} */
+  const links = new Map();
+
+  function register(userId, profileId) {
+    const id = normalizeCanonicalUserId(userId);
+    if (!id || !profileId) return;
+    if (!links.has(id)) links.set(id, new Set());
+    links.get(id).add(String(profileId));
+  }
+
+  for (const profile of profiles) {
+    for (const userId of profile.linkedUserIds) {
+      register(userId, profile.id);
+    }
+  }
+
+  const primary =
+    profiles.find((p) => p.id === 'founder-primary') ?? profiles[0] ?? null;
+  if (primary) {
+    for (const userId of envIds) {
+      register(userId, primary.id);
+    }
+  }
+
+  /** @type {Map<string, string>} */
+  const identityIndex = new Map();
+  /** @type {Set<string>} */
+  const ambiguousIds = new Set();
+  let duplicateLinkCount = 0;
+
+  for (const [userId, profileIds] of links.entries()) {
+    if (profileIds.size > 1) {
+      ambiguousIds.add(userId);
+      duplicateLinkCount += 1;
+      continue;
+    }
+    identityIndex.set(userId, [...profileIds][0]);
+  }
+
+  return { identityIndex, ambiguousIds, duplicateLinkCount };
+}
+
+/**
+ * PII-safe startup / runtime duplicate warning.
+ * @param {{ duplicateLinkCount: number, channel?: string }} info
+ * @param {{ warn?: (...args: unknown[]) => void }} [logger]
+ */
+export function logDuplicateLinkedUserIdWarning(info, logger = console) {
+  if (!info?.duplicateLinkCount) return;
+  const warn = typeof logger.warn === 'function' ? logger.warn.bind(logger) : console.warn;
+  warn(
+    `[Founder] security/config errorCode=${DUPLICATE_LINKED_USER_ID} channel=${info.channel ?? 'startup'} matchCount=${info.duplicateLinkCount} resultStatus=ambiguous_identity`,
+  );
+}
+
+/**
+ * Load founder knowledge registry (idempotent).
+ * @param {{ force?: boolean }} [options]
+ * @returns {{ ok: boolean, profileCount: number, duplicateLinkCount?: number, error?: string }}
+ */
+export function initializeFounderKnowledge(options = {}) {
+  if (testRegistryLocked && !options.force) {
+    return {
+      ok: true,
+      profileCount: registry?.profiles.length ?? 0,
+      duplicateLinkCount: registry?.duplicateLinkCount ?? 0,
+    };
+  }
+
   initializeFounderProfiles();
 
   try {
     if (!existsSync(FOUNDERS_FILE)) {
-      registry = { version: 1, profiles: [], identityIndex: new Map() };
+      registry = {
+        version: 1,
+        profiles: [],
+        identityIndex: new Map(),
+        ambiguousIds: new Set(),
+        duplicateLinkCount: 0,
+      };
       console.warn('[Founder] knowledge/founders.json not found — layer empty');
-      return { ok: true, profileCount: 0 };
+      return { ok: true, profileCount: 0, duplicateLinkCount: 0 };
     }
 
     const raw = JSON.parse(readFileSync(FOUNDERS_FILE, 'utf-8'));
@@ -109,37 +232,38 @@ export function initializeFounderKnowledge() {
       .map(normalizeProfile)
       .filter(Boolean);
 
-    const identityIndex = new Map();
     const envIds = parseEnvUserIds();
-
-    for (const profile of profiles) {
-      const allIds = new Set([...profile.linkedUserIds, ...envIds]);
-      for (const userId of allIds) {
-        if (isValidUserId(userId)) {
-          identityIndex.set(userId, profile.id);
-        }
-      }
-      // Env IDs link to first profile (primary founder) when not in JSON
-      if (profile.id === 'founder-primary') {
-        for (const userId of envIds) {
-          if (!identityIndex.has(userId)) {
-            identityIndex.set(userId, profile.id);
-          }
-        }
-      }
-    }
+    const { identityIndex, ambiguousIds, duplicateLinkCount } = buildIdentityMaps(
+      profiles,
+      envIds,
+    );
 
     registry = {
       version: raw.version ?? 1,
       profiles,
       identityIndex,
+      ambiguousIds,
+      duplicateLinkCount,
     };
 
-    return { ok: true, profileCount: profiles.length };
+    if (duplicateLinkCount > 0) {
+      logDuplicateLinkedUserIdWarning({
+        duplicateLinkCount,
+        channel: 'startup',
+      });
+    }
+
+    return { ok: true, profileCount: profiles.length, duplicateLinkCount };
   } catch (err) {
-    registry = { version: 1, profiles: [], identityIndex: new Map() };
+    registry = {
+      version: 1,
+      profiles: [],
+      identityIndex: new Map(),
+      ambiguousIds: new Set(),
+      duplicateLinkCount: 0,
+    };
     console.error('[Founder] Failed to load knowledge layer:', err.message);
-    return { ok: false, profileCount: 0, error: err.message };
+    return { ok: false, profileCount: 0, duplicateLinkCount: 0, error: err.message };
   }
 }
 
@@ -150,25 +274,89 @@ export function listFounderProfiles() {
 }
 
 /**
+ * Structured founder identity lookup — never silently picks the first of many.
+ * @param {string|null|undefined} userId
+ * @returns {FounderIdentityLookup}
+ */
+export function lookupFounderIdentity(userId) {
+  const id = normalizeCanonicalUserId(userId);
+  if (!id) {
+    return {
+      status: 'not_found',
+      profile: null,
+      matchCount: 0,
+      reasonCode: 'INVALID_USER_ID',
+    };
+  }
+
+  initializeFounderKnowledge();
+  if (!registry) {
+    return {
+      status: 'not_found',
+      profile: null,
+      matchCount: 0,
+      reasonCode: 'REGISTRY_UNAVAILABLE',
+    };
+  }
+
+  if (registry.ambiguousIds.has(id)) {
+    return {
+      status: 'ambiguous',
+      profile: null,
+      matchCount: 2,
+      reasonCode: DUPLICATE_LINKED_USER_ID,
+    };
+  }
+
+  const profileId = registry.identityIndex.get(id);
+  if (!profileId) {
+    return {
+      status: 'not_found',
+      profile: null,
+      matchCount: 0,
+      reasonCode: 'NOT_LINKED',
+    };
+  }
+
+  const profile = registry.profiles.find((p) => p.id === profileId) ?? null;
+  if (!profile) {
+    return {
+      status: 'not_found',
+      profile: null,
+      matchCount: 0,
+      reasonCode: 'PROFILE_MISSING',
+    };
+  }
+
+  return {
+    status: 'matched',
+    profile,
+    matchCount: 1,
+    reasonCode: null,
+  };
+}
+
+/**
  * @param {string} userId
  * @returns {FounderProfile|null}
  */
 export function resolveFounderProfile(userId) {
-  if (!userId || !isValidUserId(userId)) return null;
-  initializeFounderKnowledge();
-  if (!registry) return null;
-
-  const profileId = registry.identityIndex.get(userId.trim());
-  if (!profileId) return null;
-
-  return registry.profiles.find((p) => p.id === profileId) ?? null;
+  const lookup = lookupFounderIdentity(userId);
+  return lookup.status === 'matched' ? lookup.profile : null;
 }
 
 /**
  * @param {string} userId
  */
 export function isFounderUser(userId) {
-  return resolveFounderProfile(userId) !== null;
+  return lookupFounderIdentity(userId).status === 'matched';
+}
+
+/**
+ * @param {string} userId
+ */
+export function isAmbiguousFounderIdentity(userId) {
+  return lookupFounderIdentity(userId).status === 'ambiguous';
 }
 
 /**
@@ -322,7 +510,68 @@ export function getFounderKnowledgeStatus() {
     loaded: Boolean(registry),
     profileCount: registry?.profiles.length ?? 0,
     linkedIdentities: registry?.identityIndex.size ?? 0,
+    ambiguousIdentities: registry?.ambiguousIds.size ?? 0,
+    duplicateLinkCount: registry?.duplicateLinkCount ?? 0,
   };
+}
+
+/**
+ * Test helper — inject a synthetic registry (does not touch disk).
+ * Locks registry until unlockFounderKnowledgeForTests() / force re-init.
+ * @param {{
+ *   profiles?: FounderProfile[],
+ *   linkedPairs?: Array<{ userId: string, profileId: string }>,
+ * }} input
+ */
+export function resetFounderKnowledgeForTests(input = {}) {
+  const profiles = (input.profiles ?? []).map(normalizeProfile).filter(Boolean);
+  /** @type {Map<string, Set<string>>} */
+  const links = new Map();
+  for (const pair of input.linkedPairs ?? []) {
+    const id = normalizeCanonicalUserId(pair.userId);
+    if (!id) continue;
+    if (!links.has(id)) links.set(id, new Set());
+    links.get(id).add(String(pair.profileId));
+  }
+  for (const profile of profiles) {
+    for (const userId of profile.linkedUserIds) {
+      const id = normalizeCanonicalUserId(userId);
+      if (!id) continue;
+      if (!links.has(id)) links.set(id, new Set());
+      links.get(id).add(profile.id);
+    }
+  }
+
+  const identityIndex = new Map();
+  const ambiguousIds = new Set();
+  let duplicateLinkCount = 0;
+  for (const [userId, profileIds] of links.entries()) {
+    if (profileIds.size > 1) {
+      ambiguousIds.add(userId);
+      duplicateLinkCount += 1;
+    } else {
+      identityIndex.set(userId, [...profileIds][0]);
+    }
+  }
+
+  registry = {
+    version: 1,
+    profiles,
+    identityIndex,
+    ambiguousIds,
+    duplicateLinkCount,
+  };
+  testRegistryLocked = true;
+
+  return getFounderKnowledgeStatus();
+}
+
+/**
+ * Release test registry lock and reload from disk/env.
+ */
+export function unlockFounderKnowledgeForTests() {
+  testRegistryLocked = false;
+  return initializeFounderKnowledge({ force: true });
 }
 
 // Load at module import (server startup)
