@@ -117,6 +117,8 @@ if (knowledgeProfile) {
   const systemPrompt = buildAtlasSystemPrompt({
     profile: 'conversational',
     founderProfile: knowledgeProfile,
+    injectFounderHeavy: true,
+    injectFounderIdentity: true,
   });
   assert('system prompt includes FOUNDER SYSTEM CONTEXT', systemPrompt.includes('FOUNDER SYSTEM CONTEXT'));
   assert('system prompt includes founders.json source', systemPrompt.includes('knowledge/founders.json'));

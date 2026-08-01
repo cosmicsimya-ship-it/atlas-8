@@ -407,12 +407,16 @@ export function buildAtlasPromptBundle(input, options = {}) {
   const founderProfile = founderSession?.knowledge ?? null;
   const founderBiographyProfile = founderSession?.biography ?? null;
 
-  // Founder operational context: resolved from channel-linked userId (not keywords).
-  // Always surface compact identity when session is resolved; heavy knowledge blocks
-  // remain intent-gated so everyday chat is not flooded with biography.
-  const injectFounderHeavy =
-    Boolean(founderSession) && shouldInjectFounderContextBlocks(message, founderSession);
-  const injectFounderIdentity = Boolean(founderSession);
+  // Founder session: resolved from channel-linked userId (not keywords) and always
+  // preserved on the bundle. Identity *injection* into prompts is context-gated —
+  // only founder/authority/admin intents open the gate (never casual/group/chat).
+  const isGroup = Boolean(
+    input.metadata && typeof input.metadata === 'object' && input.metadata.isGroup,
+  );
+  const injectFounderIdentity =
+    Boolean(founderSession) &&
+    shouldInjectFounderContextBlocks(message, founderSession, { isGroup });
+  const injectFounderHeavy = injectFounderIdentity;
 
   const founderIdentityContext =
     injectFounderIdentity && founderSession ? buildFounderIdentityBlock(founderSession) : null;
@@ -549,12 +553,13 @@ export function buildAtlasPromptBundle(input, options = {}) {
     profile,
     mode,
     tarotIntent,
-    // Compact runtime "Kurucu Oturumu Aktif" whenever session is linked;
-    // heavy FOUNDER SYSTEM CONTEXT stays intent-gated inside the loader.
+    // Pass founderSession only when context gate opens — both compact
+    // "Kurucu Oturumu Aktif" and heavy FOUNDER SYSTEM CONTEXT stay gated.
     founderSession: injectFounderIdentity ? founderSession : null,
     message,
     includePrivacyInstructions: true,
     injectFounderHeavy,
+    injectFounderIdentity,
   });
 
   const userPrompt = buildChatUserPrompt(message, filtered.conversationHistory, mode, tarotIntent, {

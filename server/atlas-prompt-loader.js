@@ -261,13 +261,22 @@ export function buildAtlasSystemPrompt(options = {}) {
         }
       : null);
 
+  const gateSession = founderSession?.knowledge ? founderSession : null;
+  const gateOpen =
+    shouldInjectFounderContextBlocks(options.message ?? '', gateSession, {
+      isGroup: options.isGroup === true,
+    });
+  // Explicit flags force injection (unit tests / callers that already gated).
+  // Otherwise both compact identity and heavy blocks share the context gate.
+  const injectFounderIdentity =
+    options.injectFounderIdentity === true ||
+    options.injectFounderHeavy === true ||
+    (options.injectFounderIdentity !== false &&
+      options.injectFounderHeavy !== false &&
+      gateOpen);
   const injectFounderHeavy =
     options.injectFounderHeavy === true ||
-    (options.injectFounderHeavy !== false &&
-      shouldInjectFounderContextBlocks(
-        options.message ?? '',
-        founderSession?.knowledge ? founderSession : null,
-      ));
+    (options.injectFounderHeavy !== false && (gateOpen || options.injectFounderIdentity === true));
 
   const base = loadAtlasModules(modules);
   const tarotExtra =
@@ -280,14 +289,15 @@ export function buildAtlasSystemPrompt(options = {}) {
       ? buildFounderSystemPromptSection(founderSession)
       : '';
 
-  // Compact "Kurucu Oturumu Aktif" whenever channel-linked founder session exists.
+  // Compact "Kurucu Oturumu Aktif" only when identity context gate is open.
   const runtime = buildRuntimeRules({
     currentDate: options.currentDate,
     mode: options.mode,
     profile,
     tarotIntent: options.tarotIntent,
-    founderSession: founderSession?.knowledge ? founderSession : null,
-    founderProfile: founderSession?.knowledge ? options.founderProfile : null,
+    founderSession: injectFounderIdentity && gateSession ? gateSession : null,
+    founderProfile:
+      injectFounderIdentity && founderSession?.knowledge ? options.founderProfile : null,
   });
 
   const styleOverride = buildConversationStyleRuntimeBlock();

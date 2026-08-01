@@ -270,7 +270,7 @@ for (const c of det) {
   });
 }
 
-// ── Prompt assembly: casual founder gets compact identity, not heavy knowledge ──
+// ── Prompt assembly: casual founder — no identity injection (context gate) ──
 const casualBundle = buildAtlasPromptBundle({
   channel: 'telegram',
   userId: 'telegram:7142880605',
@@ -281,24 +281,27 @@ const casualBundle = buildAtlasPromptBundle({
 const heavyKnowledgeInjected = Boolean(casualBundle.founderProfileKnowledgeContext);
 const compactIdentityInjected = Boolean(casualBundle.founderIdentityContext);
 record({
-  label: 'prompt:casual compact identity, no heavy knowledge',
+  label: 'prompt:casual no founder identity (gate closed)',
   words: 0,
   founderResolved: true,
   reply: heavyKnowledgeInjected
     ? 'HEAVY'
     : compactIdentityInjected
       ? 'compact'
-      : 'missing-identity',
+      : 'gated',
   pass:
-    compactIdentityInjected &&
+    casualBundle.founderSession?.resolved === true &&
+    !compactIdentityInjected &&
     !heavyKnowledgeInjected &&
     casualBundle.systemPrompt.includes('ATLAS CONVERSATION STYLE') &&
-    casualBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
+    !casualBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
   reason: heavyKnowledgeInjected
     ? 'heavy founder knowledge still injected on greeting'
-    : !compactIdentityInjected
-      ? 'compact founder identity missing on greeting'
-      : '',
+    : compactIdentityInjected
+      ? 'compact founder identity still injected on greeting'
+      : casualBundle.systemPrompt.includes('Kurucu Oturumu Aktif')
+        ? 'Kurucu Oturumu still present on greeting'
+        : '',
 });
 
 const whoBundle = buildAtlasPromptBundle({
@@ -313,8 +316,33 @@ record({
   words: 0,
   founderResolved: true,
   reply: whoBundle.founderIdentityContext ? 'injected' : 'missing',
-  pass: Boolean(whoBundle.founderIdentityContext),
+  pass:
+    Boolean(whoBundle.founderIdentityContext) &&
+    whoBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
   reason: '',
+});
+
+const groupBundle = buildAtlasPromptBundle({
+  channel: 'telegram',
+  userId: 'telegram:7142880605',
+  conversationId: '1',
+  message: 'Ben kimim?',
+  history: [],
+  metadata: { isGroup: true, chatType: 'supergroup' },
+});
+record({
+  label: 'prompt:group never injects founder identity',
+  words: 0,
+  founderResolved: true,
+  reply: groupBundle.founderIdentityContext ? 'leaked' : 'gated',
+  pass:
+    groupBundle.founderSession?.resolved === true &&
+    !groupBundle.founderIdentityContext &&
+    !groupBundle.founderProfileKnowledgeContext &&
+    !groupBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
+  reason: groupBundle.founderIdentityContext
+    ? 'founder identity leaked in group'
+    : '',
 });
 
 // ── Pipeline smoke (deterministic path via processAtlasMessage) ──

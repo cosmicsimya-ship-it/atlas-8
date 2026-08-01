@@ -88,6 +88,8 @@ const systemPrompt = buildAtlasSystemPrompt({
   profile: 'conversational',
   mode: 'conversational',
   founderProfile: founderForPrompt,
+  injectFounderHeavy: true,
+  injectFounderIdentity: true,
 });
 assert('system prompt includes founder layer', systemPrompt.includes('FOUNDER SYSTEM CONTEXT'));
 

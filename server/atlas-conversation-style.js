@@ -406,22 +406,41 @@ export function tryDeterministicConversationReply(input) {
 }
 
 /**
- * Whether founder heavy prompt blocks are needed for this message.
- * Founder session itself is resolved from channel identity — never from keywords.
- * Keywords only gate the heavier knowledge/profile blocks, not whether the
- * speaker is the founder.
+ * Context gate for founder identity injection at response generation.
  *
- * Bare "sistem" / "mimari" alone must NOT inject heavy founder context
+ * Founder session itself is resolved from channel-linked userId — never from
+ * keywords. This gate only decides whether compact identity, heavy knowledge,
+ * and "Kurucu Oturumu" runtime rules may enter the prompt.
+ *
+ * Inject ONLY for founder/authority/admin identity intents. Never for everyday
+ * chat, group messages, YouTube/link commentary, astrology, ebced, numerology,
+ * greetings, or general knowledge answers.
+ *
+ * Bare "sistem" / "mimari" alone must NOT open the gate
  * (avoids false positives: "Güneş sistemi", "Sistem nasıl çalışıyor?").
  *
  * @param {string} message
  * @param {import('./founder-identity.js').FounderSession|null} founderSession
+ * @param {{ isGroup?: boolean }} [options]
  */
-export function shouldInjectFounderContextBlocks(message, founderSession) {
+export function shouldInjectFounderContextBlocks(message, founderSession, options = {}) {
   if (!founderSession) return false;
+  // Group chats: never auto-inject founder identity into prompts.
+  if (options.isGroup === true) return false;
+
   const intent = detectConversationIntent(message);
   if (intent === 'who_am_i') return true;
+
+  // Founder / role / authority verification.
   if (/\b(kurucu|founder|yetki|rolüm|rolun)\b/i.test(message)) return true;
+  // Administrative / management operations tied to founder authority.
+  if (
+    /\b(y[oö]netimsel|y[oö]netici\s+yetki|admin\s+yetki|yetki\s+do[gğ]rula|otorite\s+do[gğ]rula)\b/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
   if (/\b(normal kullanıcı|fark|nereden biliyorsun)\b/i.test(message)) return true;
   // Atlas / founder-scoped system phrases only — not generic "sistem".
   if (
@@ -450,4 +469,14 @@ export function shouldInjectFounderContextBlocks(message, founderSession) {
     if (selfName.test(message)) return true;
   }
   return false;
+}
+
+/**
+ * Alias — same context gate used by response composer for identity injection.
+ * @param {string} message
+ * @param {import('./founder-identity.js').FounderSession|null} founderSession
+ * @param {{ isGroup?: boolean }} [options]
+ */
+export function shouldInjectFounderIdentity(message, founderSession, options = {}) {
+  return shouldInjectFounderContextBlocks(message, founderSession, options);
 }

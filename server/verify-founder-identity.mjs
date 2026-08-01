@@ -312,15 +312,27 @@ console.log('\n=== Founder identity matching (no keyword gate) ===\n');
   const webBundle = buildForChannel('web', founderWebId, 'Merhaba');
   const tgBundle = buildForChannel('telegram', founderTgId, 'Merhaba');
   assert(
-    'T6: web/telegram same canonical founder identity block on greeting',
-    webBundle.userPrompt.includes('## Founder Identity') &&
-      tgBundle.userPrompt.includes('## Founder Identity') &&
-      webBundle.userPrompt.includes('Lara') &&
-      tgBundle.userPrompt.includes('Lara'),
+    'T6: greeting does not inject founder identity (context gate)',
+    !webBundle.userPrompt.includes('## Founder Identity') &&
+      !tgBundle.userPrompt.includes('## Founder Identity') &&
+      !webBundle.systemPrompt.includes('Kurucu Oturumu Aktif') &&
+      !tgBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
   );
   assert(
-    'T6: greeting injects compact identity without role keywords',
-    webBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
+    'T6: greeting still resolves founder session (memory preserved)',
+    webBundle.founderSession?.resolved === true &&
+      tgBundle.founderSession?.resolved === true &&
+      webBundle.founderBiographyProfile?.preferredName === 'Lara',
+  );
+  const whoGate = buildForChannel('web', founderWebId, 'Ben kimim?');
+  const whoGateTg = buildForChannel('telegram', founderTgId, 'Ben kimim?');
+  assert(
+    'T6: identity intent opens gate with web/telegram parity',
+    whoGate.userPrompt.includes('## Founder Identity') &&
+      whoGateTg.userPrompt.includes('## Founder Identity') &&
+      whoGate.userPrompt.includes('Lara') &&
+      whoGate.systemPrompt.includes('Kurucu Oturumu Aktif') &&
+      whoGate.userPrompt === whoGateTg.userPrompt,
   );
 }
 

@@ -100,9 +100,12 @@ console.log('\n=== 1. Heavy context `sistem` trigger ===\n');
     history: [],
   });
   assert(
-    'A: no heavy knowledge block for bare sistem',
-    !bundle.founderProfileKnowledgeContext &&
-      !/FOUNDER SYSTEM CONTEXT/i.test(bundle.systemPrompt),
+    'A: no founder identity injection for bare sistem (compact + heavy gated)',
+    !bundle.founderIdentityContext &&
+      !bundle.founderProfileKnowledgeContext &&
+      !/FOUNDER SYSTEM CONTEXT/i.test(bundle.systemPrompt) &&
+      !bundle.systemPrompt.includes('Kurucu Oturumu Aktif') &&
+      bundle.founderSession?.resolved === true,
   );
 }
 
@@ -147,6 +150,65 @@ console.log('\n=== 1. Heavy context `sistem` trigger ===\n');
   assert(
     'C: stranger still gets no founder heavy context',
     !strangerBundle.founderIdentityContext && !strangerBundle.founderProfileKnowledgeContext,
+  );
+}
+
+{
+  // Identity context gate — casual / symbolic / group must stay closed
+  const casual = buildAtlasPromptBundle({
+    channel: 'telegram',
+    userId: founderTgId,
+    conversationId: 'gate-casual',
+    message: 'Merhaba, nasılsın?',
+    history: [],
+  });
+  assert(
+    'GATE: greeting keeps session but injects no founder identity',
+    casual.founderSession?.resolved === true &&
+      !casual.founderIdentityContext &&
+      !casual.systemPrompt.includes('Kurucu Oturumu Aktif') &&
+      !/Lara|Cosmicsimya|Kurucu|Sistem Mimarı/i.test(casual.userPrompt),
+  );
+
+  for (const msg of [
+    'Bugün burç yorumum nedir?',
+    'Ebced hesabı yapar mısın?',
+    'Numeroloji analizimi çıkar',
+    'Bu YouTube linkini yorumla https://youtu.be/dQw4w9WgXcQ',
+  ]) {
+    assert(
+      `GATE: closed for "${msg.slice(0, 28)}"`,
+      shouldInjectFounderContextBlocks(msg, founderSession) === false,
+    );
+  }
+
+  assert(
+    'GATE: group blocks identity even on who_am_i',
+    shouldInjectFounderContextBlocks('Ben kimim?', founderSession, { isGroup: true }) === false,
+  );
+  const groupBundle = buildAtlasPromptBundle({
+    channel: 'telegram',
+    userId: founderTgId,
+    conversationId: 'gate-group',
+    message: 'Ben kimim?',
+    history: [],
+    metadata: { isGroup: true, chatType: 'group' },
+  });
+  assert(
+    'GATE: group prompt has no founder identity blocks',
+    groupBundle.founderSession?.resolved === true &&
+      !groupBundle.founderIdentityContext &&
+      !groupBundle.founderProfileKnowledgeContext &&
+      !groupBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
+  );
+
+  assert(
+    'GATE: yetki doğrulama opens',
+    shouldInjectFounderContextBlocks('Yetki doğrula', founderSession) === true,
+  );
+  assert(
+    'GATE: yönetimsel yetki opens',
+    shouldInjectFounderContextBlocks('Yönetimsel yetkim nedir?', founderSession) === true,
   );
 }
 
