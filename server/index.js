@@ -32,6 +32,7 @@ import {
 } from './analysis-archive.js';
 import { Runner } from '../runner/runner.js';
 import { routeTask } from '../runner/task-router.js';
+import { buildSymbolicAnalysis } from './symbolic-analysis/index.js';
 import {
   canAccessUserMemory,
   evaluatePrivacyRequest,
@@ -47,6 +48,8 @@ import {
   requireTelegramBotSecret,
   requireCsrfProtection,
   requireAuthenticated,
+  requireAuth,
+  requireRole,
   readSessionToken,
   setSessionCookie,
   clearSessionCookie,
@@ -55,6 +58,9 @@ import {
   loginWithPassword,
   logoutSession,
   rateLimitMiddleware,
+  findAccountByUserId,
+  toPublicAccount,
+  logAdminAudit,
 } from './auth/index.js';
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 
@@ -260,6 +266,62 @@ app.post(
 );
 
 // ══════════════════════════════════════════════════════════════════════
+// ADMIN ENDPOINTS — backend role checks are authoritative
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Safe admin profile. No password hash or private user content.
+ */
+app.get(
+  '/api/admin/me',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  (req, res) => {
+    try {
+      const account = findAccountByUserId(req.auth.userId);
+      const publicAccount = toPublicAccount(account);
+      try {
+        logAdminAudit({
+          action: 'admin.me',
+          actor: req.auth.userId,
+          targetUserId: req.auth.userId,
+          targetUsername: publicAccount?.username ?? null,
+          targetEmail: publicAccount?.email ?? null,
+          result: 'ok',
+        });
+      } catch {
+        /* non-fatal */
+      }
+      return res.json({
+        ok: true,
+        userId: req.auth.userId,
+        username: publicAccount?.username ?? null,
+        email: publicAccount?.email ?? null,
+        roles: [...(req.auth.roles ?? [])],
+        isAdmin: true,
+        isFounder: Boolean(req.auth.isFounder),
+        authMethod: req.auth.authMethod ?? null,
+      });
+    } catch (err) {
+      console.error('[ATLAS] admin/me error:', err.message);
+      return res.status(503).json({ error: 'Admin service unavailable' });
+    }
+  },
+);
+
+/** Explicitly reject self-service role mutation — roles are CLI / server-side only. */
+app.all('/api/admin/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+app.all('/api/me/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+app.all('/api/auth/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+
+// ══════════════════════════════════════════════════════════════════════
 // AI ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════
 
@@ -378,12 +440,35 @@ app.post(
   },
 );
 
+const chatRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 45,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `chat:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const atlasMessageRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) =>
+    `atlas-message:${req.auth?.userId || req.body?.userId || req.ip || 'unknown'}`,
+});
+
+const analysisRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Çok fazla analiz isteği. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `analysis:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
 // ── Atlas Chat — server-resolved identity only ──
 app.post(
   '/api/chat',
   attachAuthFromSession({ createAnonymous: true }),
   requireAuthenticated,
   requireCsrfProtection,
+  chatRateLimit,
   async (req, res) => {
     try {
       const body = {
@@ -444,6 +529,7 @@ app.post(
     if (req.atlasBotVerified) return next();
     return requireCsrfProtection(req, res, next);
   },
+  atlasMessageRateLimit,
   async (req, res) => {
     try {
       const body = {
@@ -453,7 +539,32 @@ app.post(
       };
       const normalized = normalizeAtlasMessageRequest(body);
       normalized.userId = req.auth.userId;
-      if (req.atlasBotVerified) normalized.channel = 'telegram';
+      if (req.atlasBotVerified) {
+        normalized.channel = 'telegram';
+        // Trust only bot-built speakerAttribution; drop spoofed body context otherwise.
+        if (
+          body?.context?.speakerAttribution &&
+          typeof body.context.speakerAttribution === 'object' &&
+          body.context.speakerAttribution.trusted === true
+        ) {
+          normalized.context = {
+            ...(normalized.context && typeof normalized.context === 'object'
+              ? normalized.context
+              : {}),
+            speakerAttribution: body.context.speakerAttribution,
+          };
+        } else {
+          normalized.context = {
+            ...(normalized.context && typeof normalized.context === 'object'
+              ? normalized.context
+              : {}),
+            speakerAttribution: undefined,
+          };
+        }
+      } else if (normalized.context?.speakerAttribution) {
+        // Public/session HTTP must never trust client speakerAttribution.
+        delete normalized.context.speakerAttribution;
+      }
 
       const result = await processAtlasMessage(normalized, {
         model: req.body?.model || DEFAULT_MODEL,
@@ -462,6 +573,7 @@ app.post(
         runner,
         auth: req.auth,
         requesterContext: requesterContextFromRequest(req),
+        atlasBotVerified: Boolean(req.atlasBotVerified),
       });
 
       if (result.data?.pipelineDebug) {
@@ -800,10 +912,33 @@ app.delete(
 
 // ══════════════════════════════════════════════════════════════════════
 // ASSET PERSISTENCE ENDPOINTS
+// Internal OS production packages — require non-anonymous auth.
 // ══════════════════════════════════════════════════════════════════════
 
+function isSafeAssetPathSegment(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    !value.includes('..') &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    !value.includes('\0')
+  );
+}
+
+const assetReadAuth = [
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+];
+const assetWriteAuth = [
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+];
+
 // ── Save a completed pipeline package to disk ─────────────────────────
-app.post('/api/assets/save', (req, res) => {
+app.post('/api/assets/save', ...assetWriteAuth, (req, res) => {
   const { package: pkg } = req.body;
 
   if (!pkg || !pkg.topic || !pkg.script) {
@@ -883,7 +1018,7 @@ app.post('/api/assets/save', (req, res) => {
 });
 
 // ── List all generated assets ─────────────────────────────────────────
-app.get('/api/assets', (_req, res) => {
+app.get('/api/assets', ...assetReadAuth, (_req, res) => {
   try {
     if (!existsSync(GENERATED_DIR)) {
       return res.json({ productions: [] });
@@ -938,11 +1073,11 @@ app.get('/api/assets', (_req, res) => {
 });
 
 // ── Download a specific generated file ────────────────────────────────
-app.get('/api/assets/:folder/:file/download', (req, res) => {
+app.get('/api/assets/:folder/:file/download', ...assetReadAuth, (req, res) => {
   const { folder, file } = req.params;
 
   // Prevent path traversal
-  if (folder.includes('..') || file.includes('..')) {
+  if (!isSafeAssetPathSegment(folder) || !isSafeAssetPathSegment(file)) {
     return res.status(400).json({ error: 'Invalid path' });
   }
 
@@ -971,11 +1106,11 @@ const PACKAGE_FILES = [
   'final-package.json',
 ];
 
-app.get('/api/assets/:folder/download-zip', (req, res) => {
+app.get('/api/assets/:folder/download-zip', ...assetReadAuth, (req, res) => {
   const { folder } = req.params;
 
   // Prevent path traversal
-  if (folder.includes('..')) {
+  if (!isSafeAssetPathSegment(folder)) {
     return res.status(400).json({ error: 'Invalid path' });
   }
 
@@ -1023,6 +1158,7 @@ app.post(
   attachAuthFromSession({ createAnonymous: true }),
   requireAuthenticated,
   requireCsrfProtection,
+  analysisRateLimit,
   async (req, res) => {
   const body = req.body;
 
@@ -1088,6 +1224,60 @@ app.post(
 );
 
 // ══════════════════════════════════════════════════════════════════════
+// SYMBOLIC ANALYSIS — unified experience (Ebced/Cifir/… stay internal)
+// ══════════════════════════════════════════════════════════════════════
+
+app.post(
+  '/api/symbolic-analysis',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  analysisRateLimit,
+  (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Request body must be a JSON object' });
+    }
+
+    const input =
+      body.input && typeof body.input === 'object' && !Array.isArray(body.input)
+        ? body.input
+        : body;
+
+    try {
+      const report = buildSymbolicAnalysis({
+        input,
+        layers: Array.isArray(body.layers) ? body.layers : undefined,
+      });
+
+      // insufficient_data is a business outcome (200). Internal `trace`
+      // stays off the default client payload unless explicitly requested.
+      const includeTrace = body.include_trace === true;
+      const payload = includeTrace
+        ? report
+        : {
+            version: report.version,
+            ok: report.ok,
+            error: report.error,
+            missingRequired: report.missingRequired,
+            userResult: report.userResult,
+            metadata: {
+              llmUsed: report.metadata?.llmUsed ?? false,
+              fabricated: report.metadata?.fabricated ?? false,
+              photoUpload: report.metadata?.photoUpload ?? false,
+              inputContract: report.metadata?.inputContract,
+            },
+          };
+
+      return res.status(200).json(payload);
+    } catch (err) {
+      console.error(`[ATLAS] symbolic-analysis failed: ${err.message}`);
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════
 
@@ -1102,6 +1292,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  Model:  ${DEFAULT_MODEL}`);
     console.log(`  Assets: ${GENERATED_DIR}`);
     console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
+    console.log('  Admin:  GET /api/admin/me (admin role required)');
     console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
     console.log('  Memory: ✓ JSON persistence initialized');
     console.log(

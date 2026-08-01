@@ -203,6 +203,30 @@ export function revokeSession(rawToken) {
 }
 
 /**
+ * Refresh roles on active (non-revoked, non-expired) sessions for a userId.
+ * Used after CLI role grants so existing cookies pick up new roles.
+ * @param {string} userId
+ * @param {string[]} roles
+ * @returns {number} updated session count
+ */
+export function updateActiveSessionRolesForUser(userId, roles) {
+  if (!userId || !Array.isArray(roles)) return 0;
+  const store = loadStore();
+  const now = Date.now();
+  let updated = 0;
+  for (const session of Object.values(store.sessions)) {
+    if (session.userId !== userId) continue;
+    if (session.revokedAt) continue;
+    if (new Date(session.expiresAt).getTime() <= now) continue;
+    session.roles = [...roles];
+    session.lastSeenAt = new Date().toISOString();
+    updated += 1;
+  }
+  if (updated > 0) saveStore(store);
+  return updated;
+}
+
+/**
  * Rotate: revoke old, create new with same identity.
  * @param {string} rawToken
  */

@@ -29,11 +29,15 @@ export {
   hashPassword,
   verifyPassword,
   findAccountByUsername,
+  findAccountByEmail,
   findAccountByUserId,
   findAccountByTelegramBinding,
   getAccountById,
   upsertAccount,
+  grantAccountRole,
   toPublicAccount,
+  normalizeEmail,
+  isValidEmailShape,
   configureAccountStore,
   resetAccountStoreForTests,
   accountStoreHasPlaintextPasswordField,
@@ -56,6 +60,9 @@ export {
   requireTelegramBotSecret,
   requireCsrfProtection,
   requireAuthenticated,
+  requireAuth,
+  requireRole,
+  requireAnyRole,
   requireFounder,
   readSessionToken,
   setSessionCookie,
@@ -69,5 +76,15 @@ export {
   rateLimitMiddleware,
   resetRateLimitBucketsForTests,
 } from './rate-limit.js';
+
+export {
+  logAdminAudit,
+  configureAdminAuditStore,
+  resetAdminAuditForTests,
+  listAdminAuditEvents,
+  getAdminAuditStorePath,
+} from './admin-audit.js';
+
+export { updateActiveSessionRolesForUser } from './session-store.js';
 
 export { evaluateLegacyMemoryClaim } from './legacy-memory.js';

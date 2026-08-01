@@ -9,18 +9,43 @@ import {
   normalizeTelegramMessage,
   normalizeErrorReply,
   splitTelegramMessage,
+  getTelegramInFlightNotice,
 } from './channel-adapters.js';
 import {
   resolveFounderSession,
   buildFounderPipelineDebug,
   logFounderPipelineDebug,
 } from './founder-identity.js';
+import {
+  logFounderNotMatchedSafe,
+  logFounderSetupHintSafe,
+} from './telegram-identity-log.js';
+import {
+  resolveMultimodalInbound,
+  detectInboundKind,
+  TELEGRAM_MEDIA_DIR,
+} from './telegram/handlers.js';
+import { ensureDir } from './telegram/media.js';
+import {
+  createInFlightQueue,
+  createPollingSupervisor,
+  detectClockJump,
+  logTelegramMessageTrace,
+  withRetry,
+  TELEGRAM_RESILIENCE_VERSION,
+} from './telegram/resilience.js';
+import {
+  buildUserVisibleFallback,
+  detectHealthSafetyIntent,
+  resolveResultStatus,
+} from './health-safety.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BACKEND_URL = (process.env.BACKEND_URL || 'http://localhost:3001').replace(/\/$/, '');
 const BACKEND_MESSAGE_URL = `${BACKEND_URL}/api/atlas/message`;
 const POLL_LOCK_FILE = join(__dirname, '..', 'data', 'telegram.poll.lock');
+const HEARTBEAT_FILE = join(__dirname, '..', 'data', 'telegram.heartbeat.json');
 const ENABLE_POLLING = process.env.TELEGRAM_ENABLE_POLLING !== 'false';
 
 const BACKEND_UNAVAILABLE = normalizeErrorReply('BACKEND_UNAVAILABLE');
@@ -102,18 +127,62 @@ if (!acquirePollLock()) {
   process.exit(1);
 }
 
+ensureDir(TELEGRAM_MEDIA_DIR);
+
 /** @type {TelegramBot | null} */
 let bot = null;
 /** @type {{ id: number, username?: string } | null} */
 let botIdentity = null;
 
 try {
-  bot = new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true });
+  bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {
+    polling: {
+      autoStart: true,
+      params: {
+        timeout: 30,
+      },
+    },
+  });
 } catch (err) {
   console.error('[Telegram] Failed to start polling:', err.message);
   releasePollLock();
   process.exit(1);
 }
+
+const flightQueue = createInFlightQueue();
+let lastWallClock = Date.now();
+
+const pollingSupervisor = createPollingSupervisor({
+  heartbeatPath: HEARTBEAT_FILE,
+  staleMs: Number(process.env.TELEGRAM_POLL_STALE_MS) || 120_000,
+  checkIntervalMs: Number(process.env.TELEGRAM_POLL_WATCHDOG_MS) || 30_000,
+  onLog: (msg) => console.warn(msg),
+  isConflict: (error) => {
+    const message = error?.message ?? String(error);
+    return message.includes('409') || message.toLowerCase().includes('conflict');
+  },
+  startPolling: async () => {
+    await bot.startPolling({ restart: true });
+  },
+  stopPolling: async () => {
+    await bot.stopPolling();
+  },
+});
+
+pollingSupervisor.startWatchdog();
+
+// Sleep/wake detection via wall-clock jumps (screen lock alone does not pause Node;
+// system sleep does — reconnect polling after wake).
+setInterval(() => {
+  const now = Date.now();
+  if (detectClockJump(lastWallClock, now)) {
+    console.warn(
+      `[Telegram] Clock jump detected (${Math.round((now - lastWallClock) / 1000)}s) — likely sleep/wake; reconnecting polling.`,
+    );
+    void pollingSupervisor.reconnect('sleep_wake');
+  }
+  lastWallClock = now;
+}, 15_000).unref?.();
 
 bot
   .getMe()
@@ -121,9 +190,20 @@ bot
     botIdentity = { id: me.id, username: me.username };
     console.log(`[Telegram] Bot identity: @${me.username ?? 'unknown'} (id=${me.id})`);
     console.log(
+      '[Telegram] Multimodal: text + photo (OpenAI vision via Atlas pipeline).',
+    );
+    console.log(
+      `[Telegram] Resilience ${TELEGRAM_RESILIENCE_VERSION}: queue + send retry + polling reconnect + heartbeat.`,
+    );
+    console.log(
       '[Telegram] Group mode: responds to all messages this bot receives. ' +
         'If groups stay silent, disable Privacy Mode in BotFather (/setprivacy → Disable) ' +
         'or @mention / reply to the bot.',
+    );
+    console.warn(
+      '[Telegram] Local dependency: this process runs on the host PC. ' +
+        'Windows sleep suspends Node; screen lock alone usually does not. ' +
+        'After wake, watchdog reconnects polling automatically.',
     );
   })
   .catch((err) => {
@@ -133,20 +213,19 @@ bot
 /** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string }>>} */
 const chatHistories = new Map();
 const MAX_HISTORY_TURNS = 20;
-/** @type {Set<string>} */
-const inFlightChats = new Set();
 let firstFromIdLogged = false;
 
-function normalizeOptions() {
+function normalizeOptions(extra = {}) {
   return {
     id: botIdentity?.id,
     username: botIdentity?.username,
+    ...extra,
   };
 }
 
 function flightKey(msg) {
   const chatId = msg.chat?.id;
-  const fromId = msg.from?.id;
+  const fromId = msg.from?.id ?? (msg.sender_chat?.id != null ? `sc_${msg.sender_chat.id}` : null);
   if (msg.chat?.type === 'group' || msg.chat?.type === 'supergroup') {
     return `${chatId}:${fromId ?? 'unknown'}`;
   }
@@ -154,31 +233,16 @@ function flightKey(msg) {
 }
 
 /**
- * Print Telegram from.id once — for ATLAS_FOUNDER_TELEGRAM_IDS in .env
- * @param {import('node-telegram-bot-api').Message} msg
+ * One-time PII-safe founder setup hint (ATLAS_IDENTITY_DEBUG only).
+ * Never prints raw from.id, names, or usernames.
+ * @param {import('node-telegram-bot-api').Message} _msg
  */
-function logFirstTelegramFromId(msg) {
-  if (firstFromIdLogged || !msg.from?.id) {
+function logFirstTelegramFromId(_msg) {
+  if (firstFromIdLogged) {
     return;
   }
   firstFromIdLogged = true;
-
-  const fromId = String(msg.from.id);
-  const name = [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || '—';
-  const username = msg.from.username ? `@${msg.from.username}` : '—';
-
-  console.log('');
-  console.log('══════════════════════════════════════════════════════════');
-  console.log('[Telegram] İlk mesaj — kurucu ID (from.id)');
-  console.log(`  from.id:  ${fromId}`);
-  console.log(`  userId:   telegram:${fromId}`);
-  console.log(`  isim:     ${name}`);
-  console.log(`  username: ${username}`);
-  console.log('');
-  console.log('  .env dosyanıza ekleyin:');
-  console.log(`  ATLAS_FOUNDER_TELEGRAM_IDS=${fromId}`);
-  console.log('══════════════════════════════════════════════════════════');
-  console.log('');
+  logFounderSetupHintSafe(console);
 }
 
 function getChatHistory(conversationId) {
@@ -190,13 +254,95 @@ function appendChatTurn(conversationId, role, content) {
   chatHistories.set(conversationId, history.slice(-MAX_HISTORY_TURNS));
 }
 
-async function forwardToPipeline(msg) {
+/**
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @param {string} reply
+ */
+async function sendReply(msg, reply) {
+  const chatId = msg.chat.id;
+  const chunks = splitTelegramMessage(formatTelegramReply(reply));
+  const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  /** @type {import('node-telegram-bot-api').SendMessageOptions} */
+  const options = {};
+  if (isGroup && msg.message_id) {
+    options.reply_to_message_id = msg.message_id;
+  }
+  if (msg.message_thread_id != null) {
+    options.message_thread_id = msg.message_thread_id;
+  }
+
+  let totalRetries = 0;
+  for (const chunk of chunks) {
+    const { retryCount } = await withRetry(
+      () => bot.sendMessage(chatId, chunk, options),
+      {
+        maxAttempts: 3,
+        baseMs: 800,
+        onRetry: (err, attempt, delay) => {
+          console.warn(
+            `[Telegram] sendMessage retry attempt=${attempt + 1} delayMs=${delay}: ${err?.message ?? err}`,
+          );
+        },
+      },
+    );
+    totalRetries += retryCount;
+  }
+  return { sendResult: 'ok', retryCount: totalRetries };
+}
+
+/**
+ * Best-effort user-visible reply; never throw out of here without logging.
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @param {string} reply
+ * @param {Record<string, unknown>} [trace]
+ */
+async function sendReplySafe(msg, reply, trace = {}) {
+  try {
+    const sent = await sendReply(msg, reply);
+    logTelegramMessageTrace({
+      ...trace,
+      sendResult: sent.sendResult,
+      retryCount: sent.retryCount,
+      processingCompletedAt: new Date().toISOString(),
+    });
+    return sent;
+  } catch (err) {
+    console.error('[Telegram] sendReply failed after retries:', err?.message ?? err);
+    logTelegramMessageTrace({
+      ...trace,
+      sendResult: 'failed',
+      errorCode: 'SEND_FAILED',
+      resultStatus: 'user_visible_error',
+      processingCompletedAt: new Date().toISOString(),
+      retryCount: err?.retryCount ?? trace.retryCount ?? 0,
+    });
+    return { sendResult: 'failed', retryCount: err?.retryCount ?? 0 };
+  }
+}
+
+/**
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @param {{
+ *   resolvedMessage?: string,
+ *   mediaKind?: string|null,
+ *   extraMetadata?: Record<string, unknown>,
+ *   image?: { mimeType: string, base64: string },
+ * }} [resolveOpts]
+ */
+async function forwardToPipeline(msg, resolveOpts = {}) {
   const conversationId = String(msg.chat.id);
   const history = getChatHistory(conversationId);
-  const normalized = normalizeTelegramMessage(msg, history, normalizeOptions());
-  const fromId = String(msg.from.id);
+  const normalized = normalizeTelegramMessage(
+    msg,
+    history,
+    normalizeOptions(resolveOpts),
+  );
+  const fromId = msg.from?.id != null ? String(msg.from.id) : null;
 
-  const founderSession = resolveFounderSession(normalized.userId);
+  const founderSession =
+    normalized.metadata?.senderType === 'sender_chat'
+      ? null
+      : resolveFounderSession(normalized.userId);
   const preDebug = buildFounderPipelineDebug(
     {
       channel: 'telegram',
@@ -204,38 +350,72 @@ async function forwardToPipeline(msg) {
       conversationId: normalized.conversationId,
       message: normalized.message,
       history: normalized.history,
-      metadata: { telegramFromId: fromId },
+      metadata: {
+        telegramFromId: fromId,
+        mediaKind: normalized.metadata?.mediaKind ?? null,
+        hasImage: Boolean(normalized.image?.base64),
+      },
     },
     founderSession,
   );
   logFounderPipelineDebug(preDebug, 'Telegram/inbound');
-  if (!founderSession) {
-    const configured = process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '(not set)';
-    console.warn(
-      `[Telegram] Founder not matched — from.id=${fromId} is not in ATLAS_FOUNDER_TELEGRAM_IDS=${configured}. ` +
-        `memoryLoaded reflects user_memory only (not founder knowledge).`,
-    );
+  if (!founderSession && fromId) {
+    logFounderNotMatchedSafe({
+      memoryLoaded: Boolean(preDebug.memoryLoaded),
+      telegramFromId: fromId,
+      updateId: msg.message_id ?? null,
+    });
   }
 
-  const response = await axios.post(
-    BACKEND_MESSAGE_URL,
-    {
-      channel: 'telegram',
-      userId: normalized.userId,
-      conversationId: normalized.conversationId,
-      message: normalized.message,
-      history: normalized.history,
-      username: normalized.username,
-      displayName: normalized.displayName,
-      metadata: {
-        ...(normalized.metadata ?? {}),
-        telegramFromId: fromId,
-      },
+  /** @type {Record<string, unknown>} */
+  const payload = {
+    channel: 'telegram',
+    userId: normalized.userId,
+    conversationId: normalized.conversationId,
+    message: normalized.message,
+    history: normalized.history,
+    username: normalized.username,
+    displayName: normalized.displayName,
+    metadata: {
+      ...(normalized.metadata ?? {}),
+      ...(fromId ? { telegramFromId: fromId } : { telegramFromId: null }),
     },
+    context: {
+      speakerAttribution: normalized.context?.speakerAttribution ?? null,
+    },
+  };
+
+  if (normalized.image?.base64) {
+    payload.image = {
+      mimeType: normalized.image.mimeType || 'image/jpeg',
+      base64: normalized.image.base64,
+    };
+  }
+
+  const { value: response, retryCount } = await withRetry(
+    () =>
+      axios.post(BACKEND_MESSAGE_URL, payload, {
+        timeout: 180_000,
+        headers: {
+          'X-Atlas-Bot-Secret': process.env.ATLAS_INTERNAL_BOT_SECRET || '',
+        },
+        maxBodyLength: 20 * 1024 * 1024,
+        maxContentLength: 20 * 1024 * 1024,
+      }),
     {
-      timeout: 180_000,
-      headers: {
-        'X-Atlas-Bot-Secret': process.env.ATLAS_INTERNAL_BOT_SECRET || '',
+      maxAttempts: 2,
+      baseMs: 1500,
+      isRetryable: (err) => {
+        if (!axios.isAxiosError(err)) return false;
+        if (err.response?.status && err.response.status < 500 && err.response.status !== 429) {
+          return false;
+        }
+        return isBackendUnreachable(err) || /timeout|ECONNRESET|503|502|429/i.test(err.message);
+      },
+      onRetry: (err, attempt, delay) => {
+        console.warn(
+          `[Telegram] backend POST retry attempt=${attempt + 1} delayMs=${delay}: ${err?.message ?? err}`,
+        );
       },
     },
   );
@@ -263,109 +443,259 @@ async function forwardToPipeline(msg) {
     );
   }
 
-  return response.data;
+  const safeNormalized = { ...normalized };
+  delete safeNormalized.image;
+
+  return { backend: response.data, normalized: safeNormalized, retryCount };
 }
 
-async function sendReply(msg, reply) {
-  const chatId = msg.chat.id;
-  const chunks = splitTelegramMessage(formatTelegramReply(reply));
-  const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
-  /** @type {import('node-telegram-bot-api').SendMessageOptions} */
-  const options = {};
-  if (isGroup && msg.message_id) {
-    options.reply_to_message_id = msg.message_id;
-  }
-  if (msg.message_thread_id != null) {
-    options.message_thread_id = msg.message_thread_id;
-  }
-  for (const chunk of chunks) {
-    await bot.sendMessage(chatId, chunk, options);
-  }
-}
-
-async function handleMessage(msg) {
-  logFirstTelegramFromId(msg);
-
+/**
+ * @param {import('node-telegram-bot-api').Message} msg
+ */
+async function processOneMessage(msg) {
   const chatId = msg.chat.id;
   const conversationId = String(chatId);
-  const key = flightKey(msg);
-
-  if (inFlightChats.has(key)) {
-    return;
-  }
+  const receivedAt = new Date().toISOString();
+  const inboundText = msg.text || msg.caption || '';
+  const messageLength = inboundText.length;
+  const updateId = msg.message_id;
+  /** @type {Record<string, unknown>} */
+  const traceBase = {
+    updateId,
+    chatId,
+    messageLength,
+    receivedAt,
+  };
 
   if (msg.text?.trim() === '/start') {
-    await bot.sendMessage(
-      chatId,
-      'Merhaba. Sorularını yazabilirsin.',
-    );
+    await sendReplySafe(msg, 'Merhaba. Metin veya fotoğraf gönderebilirsin.', {
+      ...traceBase,
+      intent: 'command:start',
+      resultStatus: 'success',
+      processingStartedAt: receivedAt,
+    });
     return;
   }
 
-  let text;
+  const inboundKind = detectInboundKind(msg);
   try {
-    text = normalizeTelegramMessage(msg, getChatHistory(conversationId), normalizeOptions()).message;
+    if (
+      (msg.chat.type === 'group' || msg.chat.type === 'supergroup') &&
+      process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true'
+    ) {
+      normalizeTelegramMessage(
+        msg,
+        getChatHistory(conversationId),
+        normalizeOptions({
+          resolvedMessage: msg.text || msg.caption || 'media',
+          mediaKind: inboundKind === 'text' ? null : inboundKind,
+        }),
+      );
+    }
   } catch (err) {
     if (err.message === 'GROUP_MESSAGE_IGNORED') {
+      logTelegramMessageTrace({
+        ...traceBase,
+        intent: 'group_ignored',
+        resultStatus: 'success',
+        processingStartedAt: receivedAt,
+        processingCompletedAt: new Date().toISOString(),
+        sendResult: 'skipped_group_gate',
+      });
       console.log(
         `[Telegram] Group message ignored (mention/reply required): chat=${chatId} from=${msg.from?.id}`,
       );
       return;
     }
-    if (err.message?.includes('Unsupported message')) {
-      console.warn(`[Telegram] Unsupported inbound message: ${err.message}`);
-      await bot.sendMessage(chatId, normalizeErrorReply('UNSUPPORTED_MESSAGE'));
-    }
-    return;
   }
 
-  inFlightChats.add(key);
+  const processingStartedAt = new Date().toISOString();
+  traceBase.processingStartedAt = processingStartedAt;
 
   try {
     await bot.sendChatAction(chatId, 'typing');
 
-    const result = await forwardToPipeline(msg);
-    const reply = result.reply ?? UNEXPECTED_ERROR;
+    const typingTimer = setInterval(() => {
+      bot.sendChatAction(chatId, 'typing').catch(() => {});
+    }, 4000);
 
-    appendChatTurn(conversationId, 'user', text);
-    appendChatTurn(conversationId, 'assistant', reply);
-    await sendReply(msg, reply);
-  } catch (error) {
-    if (isBackendUnreachable(error)) {
-      console.error('[Telegram] Backend unreachable:', error.message);
-      await bot.sendMessage(chatId, BACKEND_UNAVAILABLE);
+    /** @type {import('./telegram/handlers.js').ResolvedInbound} */
+    let resolved;
+    try {
+      resolved = await resolveMultimodalInbound(bot, msg);
+    } finally {
+      clearInterval(typingTimer);
+    }
+
+    if (resolved.ignore) {
+      await sendReplySafe(
+        msg,
+        normalizeErrorReply('UNSUPPORTED_MESSAGE'),
+        {
+          ...traceBase,
+          intent: 'ignored',
+          resultStatus: 'user_visible_error',
+          errorCode: 'UNSUPPORTED_MESSAGE',
+        },
+      );
       return;
     }
 
-    if (axios.isAxiosError(error) && error.response?.data) {
+    if (resolved.directReply) {
+      console.log(
+        `[Telegram] Direct reply (${resolved.kind}): mediaKind=${resolved.metadata?.mediaKind ?? inboundKind}` +
+          (resolved.errorCode ? ` errorCode=${resolved.errorCode}` : ''),
+      );
+      await sendReplySafe(msg, resolved.directReply, {
+        ...traceBase,
+        intent: `direct:${resolved.kind}`,
+        resultStatus: resolved.errorCode ? 'user_visible_error' : 'success',
+        errorCode: resolved.errorCode ?? null,
+      });
+      return;
+    }
+
+    if (!resolved.message?.trim()) {
+      await sendReplySafe(msg, normalizeErrorReply('UNSUPPORTED_MESSAGE'), {
+        ...traceBase,
+        intent: 'empty',
+        resultStatus: 'user_visible_error',
+        errorCode: 'UNSUPPORTED_MESSAGE',
+      });
+      return;
+    }
+
+    const healthHint = detectHealthSafetyIntent(resolved.message);
+    console.log(
+      `[Telegram] Inbound ${resolved.kind}` +
+        (resolved.image ? ' +image' : '') +
+        ` mediaKind=${resolved.metadata?.mediaKind ?? inboundKind}` +
+        ` len=${resolved.message.length}` +
+        (healthHint.active ? ` healthIntent=${healthHint.intent}` : ''),
+    );
+
+    await bot.sendChatAction(chatId, 'typing');
+
+    const { backend, normalized, retryCount } = await forwardToPipeline(msg, {
+      resolvedMessage: resolved.message,
+      mediaKind: resolved.metadata?.mediaKind ?? (inboundKind === 'text' ? null : inboundKind),
+      extraMetadata: {
+        ...(resolved.metadata || {}),
+      },
+      image: resolved.image,
+    });
+
+    if (resolved.image) {
+      resolved.image.base64 = '';
+    }
+
+    const reply =
+      (typeof backend.reply === 'string' && backend.reply.trim())
+        ? backend.reply
+        : buildUserVisibleFallback(normalized.message).reply;
+
+    const resultStatus =
+      backend.data?.resultStatus ??
+      resolveResultStatus({
+        status: backend.status,
+        errorCode: backend.errorCode,
+        intent: backend.intent,
+      });
+
+    appendChatTurn(conversationId, 'user', normalized.message);
+    appendChatTurn(conversationId, 'assistant', reply);
+    await sendReplySafe(msg, reply, {
+      ...traceBase,
+      intent: backend.intent ?? healthHint.intent ?? null,
+      resultStatus,
+      errorCode: backend.errorCode ?? null,
+      retryCount,
+      messageLength: normalized.message.length,
+    });
+  } catch (error) {
+    const inboundForFallback = msg.text || msg.caption || '';
+    let reply = UNEXPECTED_ERROR;
+    let errorCode = 'ENGINE_FAILURE';
+
+    if (error?.code && typeof error.code === 'string' && /IMAGE_|UNSUPPORTED_MESSAGE/.test(error.code)) {
+      errorCode = error.code;
+      reply = normalizeErrorReply(error.code);
+    } else if (isBackendUnreachable(error)) {
+      console.error('[Telegram] Backend unreachable:', error.message);
+      errorCode = 'BACKEND_UNAVAILABLE';
+      reply = BACKEND_UNAVAILABLE;
+    } else if (axios.isAxiosError(error) && error.response?.data) {
       const data = error.response.data;
-      const reply =
+      reply =
         typeof data.reply === 'string'
           ? data.reply
           : typeof data.error === 'string'
             ? data.error
             : UNEXPECTED_ERROR;
-      await bot.sendMessage(chatId, reply);
-      return;
+      errorCode = data.errorCode ?? 'ENGINE_FAILURE';
+    } else {
+      const msgText = error?.message ?? String(error);
+      const safeLog = String(msgText)
+        .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[REDACTED]')
+        .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-[REDACTED]');
+      console.error('[Telegram] Unexpected error:', safeLog);
+
+      if (/OPENAI_API_KEY not set/i.test(msgText)) {
+        errorCode = 'MODEL_UNAVAILABLE';
+        reply = normalizeErrorReply('MODEL_UNAVAILABLE');
+      } else if (/timeout|aborted|ETIMEDOUT|ESOCKETTIMEDOUT/i.test(msgText)) {
+        errorCode = 'TIMEOUT';
+        reply = buildUserVisibleFallback(inboundForFallback).reply;
+      } else if (/rate limit|429/i.test(msgText)) {
+        errorCode = 'RATE_LIMIT';
+        reply = normalizeErrorReply('RATE_LIMIT');
+      } else if (/Unsupported message|unsupported/i.test(msgText)) {
+        errorCode = 'UNSUPPORTED_MESSAGE';
+        reply = normalizeErrorReply('UNSUPPORTED_MESSAGE');
+      } else {
+        reply = buildUserVisibleFallback(inboundForFallback).reply;
+      }
     }
 
-    if (axios.isAxiosError(error) && error.response?.status === 409) {
-      console.error('[Telegram] Polling conflict (409). Another bot instance may be active.');
-      releasePollLock();
-      process.exit(1);
-    }
-
-    console.error('[Telegram] Unexpected error:', error.message ?? error);
-    await bot.sendMessage(chatId, UNEXPECTED_ERROR);
-  } finally {
-    inFlightChats.delete(key);
+    await sendReplySafe(msg, reply, {
+      ...traceBase,
+      intent: detectHealthSafetyIntent(inboundForFallback).intent,
+      resultStatus: 'user_visible_error',
+      errorCode,
+      retryCount: error?.retryCount ?? 0,
+    });
   }
+}
+
+async function handleMessage(msg) {
+  logFirstTelegramFromId(msg);
+  pollingSupervisor.touch('message');
+
+  const key = flightKey(msg);
+  await flightQueue.enqueue(
+    key,
+    () => processOneMessage(msg),
+    {
+      onQueued: async () => {
+        try {
+          await bot.sendMessage(msg.chat.id, getTelegramInFlightNotice(), {
+            ...(msg.message_thread_id != null
+              ? { message_thread_id: msg.message_thread_id }
+              : {}),
+          });
+        } catch (err) {
+          console.warn('[Telegram] queue notice failed:', err?.message ?? err);
+        }
+      },
+    },
+  );
 }
 
 bot.on('polling_error', (error) => {
   const message = error?.message ?? String(error);
   console.error('[Telegram] polling_error:', message);
-  if (message.includes('409') || message.toLowerCase().includes('conflict')) {
+  const decision = pollingSupervisor.notePollingError(error);
+  if (decision.action === 'conflict') {
     console.error('[Telegram] Exiting due to polling conflict.');
     releasePollLock();
     process.exit(1);
@@ -373,13 +703,29 @@ bot.on('polling_error', (error) => {
 });
 
 bot.on('message', (msg) => {
-  handleMessage(msg).catch((error) => {
+  handleMessage(msg).catch(async (error) => {
     console.error('[Telegram] Unhandled message error:', error.message ?? error);
+    try {
+      const fallback = buildUserVisibleFallback(msg?.text || msg?.caption || '');
+      await bot.sendMessage(msg.chat.id, fallback.reply);
+      logTelegramMessageTrace({
+        updateId: msg?.message_id,
+        chatId: msg?.chat?.id,
+        messageLength: (msg?.text || msg?.caption || '').length,
+        receivedAt: new Date().toISOString(),
+        resultStatus: 'user_visible_error',
+        errorCode: 'UNHANDLED',
+        sendResult: 'ok',
+      });
+    } catch (sendErr) {
+      console.error('[Telegram] Fallback send also failed:', sendErr?.message ?? sendErr);
+    }
   });
 });
 
 function shutdown(signal) {
   console.log(`[Telegram] ${signal} received — shutting down.`);
+  pollingSupervisor.stop();
   releasePollLock();
   try {
     bot.stopPolling();
@@ -392,11 +738,11 @@ function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-console.log('[Telegram] Bot started — shared Atlas pipeline via POST /api/atlas/message');
+console.log('[Telegram] Bot started — multimodal Atlas via POST /api/atlas/message');
 console.log(`[Telegram] Backend: ${BACKEND_URL}`);
 console.log(
-  `[Telegram] Founder env: ATLAS_FOUNDER_TELEGRAM_IDS=${process.env.ATLAS_FOUNDER_TELEGRAM_IDS ?? '(not set)'}`,
+  `[Telegram] Founder env: ATLAS_FOUNDER_TELEGRAM_IDS=${process.env.ATLAS_FOUNDER_TELEGRAM_IDS ? '(set)' : '(not set)'}`,
 );
 console.log(
-  `[Telegram] İlk mesaj geldiğinde from.id burada yazdırılır → ATLAS_FOUNDER_TELEGRAM_IDS`,
+  `[Telegram] Founder setup hint is identity-debug gated (ATLAS_IDENTITY_DEBUG); raw from.id is never printed.`,
 );

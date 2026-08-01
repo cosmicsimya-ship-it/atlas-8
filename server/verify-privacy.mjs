@@ -78,6 +78,14 @@ console.log('\n=== 1–3 Public / private / memory ===\n');
 }
 
 {
+  const ev = evaluatePrivacyRequest({ message: 'Lara ben', requesterContext: stranger });
+  assert(
+    '1c. Lara ben is not public_profile dump',
+    ev.requestType === 'ambiguous_identity' && ev.safeReply == null && !ev.aboutFounder,
+  );
+}
+
+{
   const ev = evaluatePrivacyRequest({
     message: "Lara'nın doğum tarihi ne?",
     requesterContext: stranger,

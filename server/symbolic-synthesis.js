@@ -152,6 +152,9 @@ function matchesShortTarotCommand(text) {
   );
 }
 
+/** Explicit action verbs — must not match inside words like "açılım". */
+const TAROT_ACTION_VERB = /(?:^|[^\p{L}])(aç|çek|seç|yap|başlat)(?!\p{L})/iu;
+
 /**
  * Detect tarot spread intent from the current message and conversation history.
  * @param {string} message
@@ -178,7 +181,7 @@ export function detectTarotSpreadIntent(message, history = []) {
     return { active: true, intent: 'spread' };
   }
 
-  if (/^(tarot|kart)\b/.test(text) && /(aç|çek|seç|yap|başlat)/.test(text)) {
+  if (/^(tarot|kart)\b/.test(text) && TAROT_ACTION_VERB.test(text)) {
     return { active: true, intent: 'spread' };
   }
 
@@ -193,7 +196,7 @@ export function detectTarotSpreadIntent(message, history = []) {
   }
 
   // Current message may establish tarot context for a follow-up "Aç." in the same turn chain
-  if (TAROT_CONTEXT_MARKERS.some((marker) => text.includes(marker)) && /(aç|çek|seç|yap|başlat)/.test(text)) {
+  if (TAROT_CONTEXT_MARKERS.some((marker) => text.includes(marker)) && TAROT_ACTION_VERB.test(text)) {
     return { active: true, intent: 'spread' };
   }
 
@@ -211,6 +214,8 @@ export function detectTarotSpreadIntent(message, history = []) {
  *   founderQuestionDirective?: string|null,
  *   identityContext?: string|null,
  *   userMemoryContext?: string|null,
+ *   speakerAttributionContext?: string|null,
+ *   abjadVerificationContext?: string|null,
  * }|string|null} ChatPromptContext
  */
 
@@ -222,6 +227,8 @@ function normalizePromptContext(context) {
       founderQuestionDirective: null,
       identityContext: null,
       userMemoryContext: null,
+      speakerAttributionContext: null,
+      abjadVerificationContext: null,
     };
   }
   if (typeof context === 'string') {
@@ -233,6 +240,8 @@ function normalizePromptContext(context) {
         founderQuestionDirective: null,
         identityContext: null,
         userMemoryContext: null,
+        speakerAttributionContext: null,
+        abjadVerificationContext: null,
       };
     }
     if (trimmed.includes('## Founder Profile') || trimmed.includes('## Founder Identity')) {
@@ -242,6 +251,8 @@ function normalizePromptContext(context) {
         founderQuestionDirective: null,
         identityContext: null,
         userMemoryContext: null,
+        speakerAttributionContext: null,
+        abjadVerificationContext: null,
       };
     }
     return {
@@ -250,6 +261,8 @@ function normalizePromptContext(context) {
       founderQuestionDirective: null,
       identityContext: null,
       userMemoryContext: trimmed,
+      speakerAttributionContext: null,
+      abjadVerificationContext: null,
     };
   }
   return {
@@ -258,6 +271,8 @@ function normalizePromptContext(context) {
     founderQuestionDirective: context.founderQuestionDirective?.trim() || null,
     identityContext: context.identityContext?.trim() || null,
     userMemoryContext: context.userMemoryContext?.trim() || null,
+    speakerAttributionContext: context.speakerAttributionContext?.trim() || null,
+    abjadVerificationContext: context.abjadVerificationContext?.trim() || null,
   };
 }
 
@@ -289,7 +304,17 @@ export function buildChatUserPrompt(
     founderQuestionDirective,
     identityContext,
     userMemoryContext,
+    speakerAttributionContext,
+    abjadVerificationContext,
   } = normalizePromptContext(context);
+
+  if (speakerAttributionContext) {
+    parts.push(speakerAttributionContext, '');
+  }
+
+  if (abjadVerificationContext) {
+    parts.push(abjadVerificationContext, '');
+  }
 
   if (founderIdentityContext) {
     parts.push(founderIdentityContext, '');

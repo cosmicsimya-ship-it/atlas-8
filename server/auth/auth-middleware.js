@@ -51,12 +51,18 @@ export function clearSessionCookie(res) {
  * @returns {string}
  */
 export function ensureCsrfCookie(res, req) {
+  // Cookies set earlier in this response are not yet on req.cookies — reuse locals.
+  if (typeof res.locals?.atlasCsrf === 'string' && res.locals.atlasCsrf.length >= 16) {
+    return res.locals.atlasCsrf;
+  }
   const existing = req.cookies?.[CSRF_COOKIE_NAME];
   if (typeof existing === 'string' && existing.length >= 16) {
+    res.locals.atlasCsrf = existing;
     return existing;
   }
   const token = randomBytes(24).toString('base64url');
   res.cookie(CSRF_COOKIE_NAME, token, getCsrfCookieOptions());
+  res.locals.atlasCsrf = token;
   return token;
 }
 
@@ -263,6 +269,86 @@ export function requireAuthenticated(req, res, next) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   return next();
+}
+
+/**
+ * Logged-in account required (rejects anonymous bootstrap sessions).
+ * Use for admin and account-bound surfaces. Alias surface for requireAuth.
+ */
+export function requireAuth(req, res, next) {
+  const auth = req.auth;
+  const isAnonymous =
+    Boolean(auth?.isAnonymous) ||
+    (Array.isArray(auth?.roles) && auth.roles.includes('anonymous')) ||
+    (typeof auth?.userId === 'string' && auth.userId.startsWith('anonymous:'));
+
+  if (!auth?.authenticated || !auth?.userId || isAnonymous) {
+    try {
+      logPrivacyEvent({
+        channel: 'api',
+        requesterId: auth?.userId ?? null,
+        eventType: 'unauthorized_route_access',
+        action: 'blocked',
+        reason: 'login_required',
+      });
+    } catch {
+      /* ignore */
+    }
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  return next();
+}
+
+/**
+ * @param {string|string[]} roles
+ */
+export function requireRole(...roles) {
+  const required = roles.flat().map(String).filter(Boolean);
+  return function requireRoleMiddleware(req, res, next) {
+    const have = Array.isArray(req.auth?.roles) ? req.auth.roles.map(String) : [];
+    const ok = required.length > 0 && required.every((r) => have.includes(r));
+    if (!ok) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth?.userId ?? null,
+          eventType: 'role_privilege_denial',
+          action: 'blocked',
+          reason: `role_required:${required.join(',')}`,
+        });
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    return next();
+  };
+}
+
+/**
+ * @param {string[]} roles
+ */
+export function requireAnyRole(...roles) {
+  const required = roles.flat().map(String).filter(Boolean);
+  return function requireAnyRoleMiddleware(req, res, next) {
+    const have = Array.isArray(req.auth?.roles) ? req.auth.roles.map(String) : [];
+    const ok = required.some((r) => have.includes(r));
+    if (!ok) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth?.userId ?? null,
+          eventType: 'role_privilege_denial',
+          action: 'blocked',
+          reason: `any_role_required:${required.join(',')}`,
+        });
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    return next();
+  };
 }
 
 export function requireFounder(req, res, next) {

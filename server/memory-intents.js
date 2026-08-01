@@ -1,5 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Atlas Memory Intents — detect and route explicit memory operations
+// Atlas Memory Intents — strict two-stage memory write gate
+//
+// Stage 1: explicit memory-action intent detection
+// Stage 2: validated entity extraction (must succeed before any write)
 // ═══════════════════════════════════════════════════════════════════════
 
 import {
@@ -11,16 +14,36 @@ import { resolveFounderSession, formatFounderAwareMemoryRecall } from './founder
 
 /** @typedef {'save' | 'recall' | 'forget' | 'profile-update' | null} MemoryIntentType */
 
-/** @typedef {{ type: MemoryIntentType, detail?: string }} MemoryIntent */
+/**
+ * @typedef {{
+ *   type: MemoryIntentType,
+ *   detail?: string,
+ *   clarity?: 'explicit' | 'ambiguous',
+ * }} MemoryIntent
+ */
 
-const SAVE_PATTERNS = [
-  /\bbunu hatırla\b/i,
-  /\bbunu kaydet\b/i,
-  /\bhafızana kaydet\b/i,
-  /\bhafizana kaydet\b/i,
-  /\bşunu hatırla\b/i,
-  /\bsunu hatırla\b/i,
-  /\bunutma\b/i,
+/** Unicode-safe boundary: JS \\b treats Turkish letters (ı, ş, …) as non-word. */
+function uBoundaryBefore() {
+  return '(?:^|[^\\p{L}\\p{N}_])';
+}
+
+function uBoundaryAfter() {
+  return '(?=$|[^\\p{L}\\p{N}_])';
+}
+
+const WRITE_NEGATION_PATTERNS = [
+  /\b(kaydetme|kaydetmeyin|kaydetmesin|hatırlama|hatirlama)\b/i,
+  /\b(bu bilgiyi|bunu|şunu|sunu)\s+(kaydetme|hatırlama|hatirlama)\b/i,
+  /\b(belleğe|belleğine|hafızaya|hafızana)\s+(kaydetme|ekleme|yazma)\b/i,
+];
+
+const EXPLICIT_WRITE_VERBS = [
+  /\b(bunu|şunu|sunu)\s+(hatırla|hatirla|kaydet)\b/i,
+  /\bhaf[iı]zana?\s+(kaydet|ekle|yaz)\b/i,
+  /\bbelle[gğ]ine?\s+(ekle|kaydet|yaz)\b/i,
+  /\bolarak\s+(hatırla|hatirla|kaydet)\b/i,
+  /\b(bunu|şunu|sunu|bu bilgiyi|şu bilgiyi)\s+(hafızana|hafizana|belleğine|bellegine)\s+(kaydet|ekle)\b/i,
+  /(?<![a-zçğıöşü])(kaydet|hatırla|hatirla)(?![a-zçğıöşü])/i,
 ];
 
 const RECALL_PATTERNS = [
@@ -36,14 +59,129 @@ const RECALL_PATTERNS = [
 
 const FORGET_PATTERNS = [
   /\bbunu unut\b/i,
+  /\bunut bunu\b/i,
   /\bhafızandan sil\b/i,
   /\bhafizandan sil\b/i,
-  /\bunut bunu\b/i,
   /\bhafızamdan sil\b/i,
   /\bhafizamdan sil\b/i,
+  /\bbu bilgiyi\s+(hafızandan|hafizandan|belleğinden|belleginden)\s+sil\b/i,
+  /\bşunu unut\b/i,
+  /\bsunu unut\b/i,
 ];
 
-const PROFILE_FIELD_PATTERNS = [
+const FORGET_NAME_PATTERNS = [
+  new RegExp(`${uBoundaryBefore()}(?:adımı|adimi|ismimi|ismimı)\\s+unut${uBoundaryAfter()}`, 'iu'),
+  new RegExp(`${uBoundaryBefore()}(?:ad|isim)\\s*(?:bilgimi)?\\s*unut${uBoundaryAfter()}`, 'iu'),
+  new RegExp(
+    `${uBoundaryBefore()}(?:adımı|adimi|ismimi)\\s+(?:hafızandan|hafizandan|belleğinden)\\s+sil${uBoundaryAfter()}`,
+    'iu',
+  ),
+];
+
+/** Verbs/idioms that mean "step", not "my name". */
+const NAME_STEP_IDIOMS = [
+  new RegExp(`${uBoundaryBefore()}ad[iı]m\\s+ad[iı]m${uBoundaryAfter()}`, 'iu'),
+  new RegExp(`${uBoundaryBefore()}ad[iı]m\\s+at`, 'iu'),
+];
+
+const CALL_ME_NAME_PATTERN = new RegExp(
+  `${uBoundaryBefore()}(?:bundan\\s+sonra\\s+)?bana\\s+([\\p{L}][\\p{L}'’.-]{1,29})\\s+(?:de|diye(?:\\s+hitap\\s+et)?)${uBoundaryAfter()}`,
+  'iu',
+);
+
+const CONVERSATION_SCOPED_ADDRESS_RE =
+  /\b(bu\s+konu[sş]mada|yaln[ıi]zca?\s+bu\s+sohbet|sadece\s+bu\s+konu[sş]ma)\b/i;
+
+const PERMANENT_SAVE_VERB_RE =
+  /\b(kaydet|hat[ıi]rla|belle[gğ]ine\s+ekle|haf[ıi]zana\s+(?:kaydet|ekle)|kal[ıi]c[ıi]\s+kaydet)\b/i;
+
+const NAME_STATEMENT_PATTERNS = [
+  // "benim adım Lara" / "adım: Lara" / "ismim Lara" / "adım Lara,"
+  new RegExp(
+    `(?:^|[,.\\s])(?:benim\\s+)?(?:adım|adim|ismim)${uBoundaryAfter()}\\s*[:：]\\s*([\\p{L}][\\p{L}'’.-]{1,29}(?:\\s+[\\p{L}][\\p{L}'’.-]{1,29}){0,2})`,
+    'iu',
+  ),
+  new RegExp(
+    `(?:^|[,.\\s])(?:benim\\s+)?(?:adım|adim|ismim)${uBoundaryAfter()}\\s+([\\p{L}][\\p{L}'’.-]{1,29}(?:\\s+[\\p{L}][\\p{L}'’.-]{1,29}){0,2})(?=\\s*[,.]|\\s+(?:olarak|diye|kaydet|hatırla|hatirla)|$)`,
+    'iu',
+  ),
+  // "adımı / ismimi Lara olarak …"
+  new RegExp(
+    `${uBoundaryBefore()}(?:adımı|adimi|ismimi)\\s+([\\p{L}][\\p{L}'’.-]{1,29}(?:\\s+[\\p{L}][\\p{L}'’.-]{1,29}){0,2})\\s+olarak${uBoundaryAfter()}`,
+    'iu',
+  ),
+];
+
+/** Common Turkish verb stems / non-name tokens that must never become profile.name */
+const NON_NAME_TOKENS = new Set([
+  'at',
+  'atmak',
+  'attım',
+  'attim',
+  'attı',
+  'atti',
+  'attık',
+  'attik',
+  'attığınızda',
+  'attiginizda',
+  'attığında',
+  'attiginda',
+  'attığımda',
+  'attigimda',
+  'neden',
+  'niye',
+  'nasıl',
+  'nasil',
+  'niçin',
+  'nicin',
+  'hakkında',
+  'hakkinda',
+  'için',
+  'icin',
+  'gibi',
+  'kadar',
+  'olarak',
+  'diye',
+  've',
+  'veya',
+  'ile',
+  'ama',
+  'fakat',
+  'çünkü',
+  'cunku',
+  'atlas',
+  'insan',
+  'insanlar',
+  'insanlara',
+  'cevap',
+  'vermezler',
+  'iletişim',
+  'iletisim',
+  'normal',
+  'önemli',
+  'onemli',
+  'bugün',
+  'bugun',
+  'anlat',
+  'düşünüyorsun',
+  'dusunuyorsun',
+  'hatırlıyor',
+  'hatirliyor',
+  'musun',
+  'misin',
+  'ne',
+  'bu',
+  'şu',
+  'su',
+  'bir',
+  'beni',
+  'benim',
+  'seni',
+  'onları',
+  'onlari',
+]);
+
+const PROFILE_FIELD_SPECS = [
   {
     field: 'birthDate',
     patterns: [
@@ -52,41 +190,54 @@ const PROFILE_FIELD_PATTERNS = [
       /\bbenim dogum tarihim\b/i,
     ],
     extract: extractBirthDate,
+    validate: isPlausibleDateValue,
   },
   {
     field: 'birthTime',
-    patterns: [/\b(doğum saatim|dogum saatim|doğum saatim|doğum saati)\b/i],
+    patterns: [/\b(doğum saatim|dogum saatim|doğum saati)\b/i],
     extract: extractBirthTime,
+    validate: (v) => typeof v === 'string' && /^\d{1,2}[:.]\d{2}$/.test(v.trim()),
   },
   {
     field: 'birthPlace',
-    patterns: [/\b(doğum yerim|dogum yerim|doğum yerim)\b/i],
-    extract: extractAfterColonOrIs,
+    patterns: [/\b(doğum yerim|dogum yerim)\b/i],
+    extract: (text) => extractLabeledValue(text, ['doğum yerim', 'dogum yerim']),
+    validate: isPlausibleShortValue,
   },
   {
     field: 'timezone',
     patterns: [/\b(saat dilimim|zaman dilimim|timezone)\b/i],
-    extract: extractAfterColonOrIs,
+    extract: (text) => extractLabeledValue(text, ['saat dilimim', 'zaman dilimim', 'timezone']),
+    validate: isPlausibleShortValue,
   },
   {
     field: 'location',
-    patterns: [/\b(konumum|bulunduğum yer|bulundugum yer|şu an)\b/i],
-    extract: extractAfterColonOrIs,
+    patterns: [/\b(konumum|bulunduğum yer|bulundugum yer)\b/i],
+    extract: (text) => extractLabeledValue(text, ['konumum', 'bulunduğum yer', 'bulundugum yer']),
+    validate: isPlausibleShortValue,
   },
   {
     field: 'name',
-    patterns: [/\b(adım|adim|ismim|benim adım)\b/i],
-    extract: extractAfterColonOrIs,
+    patterns: [
+      new RegExp(`(?:benim\\s+)?(?:adım|adim|ismim)${uBoundaryAfter()}`, 'iu'),
+      new RegExp(`${uBoundaryBefore()}(?:adımı|adimi|ismimi)${uBoundaryAfter()}`, 'iu'),
+      CALL_ME_NAME_PATTERN,
+    ],
+    extract: extractName,
+    validate: isPlausiblePersonName,
   },
   {
     field: 'referenceDate',
     patterns: [/\b(referans tarihim|referans tarih)\b/i],
     extract: extractDateLike,
+    validate: isPlausibleDateValue,
   },
   {
     field: 'relationshipStatus',
     patterns: [/\b(ilişki durumum|iliski durumum|medeni halim)\b/i],
-    extract: extractAfterColonOrIs,
+    extract: (text) =>
+      extractLabeledValue(text, ['ilişki durumum', 'iliski durumum', 'medeni halim']),
+    validate: isPlausibleShortValue,
   },
 ];
 
@@ -94,11 +245,70 @@ const PREFERENCE_PATTERNS = [
   {
     key: 'favoriteSymbolicSystems',
     patterns: [/\b(favori sembolik sistem|sevdiğim sistem|tercih ettiğim sistem)\b/i],
-    extract: extractAfterColonOrIs,
+    extract: (text) =>
+      extractLabeledValue(text, [
+        'favori sembolik sistem',
+        'sevdiğim sistem',
+        'tercih ettiğim sistem',
+      ]),
   },
 ];
 
+const PROFILE_LABELS = {
+  name: 'Ad',
+  timezone: 'Saat dilimi',
+  location: 'Konum',
+  birthDate: 'Doğum tarihi',
+  birthTime: 'Doğum saati',
+  birthPlace: 'Doğum yeri',
+  referenceDate: 'Referans tarihi',
+  relationshipStatus: 'İlişki durumu',
+};
+
 /**
+ * @param {string} message
+ * @returns {boolean}
+ */
+function hasWriteNegation(message) {
+  return WRITE_NEGATION_PATTERNS.some((p) => p.test(message));
+}
+
+/**
+ * @param {string} message
+ * @returns {boolean}
+ */
+function hasExplicitWriteVerb(message) {
+  return EXPLICIT_WRITE_VERBS.some((p) => p.test(message));
+}
+
+/**
+ * @param {string} message
+ * @returns {boolean}
+ */
+function isCallMeNameRequest(message) {
+  return CALL_ME_NAME_PATTERN.test(message) && isPlausiblePersonName(extractName(message));
+}
+
+/**
+ * @param {string} message
+ * @returns {string|null}
+ */
+function detectProfileFieldKeyword(message) {
+  for (const spec of PROFILE_FIELD_SPECS) {
+    if (spec.field === 'name' && NAME_STEP_IDIOMS.some((p) => p.test(message))) {
+      continue;
+    }
+    if (spec.patterns.some((p) => p.test(message))) {
+      return spec.field;
+    }
+  }
+  return null;
+}
+
+/**
+ * Stage 1 — detect only explicit memory actions.
+ * Mere occurrence of "ad", "hatırla" in questions, or "adım" as "step" must not match.
+ *
  * @param {string} message
  * @returns {MemoryIntent}
  */
@@ -108,31 +318,48 @@ export function detectMemoryIntent(message) {
     return { type: null };
   }
 
-  if (FORGET_PATTERNS.some((p) => p.test(text))) {
-    return { type: 'forget' };
+  if (hasWriteNegation(text)) {
+    return { type: null };
+  }
+
+  if (FORGET_NAME_PATTERNS.some((p) => p.test(text)) || FORGET_PATTERNS.some((p) => p.test(text))) {
+    return { type: 'forget', clarity: 'explicit' };
   }
 
   if (RECALL_PATTERNS.some((p) => p.test(text))) {
-    return { type: 'recall' };
+    return { type: 'recall', clarity: 'explicit' };
   }
 
-  if (SAVE_PATTERNS.some((p) => p.test(text))) {
-    return { type: 'save' };
-  }
-
-  for (const spec of PROFILE_FIELD_PATTERNS) {
-    if (spec.patterns.some((p) => p.test(text))) {
-      return { type: 'profile-update', detail: spec.field };
+  // Call-me naming:
+  // - conversation-scoped ("bu konuşmada…") → not a memory write
+  // - with explicit save verb → permanent profile update
+  // - "bundan sonra bana X de" without kaydet → ask confirmation (ambiguous)
+  if (isCallMeNameRequest(text)) {
+    if (CONVERSATION_SCOPED_ADDRESS_RE.test(text) && !PERMANENT_SAVE_VERB_RE.test(text)) {
+      return { type: null };
     }
+    if (PERMANENT_SAVE_VERB_RE.test(text)) {
+      return { type: 'profile-update', detail: 'name', clarity: 'explicit' };
+    }
+    return { type: 'profile-update', detail: 'name', clarity: 'ambiguous' };
+  }
+
+  if (!hasExplicitWriteVerb(text)) {
+    return { type: null };
+  }
+
+  const profileField = detectProfileFieldKeyword(text);
+  if (profileField) {
+    return { type: 'profile-update', detail: profileField, clarity: 'explicit' };
   }
 
   for (const spec of PREFERENCE_PATTERNS) {
     if (spec.patterns.some((p) => p.test(text))) {
-      return { type: 'profile-update', detail: `preferences.${spec.key}` };
+      return { type: 'profile-update', detail: `preferences.${spec.key}`, clarity: 'explicit' };
     }
   }
 
-  return { type: null };
+  return { type: 'save', clarity: 'explicit' };
 }
 
 /**
@@ -145,21 +372,220 @@ export function messageRequestsAnalysis(message) {
   );
 }
 
-function extractAfterColonOrIs(text) {
-  const trimmed = text.trim();
-  const colonMatch = trimmed.match(/[:：]\s*(.+)$/);
-  if (colonMatch) {
-    return colonMatch[1].trim();
+/**
+ * Stage 2 — extract + validate a writable entity. Returns null when unsafe.
+ * @param {string} message
+ * @param {MemoryIntent} intent
+ * @returns {{ kind: 'profile'|'preference'|'fact'|'forget-name'|'forget-fact', field?: string, key?: string, value?: string|null }|null}
+ */
+export function extractValidatedMemoryEntity(message, intent) {
+  const text = (message ?? '').trim();
+  if (!text || !intent?.type) {
+    return null;
   }
 
-  const isMatch = trimmed.match(
-    /\b(?:adım|adim|ismim|konumum|doğum yerim|dogum yerim|saat dilimim|ilişki durumum|iliski durumum)\s+(?:\w+\s+){0,3}?([\p{L}\d][\p{L}\d\s,.-]{1,80})/iu,
-  );
-  if (isMatch) {
-    return isMatch[1].trim();
+  if (intent.type === 'forget') {
+    if (FORGET_NAME_PATTERNS.some((p) => p.test(text))) {
+      return { kind: 'forget-name', field: 'name', value: null };
+    }
+    const factKey = extractFactToSave(text);
+    if (!factKey) {
+      return null;
+    }
+    return { kind: 'forget-fact', value: factKey };
+  }
+
+  if (intent.type === 'save') {
+    const fact = extractFactToSave(text);
+    if (!fact || !isPlausibleFact(fact)) {
+      return null;
+    }
+    return { kind: 'fact', value: fact };
+  }
+
+  if (intent.type === 'profile-update') {
+    const field = intent.detail ?? '';
+
+    if (field.startsWith('preferences.')) {
+      const prefKey = field.replace('preferences.', '');
+      const spec = PREFERENCE_PATTERNS.find((p) => p.key === prefKey);
+      const value = spec?.extract(text);
+      if (!value || !isPlausibleShortValue(value)) {
+        return null;
+      }
+      return { kind: 'preference', key: prefKey, value };
+    }
+
+    const spec = PROFILE_FIELD_SPECS.find((p) => p.field === field);
+    if (!spec) {
+      return null;
+    }
+
+    const value = spec.extract(text);
+    if (value == null || value === '') {
+      return null;
+    }
+    if (spec.validate && !spec.validate(value)) {
+      return null;
+    }
+
+    return { kind: 'profile', field, value };
   }
 
   return null;
+}
+
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function isPlausiblePersonName(value) {
+  if (typeof value !== 'string') {
+    return false;
+  }
+
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+  if (trimmed.length < 2 || trimmed.length > 40) {
+    return false;
+  }
+  if (/[?？!]/.test(trimmed)) {
+    return false;
+  }
+  if (/[.。;；:]/.test(trimmed)) {
+    return false;
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 3) {
+    return false;
+  }
+
+  if (!/^[\p{L}][\p{L}'’.-]*(?:\s+[\p{L}][\p{L}'’.-]*){0,2}$/u.test(trimmed)) {
+    return false;
+  }
+
+  for (const word of words) {
+    const lower = word.toLocaleLowerCase('tr-TR');
+    if (NON_NAME_TOKENS.has(lower)) {
+      return false;
+    }
+    // Reject obvious verb-like Turkish suffixes on a single token dump
+    if (
+      /(?:ıyor|iyor|uyor|üyor|arak|erek|ınca|ince|ınca|ince|dığında|diginda|tığında|tiginda)$/i.test(
+        lower,
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * @param {string} value
+ */
+function isPlausibleShortValue(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (trimmed.length < 2 || trimmed.length > 80) return false;
+  if (/[?]/.test(trimmed)) return false;
+  if (trimmed.split(/\s+/).length > 6) return false;
+  return true;
+}
+
+/**
+ * @param {string} value
+ */
+function isPlausibleDateValue(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (/[?]/.test(trimmed)) return false;
+  if (
+    /\b(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})\b/.test(trimmed)
+  ) {
+    return true;
+  }
+  // Turkish month phrases: "8 Kasım", "8 Kasım 1990"
+  return /^\d{1,2}\s+[\p{L}]{3,15}(?:\s+\d{4})?$/u.test(trimmed);
+}
+
+/**
+ * @param {string} value
+ */
+function isPlausibleFact(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  return trimmed.length >= 3 && trimmed.length <= 500 && !hasWriteNegation(trimmed);
+}
+
+/**
+ * @param {string} text
+ * @returns {string|null}
+ */
+function extractName(text) {
+  const trimmed = text.trim();
+
+  if (NAME_STEP_IDIOMS.some((p) => p.test(trimmed))) {
+    return null;
+  }
+
+  // Strip leading "Atlas," vocative so it never becomes part of the name.
+  const withoutVocative = trimmed.replace(/^atlas\s*[,:]?\s+/i, '');
+
+  const callMe = withoutVocative.match(CALL_ME_NAME_PATTERN);
+  if (callMe?.[1] && isPlausiblePersonName(callMe[1])) {
+    return callMe[1].trim();
+  }
+
+  for (const pattern of NAME_STATEMENT_PATTERNS) {
+    pattern.lastIndex = 0;
+    const match = withoutVocative.match(pattern);
+    if (match?.[1]) {
+      const candidate = match[1].trim();
+      if (isPlausiblePersonName(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * @param {string} text
+ * @param {string[]} labels
+ * @returns {string|null}
+ */
+function extractLabeledValue(text, labels) {
+  const trimmed = text.trim();
+  const colonMatch = trimmed.match(/[:：]\s*(.+)$/);
+  if (colonMatch) {
+    const after = colonMatch[1].trim().split(/[.!?,;]/)[0].trim();
+    return after || null;
+  }
+
+  const labelAlt = labels.map(escapeRegExp).join('|');
+  const re = new RegExp(
+    `\\b(?:${labelAlt})\\s+(?:olarak\\s+)?([\\p{L}\\d][\\p{L}\\d\\s,./-]{1,60})`,
+    'iu',
+  );
+  const match = trimmed.match(re);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return (
+    match[1]
+      .trim()
+      .replace(/\s+(kaydet|hatırla|hatirla|belleğine|bellegine|hafızana|hafizana|ekle).*$/i, '')
+      .replace(/[,.]+$/g, '')
+      .trim() || null
+  );
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function extractBirthDate(text) {
@@ -169,7 +595,20 @@ function extractBirthDate(text) {
   if (dateMatch) {
     return dateMatch[1];
   }
-  return extractAfterColonOrIs(text);
+
+  const monthPhrase = text.match(
+    /\b(\d{1,2}\s+(?:ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)(?:\s+\d{4})?)\b/iu,
+  );
+  if (monthPhrase) {
+    return monthPhrase[1].trim();
+  }
+
+  return extractLabeledValue(text, [
+    'doğum tarihim',
+    'dogum tarihim',
+    'doğum günüm',
+    'dogum gunum',
+  ]);
 }
 
 function extractBirthTime(text) {
@@ -177,11 +616,11 @@ function extractBirthTime(text) {
   if (timeMatch) {
     return timeMatch[1];
   }
-  return extractAfterColonOrIs(text);
+  return extractLabeledValue(text, ['doğum saatim', 'dogum saatim', 'doğum saati']);
 }
 
 function extractDateLike(text) {
-  return extractBirthDate(text) ?? extractAfterColonOrIs(text);
+  return extractBirthDate(text) ?? extractLabeledValue(text, ['referans tarihim', 'referans tarih']);
 }
 
 /**
@@ -193,8 +632,11 @@ function extractFactToSave(message) {
 
   let content = text
     .replace(/^(atlas[,]?\s*)?/i, '')
-    .replace(/\b(bunu|şunu|sunu)\s+(hatırla|kaydet|unutma)\b/gi, '')
-    .replace(/\bhafızana kaydet\b/gi, '')
+    .replace(/\b(bunu|şunu|sunu|bu bilgiyi|şu bilgiyi)\s+(hatırla|hatirla|kaydet|unut)\b/gi, '')
+    .replace(/\bhaf[iı]zana?\s+(kaydet|ekle|yaz|sil)\b/gi, '')
+    .replace(/\bbelle[gğ]ine?\s+(ekle|kaydet|yaz|sil)\b/gi, '')
+    .replace(/\b(kaydet|hatırla|hatirla)\s*$/i, '')
+    .replace(/^[:：]\s*/, '')
     .trim();
 
   if (!content || content.length < 3) {
@@ -202,19 +644,9 @@ function extractFactToSave(message) {
     content = afterColon ? afterColon[1].trim() : '';
   }
 
+  content = content.replace(/^[:：]\s*/, '').trim();
   return content.length >= 3 ? content : null;
 }
-
-const PROFILE_LABELS = {
-  name: 'Ad',
-  timezone: 'Saat dilimi',
-  location: 'Konum',
-  birthDate: 'Doğum tarihi',
-  birthTime: 'Doğum saati',
-  birthPlace: 'Doğum yeri',
-  referenceDate: 'Referans tarihi',
-  relationshipStatus: 'İlişki durumu',
-};
 
 /**
  * Format stored memory for recall responses.
@@ -280,12 +712,49 @@ export async function processMemoryIntent(userId, message, intent, options = {})
     };
   }
 
+  // Stage 2 — no write unless entity extraction + validation succeeds.
+  const entity = extractValidatedMemoryEntity(message, intent);
+
+  // Ambiguous call-me / name preference: confirm before permanent write.
+  if (intent.type === 'profile-update' && intent.clarity === 'ambiguous') {
+    const nameHint = entity?.kind === 'profile' && entity.field === 'name' ? entity.value : null;
+    return {
+      handled: true,
+      reply: nameHint
+        ? `Bu konuşmada sana ${nameHint} diye hitap edebilirim. Kalıcı profiline de kaydetmemi ister misin? İstersen “Adım ${nameHint}, kaydet.” yazman yeterli.`
+        : 'Hitap tercihini bu konuşmada kullanabilirim. Kalıcı kaydetmemi istiyorsan alanı ve değeri açıkça yaz (ör. "Adım Lara, kaydet.").',
+      memoryUpdated: false,
+    };
+  }
+
   if (intent.type === 'forget') {
-    const factKey = extractFactToSave(message);
-    if (factKey) {
+    if (entity?.kind === 'forget-name') {
+      const result = await updateUserMemory(userId, {
+        profile: { name: null },
+      });
+      if (!result.ok) {
+        return {
+          handled: true,
+          reply: `Silme işlemi başarısız: ${result.error}`,
+          memoryUpdated: false,
+          error: result.error,
+        };
+      }
+      return {
+        handled: true,
+        reply: 'Ad bilgini hafızamdan sildim.',
+        memoryUpdated: true,
+      };
+    }
+
+    if (entity?.kind === 'forget-fact' && entity.value) {
       const memory = getUserMemory(userId);
+      const factKey = entity.value;
       const matchingKey = Object.keys(memory.facts).find(
-        (k) => k.toLowerCase().includes(factKey.toLowerCase()) || factKey.toLowerCase().includes(k.toLowerCase()),
+        (k) =>
+          k.toLowerCase().includes(factKey.toLowerCase()) ||
+          factKey.toLowerCase().includes(k.toLowerCase()) ||
+          String(memory.facts[k]).toLowerCase().includes(factKey.toLowerCase()),
       );
 
       if (matchingKey) {
@@ -308,24 +777,25 @@ export async function processMemoryIntent(userId, message, intent, options = {})
 
     return {
       handled: true,
-      reply: 'Silinecek kayıt bulunamadı. Daha spesifik olabilir misin?',
+      reply: 'Silinecek kayıt bulunamadı. Daha spesifik olabilir misin? Örneğin: "Adımı unut" veya "Bunu unut: …"',
       memoryUpdated: false,
     };
   }
 
-  if (intent.type === 'save') {
-    const fact = extractFactToSave(message);
-    if (!fact) {
-      return {
-        handled: true,
-        reply: 'Ne kaydetmemi istediğini anlayamadım. Lütfen kaydetmek istediğin bilgiyi açıkça yaz.',
-        memoryUpdated: false,
-      };
-    }
+  if (!entity) {
+    // Explicit intent but unsafe/unparseable entity → clarify, never write.
+    return {
+      handled: true,
+      reply:
+        'Ne kaydetmemi veya güncellememi istediğini net anlayamadım. Lütfen alanı ve değeri açıkça yaz (ör. "Adım Lara, kaydet.").',
+      memoryUpdated: false,
+    };
+  }
 
+  if (entity.kind === 'fact' && entity.value) {
     const key = `note_${Date.now()}`;
     const result = await updateUserMemory(userId, {
-      facts: { [key]: fact },
+      facts: { [key]: entity.value },
     });
 
     if (!result.ok) {
@@ -339,58 +809,14 @@ export async function processMemoryIntent(userId, message, intent, options = {})
 
     return {
       handled: true,
-      reply: `Tamam, bunu hafızama kaydettim: "${fact}"`,
+      reply: `Tamam, bunu hafızama kaydettim: "${entity.value}"`,
       memoryUpdated: true,
     };
   }
 
-  if (intent.type === 'profile-update') {
-    const field = intent.detail ?? '';
-
-    if (field.startsWith('preferences.')) {
-      const prefKey = field.replace('preferences.', '');
-      const spec = PREFERENCE_PATTERNS.find((p) => p.key === prefKey);
-      const value = spec?.extract(message);
-      if (!value) {
-        return {
-          handled: true,
-          reply: 'Tercih bilgisini anlayamadım. Lütfen değeri açıkça belirt.',
-          memoryUpdated: false,
-        };
-      }
-
-      const result = await updateUserMemory(userId, {
-        preferences: { [prefKey]: value },
-      });
-
-      if (!result.ok) {
-        return {
-          handled: true,
-          reply: `Kaydetme başarısız: ${result.error}`,
-          memoryUpdated: false,
-          error: result.error,
-        };
-      }
-
-      return {
-        handled: true,
-        reply: `Tercihini kaydettim: ${value}`,
-        memoryUpdated: true,
-      };
-    }
-
-    const spec = PROFILE_FIELD_PATTERNS.find((p) => p.field === field);
-    const value = spec?.extract(message);
-    if (!value) {
-      return {
-        handled: true,
-        reply: `${PROFILE_LABELS[field] ?? field} bilgisini anlayamadım. Lütfen değeri açıkça belirt.`,
-        memoryUpdated: false,
-      };
-    }
-
+  if (entity.kind === 'preference' && entity.key && entity.value) {
     const result = await updateUserMemory(userId, {
-      profile: { [field]: value },
+      preferences: { [entity.key]: entity.value },
     });
 
     if (!result.ok) {
@@ -404,7 +830,28 @@ export async function processMemoryIntent(userId, message, intent, options = {})
 
     return {
       handled: true,
-      reply: `${PROFILE_LABELS[field] ?? field} bilgini kaydettim: ${value}`,
+      reply: `Tercihini kaydettim: ${entity.value}`,
+      memoryUpdated: true,
+    };
+  }
+
+  if (entity.kind === 'profile' && entity.field && entity.value != null) {
+    const result = await updateUserMemory(userId, {
+      profile: { [entity.field]: entity.value },
+    });
+
+    if (!result.ok) {
+      return {
+        handled: true,
+        reply: `Kaydetme başarısız: ${result.error}`,
+        memoryUpdated: false,
+        error: result.error,
+      };
+    }
+
+    return {
+      handled: true,
+      reply: `${PROFILE_LABELS[entity.field] ?? entity.field} bilgini kaydettim: ${entity.value}`,
       memoryUpdated: true,
     };
   }
@@ -479,14 +926,17 @@ function intentMentionsPast(message) {
 }
 
 /**
- * High-confidence profile extraction without explicit save command.
- * Only auto-saves when message clearly states profile data.
+ * Auto-save only when the same strict two-stage gate succeeds.
  * @param {string} userId
  * @param {string} message
  */
 export async function tryAutoSaveProfile(userId, message) {
   const intent = detectMemoryIntent(message);
   if (intent.type === 'profile-update' && intent.detail && !intent.detail.startsWith('preferences.')) {
+    const entity = extractValidatedMemoryEntity(message, intent);
+    if (!entity || entity.kind !== 'profile') {
+      return false;
+    }
     const result = await processMemoryIntent(userId, message, intent);
     return result.memoryUpdated === true;
   }

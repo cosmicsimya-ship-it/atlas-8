@@ -43,6 +43,8 @@ record('hijriMonthNameTr(9)=Ramazan', hijriMonthNameTr(9) === 'Ramazan');
 /** @type {Array<{ g: [number, number, number], h: { hy: number, hm: number, hd: number }, label: string }>} */
 const UAQ_FIXTURES = [
   { g: [2026, 7, 30], h: { hy: 1448, hm: 2, hd: 16 }, label: '16 Safer 1448' },
+  { g: [2026, 7, 31], h: { hy: 1448, hm: 2, hd: 17 }, label: '17 Safer 1448' },
+  { g: [2026, 8, 1], h: { hy: 1448, hm: 2, hd: 18 }, label: '18 Safer 1448' },
   { g: [2026, 7, 29], h: { hy: 1448, hm: 2, hd: 15 }, label: '15 Safer 1448' },
   { g: [2026, 6, 15], h: { hy: 1447, hm: 12, hd: 29 }, label: '29 Zilhicce 1447' },
   { g: [2026, 6, 16], h: { hy: 1448, hm: 1, hd: 1 }, label: '1 Muharrem 1448' },
@@ -85,6 +87,11 @@ record('method is islamic-umalqura', cal.metadata?.method === 'islamic-umalqura'
 record('monthName Safer', cal.hijri?.monthName === 'Safer');
 record('section orta for day 16', cal.hijri?.section === 'orta');
 record('gregorian iso', cal.gregorian?.isoDate === '2026-07-30');
+
+const aug1 = buildSymbolicCalendarContext(new Date('2026-08-01T12:00:00+03:00'), 'Europe/Istanbul');
+record('calendar ok for 2026-08-01 Istanbul', aug1.ok === true);
+record('display is 18 Safer 1448', aug1.hijri?.display === '18 Safer 1448', aug1.hijri?.display);
+record('Aug 1 must not be Muharrem', !/Muharrem/i.test(aug1.hijri?.display ?? ''));
 
 const muharrem = buildSymbolicCalendarContext(new Date('2026-06-16T12:00:00+03:00'));
 record('Muharrem 1 1448 display', muharrem.hijri?.display === '1 Muharrem 1448', muharrem.hijri?.display);

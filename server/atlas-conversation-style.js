@@ -6,6 +6,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { getUserMemory } from './user-memory.js';
+import { buildSymbolicCalendarContext } from './atlas-symbolic-calendar.js';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -116,8 +117,104 @@ Kısa, doğal, net, sakin, ölçülü. Şiirsel/kurumsal sunum yok.
 }
 
 /**
- * @typedef {'greeting'|'how_are_you'|'who_am_i'|'who_are_you'|'thanks'|'ping'|'fatigue'|'backend_diag'|'detail'|'other'} ConversationIntent
+ * @typedef {'greeting'|'how_are_you'|'who_am_i'|'who_are_you'|'thanks'|'ping'|'fatigue'|'backend_diag'|'detail'|'get_current_hijri_date'|'other'} ConversationIntent
  */
+
+/**
+ * Conceptual Hijri-calendar questions (definition / method) — not "today's date".
+ * @param {string} text
+ */
+export function isConceptualHijriCalendarQuery(text) {
+  const t = String(text ?? '').trim();
+  if (!t) return false;
+  return (
+    /\bhicr[iî]\s+takvim(i|in|inin|e|de|den)?\b/iu.test(t) &&
+    /\b(nedir|ne\s+demek|nas[ıi]l|özellik|ozellik|hakk[ıi]nda|tan[ıi]m|hesaplan[ıi]r|nasıl\s+hesap)\b/iu.test(
+      t,
+    )
+  );
+}
+
+/**
+ * Fold Turkish orthography for Hijri current-date matching (hicri/hicrî/hijri, bugün/bugun).
+ * @param {string} text
+ */
+function foldHijriQueryText(text) {
+  return String(text ?? '')
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFC')
+    .replace(/[î]/g, 'i')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ş/g, 's')
+    .replace(/ç/g, 'c')
+    .replace(/ğ/g, 'g')
+    .replace(/ı/g, 'i')
+    .replace(/\bhijri\b/g, 'hicri');
+}
+
+/**
+ * Everyday "what is today's Hijri date?" queries (including short "Hicri?").
+ * Requires hicri/hijri plus a current-time or date framing — bare ne/nedir/kaç alone is not enough.
+ * @param {string} text
+ */
+export function isCurrentHijriDateQuery(text) {
+  const raw = String(text ?? '').trim();
+  if (!raw || raw.length > 120) return false;
+  if (isConceptualHijriCalendarQuery(raw)) return false;
+
+  const t = foldHijriQueryText(raw);
+  const ask = '(?:kac|ne|nedir)';
+  const punct = '[?.!…]*';
+
+  // Bare / near-bare token (hicri itself is the date framing)
+  if (new RegExp(`^hicri\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^hicri\\s+tarih(i)?\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^hicri\\s+${ask}\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^hicri\\s+tarih(i)?\\s+${ask}\\s*${punct}$`, 'u').test(t)) return true;
+
+  // Today / now framings
+  if (new RegExp(`^bugun\\s+hicri(\\s+tarih(i)?)?\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^bugun\\s+hicri\\s+${ask}\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^bugun\\s+hicri\\s+tarih(i)?\\s+${ask}\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^hicri\\s+bugun(\\s+${ask})?\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^bugunun\\s+hicri(\\s+tarih(i)?)?\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^bugunun\\s+hicri\\s+tarih(i)?\\s+${ask}\\s*${punct}$`, 'u').test(t)) return true;
+  if (/^su\s*an\s+hicri\b/u.test(t)) return true;
+
+  // Month / day-of-month asks (not "hicri ay nedir" — that stays conceptual/other)
+  if (new RegExp(`^hicri\\s+ayin\\s+kaci\\s*${punct}$`, 'u').test(t)) return true;
+  if (new RegExp(`^hicri\\s+ay\\s+ne\\s*${punct}$`, 'u').test(t)) return true;
+  if (/^bugun\s+hangi\s+hicri\s+ay/u.test(t)) return true;
+  if (new RegExp(`^hangi\\s+hicri\\s+ay(dayiz)?\\s*${punct}$`, 'u').test(t)) return true;
+  if (/^su\s*an\s+hicri\s+hangi\s+gun/u.test(t)) return true;
+
+  return false;
+}
+
+/**
+ * Format a short user-facing current Hijri date reply (Umm al-Qura / Istanbul).
+ * @param {Date} [when]
+ * @param {string} [timeZone]
+ */
+export function formatCurrentHijriDateReply(
+  when = new Date(),
+  timeZone = 'Europe/Istanbul',
+) {
+  const ctx = buildSymbolicCalendarContext(when, timeZone);
+  if (!ctx.ok || !ctx.hijri?.display) {
+    return 'Hicri tarihi şu an hesaplayamadım. Lütfen biraz sonra tekrar dene.';
+  }
+
+  const miladi = new Intl.DateTimeFormat('tr-TR', {
+    timeZone,
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(when instanceof Date ? when : new Date(when));
+
+  return `${miladi}, Hicri takvime göre ${ctx.hijri.display} tarihine denk gelir.`;
+}
 
 /**
  * @param {string} message
@@ -130,6 +227,11 @@ export function detectConversationIntent(message) {
   // Detail wins over self-identity phrases like "Atlas nedir"
   if (/detayl[ıi]|ayr[ıi]nt[ıi]|derine\s*in|ad[ıi]m\s*ad[ıi]m|kapsaml[ıi]|nedenleriyle|uzun\s*anlat/i.test(text)) {
     return 'detail';
+  }
+
+  // Current Hijri date — before bare-token identity / greeting heuristics
+  if (isCurrentHijriDateQuery(text)) {
+    return 'get_current_hijri_date';
   }
 
   if (/^(atlas)\s*[!.?]*$/i.test(text)) {
@@ -160,7 +262,11 @@ export function detectConversationIntent(message) {
     return 'who_are_you';
   }
 
-  if (/\b(ben kimim|kim oldu[gğ]umu)\b/i.test(text)) {
+  if (
+    /\b(ben kimim|ben sistemde kimim|kim oldu[gğ]umu|beni\s+tan[ıi](?:d[ıi]n|yor\s+musun))\b/i.test(
+      text,
+    )
+  ) {
     return 'who_am_i';
   }
 
@@ -188,7 +294,7 @@ export function isAtlasSelfIdentityQuestion(message) {
 export function containsForbiddenCasualPhrase(reply, intent = 'other') {
   const lower = ` ${String(reply ?? '').toLowerCase()} `;
   const hits = FORBIDDEN_CASUAL_PHRASES.filter((p) => lower.includes(p.toLowerCase()));
-  if (intent === 'greeting' || intent === 'how_are_you' || intent === 'thanks' || intent === 'ping' || intent === 'fatigue') {
+  if (intent === 'greeting' || intent === 'how_are_you' || intent === 'thanks' || intent === 'ping' || intent === 'fatigue' || intent === 'get_current_hijri_date') {
     for (const p of FORBIDDEN_SIMPLE_EXTRA) {
       if (lower.includes(p.toLowerCase()) && !hits.includes(p.trim())) hits.push(p.trim());
     }
@@ -215,6 +321,7 @@ export function resolveReplyMaxTokens(message, options = {}) {
   const intent = options.intent ?? detectConversationIntent(message);
   if (intent === 'detail') return 1200;
   if (intent === 'who_am_i' || intent === 'who_are_you') return 120;
+  if (intent === 'get_current_hijri_date') return 80;
   if (intent === 'greeting' || intent === 'thanks' || intent === 'ping') return 40;
   if (intent === 'how_are_you' || intent === 'fatigue') return 60;
   if (intent === 'backend_diag') return 90;
@@ -267,11 +374,20 @@ export function tryDeterministicConversationReply(input) {
         reply:
           "Ben Atlas'ım. Sorularını yanıtlayan ve görevlerinde yardımcı olan yapay zekâ asistanınım.",
       };
+    case 'get_current_hijri_date':
+      return {
+        intent,
+        reply: formatCurrentHijriDateReply(new Date(), 'Europe/Istanbul'),
+      };
     case 'who_am_i': {
       if (founder) {
+        const title =
+          founder.biography?.title ??
+          founder.knowledge?.role ??
+          "Atlas'ın kurucusu ve sistem mimarı";
         return {
           intent,
-          reply: `Sen ${founderName}'sın. Atlas'ın kurucusu ve sistem mimarısın.`,
+          reply: `Evet. Sen ${founderName}'sın; ${title} olarak kayıtlısın.`,
         };
       }
       const userId = input.userId?.trim();
@@ -291,6 +407,13 @@ export function tryDeterministicConversationReply(input) {
 
 /**
  * Whether founder heavy prompt blocks are needed for this message.
+ * Founder session itself is resolved from channel identity — never from keywords.
+ * Keywords only gate the heavier knowledge/profile blocks, not whether the
+ * speaker is the founder.
+ *
+ * Bare "sistem" / "mimari" alone must NOT inject heavy founder context
+ * (avoids false positives: "Güneş sistemi", "Sistem nasıl çalışıyor?").
+ *
  * @param {string} message
  * @param {import('./founder-identity.js').FounderSession|null} founderSession
  */
@@ -298,7 +421,33 @@ export function shouldInjectFounderContextBlocks(message, founderSession) {
   if (!founderSession) return false;
   const intent = detectConversationIntent(message);
   if (intent === 'who_am_i') return true;
-  if (/\b(kurucu|founder|mimari|sistem|yetki|rolüm|rolun)\b/i.test(message)) return true;
+  if (/\b(kurucu|founder|yetki|rolüm|rolun)\b/i.test(message)) return true;
   if (/\b(normal kullanıcı|fark|nereden biliyorsun)\b/i.test(message)) return true;
+  // Atlas / founder-scoped system phrases only — not generic "sistem".
+  if (
+    /\b(?:atlas(?:'?[ıi]n)?\s+sistem(?:i|inde|deki)?|atlas\s+mimarisi|atlas\s+backend|atlas\s+altyap[ıi]|sistem\s+mimar[ıi]|kurucu\s+sistemi|founder\s+identity|benim\s+sistemdeki\s+rolüm|atlas\s+nas[ıi]l\s+geli[sş]tirildi)\b/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  // Self-recognition / preferred-name questions must load profile without role keywords.
+  if (/\bbeni\s+tan[ıi](?:d[ıi]n|yor\s+musun)\b/i.test(message)) return true;
+  const preferred =
+    founderSession.biography?.preferredName ?? founderSession.knowledge?.founderName;
+  if (preferred) {
+    const escaped = preferred.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameAsk = new RegExp(
+      `\\b${escaped}(?:'?[nınınun]|'?y[ıi]|'?ya|'?yla)?\\s+tan[ıi]`,
+      'iu',
+    );
+    if (nameAsk.test(message)) return true;
+    // "Ben Lara" / "Lara ben" from verified founder — identity context required.
+    const selfName = new RegExp(
+      `(?:^ben\\s+${escaped}\\b|^${escaped}\\s+ben(?:im)?\\b)`,
+      'iu',
+    );
+    if (selfName.test(message)) return true;
+  }
   return false;
 }

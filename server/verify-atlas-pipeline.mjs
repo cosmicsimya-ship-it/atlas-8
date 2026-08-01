@@ -125,7 +125,7 @@ const tgCaption = normalizeTelegramMessage(
 assert('telegram caption used as message text', tgCaption.message === 'Bu foto hakkında ne düşünüyorsun?');
 assert('telegram caption mediaKind recorded', tgCaption.metadata?.mediaKind === 'photo');
 
-const tgVoiceRejected = (() => {
+const tgVoiceWithoutPreprocess = (() => {
   try {
     normalizeTelegramMessage(
       {
@@ -142,7 +142,53 @@ const tgVoiceRejected = (() => {
     return String(e.message).includes('Unsupported message');
   }
 })();
-assert('telegram voice without caption rejected', tgVoiceRejected);
+assert(
+  'telegram voice without preprocess still requires resolved text',
+  tgVoiceWithoutPreprocess,
+);
+
+const tgVoiceResolved = normalizeTelegramMessage(
+  {
+    message_id: 5,
+    from: { id: 55, first_name: 'Lara' },
+    chat: { id: 55, type: 'private' },
+    voice: { file_id: 'v', duration: 2 },
+    date: Date.now(),
+  },
+  [],
+  {
+    resolvedMessage: 'Merhaba Atlas, sesli mesajım bu.',
+    mediaKind: 'voice',
+    extraMetadata: { source: 'speech-to-text' },
+  },
+);
+assert(
+  'telegram voice with transcription accepted',
+  tgVoiceResolved.message === 'Merhaba Atlas, sesli mesajım bu.',
+);
+assert('telegram voice mediaKind recorded', tgVoiceResolved.metadata?.mediaKind === 'voice');
+
+const tgPhotoResolved = normalizeTelegramMessage(
+  {
+    message_id: 6,
+    from: { id: 55, first_name: 'Lara' },
+    chat: { id: 55, type: 'private' },
+    photo: [{ file_id: 'p', width: 800, height: 600 }],
+    date: Date.now(),
+  },
+  [],
+  {
+    resolvedMessage: 'Analyze the attached image and respond appropriately.',
+    mediaKind: 'photo',
+    image: { mimeType: 'image/jpeg', base64: 'abc' },
+  },
+);
+assert(
+  'telegram photo without caption accepted via multimodal preprocess',
+  tgPhotoResolved.metadata?.mediaKind === 'photo' &&
+    tgPhotoResolved.message.includes('Analyze the attached image') &&
+    Boolean(tgPhotoResolved.image?.base64),
+);
 
 const tgHttpNorm = normalizeAtlasMessageRequest({
   channel: 'telegram',
@@ -166,7 +212,7 @@ const webBundle = buildAtlasPromptBundle(
   {
     channel: 'web',
     userId: parityUser,
-    conversationId: parityUser,
+    conversationId: 'parity-conversation',
     message: parityMessage,
     history: parityHistory,
   },
@@ -177,7 +223,7 @@ const tgBundle = buildAtlasPromptBundle(
   {
     channel: 'telegram',
     userId: parityUser,
-    conversationId: '999888',
+    conversationId: 'parity-conversation',
     message: parityMessage,
     history: parityHistory,
   },

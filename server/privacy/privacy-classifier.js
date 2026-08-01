@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { PRIVACY_LEVELS } from './privacy-policy.js';
+import { analyzeIdentityClaim, isSelfReferentialIdentityMessage } from '../identity-claims.js';
 
 const FOUNDER_NAME_RE =
   /\b(lara|lara'nın|laranın|lara'ya|laraya|lara'yı|larayi|lara'yla|larayla)\b/i;
@@ -144,6 +145,43 @@ export function classifyPrivacyIntent(message) {
     };
   }
 
+  // Self-identity / naming statements must never become founder biography dumps.
+  // "Lara ben" ≠ "Lara kim?" — name mention alone is not a public-profile request.
+  const identityAnalysis = analyzeIdentityClaim(text);
+  if (identityAnalysis.kind === 'ambiguous') {
+    return {
+      aboutFounder: false,
+      requestType: 'ambiguous_identity',
+      privacyLevel: PRIVACY_LEVELS.PUBLIC,
+      isInjectionAttempt: false,
+      isMixed: false,
+      wantsPrivateData: false,
+    };
+  }
+  if (identityAnalysis.kind === 'role_claim') {
+    return {
+      aboutFounder: false,
+      requestType: 'unverified_role_claim',
+      privacyLevel: PRIVACY_LEVELS.PUBLIC,
+      isInjectionAttempt: false,
+      isMixed: false,
+      wantsPrivateData: false,
+    };
+  }
+  if (
+    identityAnalysis.kind === 'explicit_name' ||
+    identityAnalysis.kind === 'conversation_address'
+  ) {
+    return {
+      aboutFounder: false,
+      requestType: 'self_identity',
+      privacyLevel: PRIVACY_LEVELS.PUBLIC,
+      isInjectionAttempt: false,
+      isMixed: false,
+      wantsPrivateData: false,
+    };
+  }
+
   const isInjectionAttempt = INJECTION_BYPASS_RE.some((p) => p.test(text));
   const isMixed = MIXED_PUBLIC_PRIVATE_RE.some((p) => p.test(text));
   const wantsMemory = MEMORY_ACCESS_RE.some((p) => p.test(text));
@@ -154,9 +192,13 @@ export function classifyPrivacyIntent(message) {
   const wantsCrossUser = CROSS_USER_MEMORY_RE.some((p) => p.test(text));
   const wantsPublic = PUBLIC_PROFILE_RE.some((p) => p.test(text));
 
+  // Self-referential naming must not flip aboutFounder via name substring alone.
+  const founderMention =
+    mentionsFounder(text) && !isSelfReferentialIdentityMessage(text);
+
   // Relationship / permission claims imply founder private access even without naming Lara.
   const aboutFounder =
-    mentionsFounder(text) ||
+    founderMention ||
     RELATIONSHIP_CLAIM_RE.some((p) => p.test(text)) ||
     (isInjectionAttempt && wantsPrivate);
 

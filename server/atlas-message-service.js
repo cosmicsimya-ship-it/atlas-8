@@ -21,6 +21,7 @@ import { getUserMemory, isValidUserId } from './user-memory.js';
 import {
   buildRelevantMemoryContext,
   detectMemoryIntent,
+  extractValidatedMemoryEntity,
   processMemoryIntent,
   tryAutoSaveProfile,
   messageRequestsAnalysis,
@@ -38,6 +39,12 @@ import {
   buildFounderPipelineDebug,
   logFounderPipelineDebug,
   detectFounderIdentityQuestion,
+  buildFounderVerifiedIdentityReply,
+  isFounderSelfNameRecognitionQuestion,
+  getFounderPreferredName,
+  getFounderIdentityAmbiguity,
+  AMBIGUOUS_IDENTITY_USER_REPLY,
+  DUPLICATE_LINKED_USER_ID,
   PIPELINE_VERSION,
 } from './founder-identity.js';
 import {
@@ -67,17 +74,58 @@ import {
   buildPublicFounderPromptBlock,
   PRIVACY_ACTIONS,
 } from './privacy/index.js';
+import {
+  detectCrossLayerSynthesisIntent,
+  runMessageCrossLayerSynthesis,
+  guardSynthesisReply,
+  MESSAGE_SYNTHESIS_BRIDGE_VERSION,
+} from './cross-layer-synthesis/message-integration.js';
+import {
+  analyzeIdentityClaim,
+  buildAmbiguousIdentityClarifyReply,
+  buildConversationAddressAck,
+  buildNameConflictClarifyReply,
+  collectVerifiedIdentityClaims,
+  formatIdentityClaimsForPrompt,
+  shouldClarifyIdentityClaim,
+} from './identity-claims.js';
+import {
+  buildSpeakerAttributionPromptBlock,
+  extractTextMentionedPeople,
+  resolveTrustedSpeakerForPrompt,
+  guardMisaddressedSpeakerReply,
+  sanitizeSpeakerLabel,
+} from './speaker-attribution.js';
+import {
+  detectHealthSafetyIntent,
+  buildHealthSafetyReply,
+  buildUserVisibleFallback,
+  guardHealthSafetyReply,
+  buildHealthSafetyPromptDirective,
+  resolveResultStatus,
+  normalizeLongMessage,
+  HEALTH_SAFETY_VERSION,
+} from './health-safety.js';
+import {
+  tryDeterministicAbjadReply,
+  runAbjadEsmaVerification,
+  ABJAD_VERIFICATION_VERSION,
+} from './abjad-verification.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
-  MODEL_UNAVAILABLE: 'Model sağlayıcı yapılandırılmamış. OPENAI_API_KEY gerekli.',
-  TIMEOUT: 'Yanıt süresi aşıldı. Lütfen tekrar dene.',
+  MODEL_UNAVAILABLE: 'Model şu an geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar dene.',
+  TIMEOUT: 'Mesajını aldım ancak şu anda yanıtı tamamlayamadım. Lütfen birkaç saniye sonra tekrar dene.',
   RATE_LIMIT: 'İstek limiti aşıldı. Kısa bir süre sonra tekrar dene.',
   INVALID_INPUT: 'Geçersiz istek.',
   MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
   ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
+  IMAGE_DOWNLOAD_FAILED: 'Görseli indiremedim. Lütfen fotoğrafı tekrar gönder.',
+  UNSUPPORTED_IMAGE_FORMAT:
+    'Bu görsel formatını desteklemiyorum. JPEG, PNG, WebP veya GIF gönder.',
+  IMAGE_TOO_LARGE: 'Görsel çok büyük. Daha küçük bir fotoğraf gönder (en fazla 10 MB).',
   UNSUPPORTED_MESSAGE:
-    'Şimdilik yalnızca metin mesajlarını okuyabiliyorum. Ses, sticker veya metinsiz fotoğraf yerine yazarak gönder (fotoğrafa yazı eklersen caption olarak okurum).',
+    'Bu içerik türünü henüz işleyemiyorum. Metin veya fotoğraf gönderebilirsin.',
 };
 
 function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu.') {
@@ -95,33 +143,62 @@ function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu
  * @returns {AtlasMessageResult}
  */
 function applyPrivacyGuardToResult(result, ctx) {
-  if (!result || typeof result.reply !== 'string') return result;
+  if (!result || typeof result.reply !== 'string') {
+    return finalizeMessageResult(result ?? {
+      status: 'error',
+      reply: '',
+      errorCode: 'ENGINE_FAILURE',
+      engine: 'atlas',
+    }, ctx?.originalMessage ?? '');
+  }
   try {
     const guarded = guardOutboundReply(result.reply, {
       requesterContext: ctx.requesterContext,
       evaluation: ctx.evaluation ?? null,
       channel: ctx.channel ?? 'api',
     });
-    if (!guarded.blocked) {
-      return guarded.reply === result.reply ? result : { ...result, reply: guarded.reply };
+    let reply = guarded.blocked ? guarded.reply : guarded.reply;
+    let speakerCorrected = false;
+    if (ctx?.speakerGuard) {
+      const sg = guardMisaddressedSpeakerReply(reply, ctx.speakerGuard);
+      reply = sg.reply;
+      speakerCorrected = Boolean(sg.corrected);
     }
-    return {
-      ...result,
-      reply: guarded.reply,
-      data: {
-        ...(result.data ?? {}),
-        privacyBlocked: true,
-        privacyReasons: guarded.reasons,
+    if (!guarded.blocked) {
+      const next =
+        reply === result.reply
+          ? result
+          : {
+              ...result,
+              reply,
+              data: {
+                ...(result.data ?? {}),
+                ...(speakerCorrected ? { speakerAddressCorrected: true } : {}),
+              },
+            };
+      return finalizeMessageResult(next, ctx.originalMessage ?? '');
+    }
+    return finalizeMessageResult(
+      {
+        ...result,
+        reply,
+        data: {
+          ...(result.data ?? {}),
+          privacyBlocked: true,
+          privacyReasons: guarded.reasons,
+          ...(speakerCorrected ? { speakerAddressCorrected: true } : {}),
+        },
       },
-    };
+      ctx.originalMessage ?? '',
+    );
   } catch {
-    return result;
+    return finalizeMessageResult(result, ctx.originalMessage ?? '');
   }
 }
 
 export { resolveReplyMaxTokens } from './atlas-conversation-style.js';
 
-/** @typedef {'complete' | 'insufficient_data' | 'reject' | 'error'} AtlasMessageStatus */
+/** @typedef {'complete' | 'insufficient_data' | 'reject' | 'error' | 'safe_redirect' | 'success'} AtlasMessageStatus */
 
 /**
  * @typedef {Object} AtlasMessageResult
@@ -163,6 +240,8 @@ function parseBirthDateToIso(value) {
  * @param {ReturnType<typeof detectMemoryIntent>} memoryIntent
  */
 function resolveIntentLabel(message, tarotIntent, memoryIntent) {
+  const health = detectHealthSafetyIntent(message);
+  if (health.active && health.intent) return health.intent;
   if (memoryIntent.type) return `memory:${memoryIntent.type}`;
   if (tarotIntent.active) return `tarot:${tarotIntent.intent}`;
   if (detectPersonalAnalysisIntent(message) || shouldRouteToPersonalAnalysis(message)) {
@@ -171,6 +250,45 @@ function resolveIntentLabel(message, tarotIntent, memoryIntent) {
   const mode = detectAnalysisMode(message);
   if (mode === 'meta-synthesis' || mode === 'daily-guide') return `meta-synthesis:${mode}`;
   return 'conversation';
+}
+
+/**
+ * Ensure every result carries a user-visible reply + resultStatus contract.
+ * @param {AtlasMessageResult} result
+ * @param {string} [originalMessage]
+ * @returns {AtlasMessageResult}
+ */
+function finalizeMessageResult(result, originalMessage = '') {
+  const withReply = { ...result };
+  if (!withReply.reply || !String(withReply.reply).trim()) {
+    const fallback = buildUserVisibleFallback(originalMessage);
+    withReply.reply = fallback.reply;
+    withReply.status = 'error';
+    withReply.errorCode = withReply.errorCode ?? fallback.errorCode ?? 'ENGINE_FAILURE';
+  }
+
+  const health = detectHealthSafetyIntent(originalMessage);
+  if (
+    result.engine !== 'health-safety' &&
+    (health.active || /\b(g[öo]z|g[öo]rme|karart|u[cç]u[sş]ma|cin|epifiz)\b/i.test(originalMessage))
+  ) {
+    const guarded = guardHealthSafetyReply(withReply.reply);
+    withReply.reply = guarded.reply;
+    if (guarded.blockedClaims.length) {
+      withReply.data = {
+        ...(withReply.data ?? {}),
+        healthSafetyGuarded: true,
+        healthBlockedClaims: guarded.blockedClaims,
+      };
+    }
+  }
+
+  const resultStatus = resolveResultStatus(withReply);
+  withReply.data = {
+    ...(withReply.data ?? {}),
+    resultStatus,
+  };
+  return withReply;
 }
 
 /**
@@ -289,20 +407,23 @@ export function buildAtlasPromptBundle(input, options = {}) {
   const founderProfile = founderSession?.knowledge ?? null;
   const founderBiographyProfile = founderSession?.biography ?? null;
 
-  // Founder operational context: only for resolved founder sessions (server-linked).
-  // Unauthorized third parties never get founderSession, so they cannot receive these blocks.
-  // Private DATA disclosure is gated separately by privacyEvaluation / short-circuit.
-  const injectFounder =
+  // Founder operational context: resolved from channel-linked userId (not keywords).
+  // Always surface compact identity when session is resolved; heavy knowledge blocks
+  // remain intent-gated so everyday chat is not flooded with biography.
+  const injectFounderHeavy =
     Boolean(founderSession) && shouldInjectFounderContextBlocks(message, founderSession);
+  const injectFounderIdentity = Boolean(founderSession);
 
   const founderIdentityContext =
-    injectFounder && founderSession ? buildFounderIdentityBlock(founderSession) : null;
+    injectFounderIdentity && founderSession ? buildFounderIdentityBlock(founderSession) : null;
 
   const founderProfileKnowledgeContext =
-    injectFounder && founderSession ? buildFounderProfileKnowledgeBlock(founderSession) : null;
+    injectFounderHeavy && founderSession ? buildFounderProfileKnowledgeBlock(founderSession) : null;
 
   const founderQuestionDirective =
-    injectFounder && founderSession && detectFounderIdentityQuestion(message)
+    injectFounderHeavy &&
+    founderSession &&
+    detectFounderIdentityQuestion(message, founderSession)
       ? buildFounderQuestionDirective(founderSession, message)
       : null;
 
@@ -327,6 +448,88 @@ export function buildAtlasPromptBundle(input, options = {}) {
     userMemoryContext = null;
   }
 
+  const identityAnalysis = analyzeIdentityClaim(message);
+  const authenticatedProfile =
+    userId && userId !== 'web:anonymous' ? getUserMemory(userId)?.profile ?? null : null;
+
+  // Name conflict: do not inject conflicting profile name as verified truth.
+  if (
+    identityAnalysis.name &&
+    authenticatedProfile?.name &&
+    identityAnalysis.name.toLocaleLowerCase('tr-TR') !==
+      String(authenticatedProfile.name).toLocaleLowerCase('tr-TR')
+  ) {
+    userMemoryContext = userMemoryContext
+      ? userMemoryContext
+          .split('\n')
+          .filter((line) => !/^Ad:/i.test(line.trim()))
+          .join('\n') || null
+      : null;
+  }
+
+  const identityClaims = collectVerifiedIdentityClaims({
+    message,
+    analysis: identityAnalysis,
+    authenticatedProfile,
+    founderSession: injectFounderIdentity ? founderSession : null,
+    conversationIdentity:
+      identityAnalysis.kind === 'conversation_address' || identityAnalysis.kind === 'explicit_name'
+        ? { preferredName: identityAnalysis.name }
+        : null,
+  });
+  const identityClaimsBlock = formatIdentityClaimsForPrompt(identityClaims);
+
+  const trustedSpeaker = resolveTrustedSpeakerForPrompt(input, {
+    // Pass through undefined for in-process/tests; HTTP sets true/false explicitly.
+    atlasBotVerified: options.atlasBotVerified,
+  });
+
+  const mentionKeys = new Set(
+    (trustedSpeaker.mentionedPeople || []).map((m) =>
+      String(m?.name ?? '')
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .replace(/['’].*$/, ''),
+    ),
+  );
+
+  const memoryProfileName =
+    authenticatedProfile?.name && typeof authenticatedProfile.name === 'string'
+      ? sanitizeSpeakerLabel(authenticatedProfile.name, { fallback: null })
+      : null;
+
+  // Memory name that matches a mentioned person must not override Telegram sender.
+  if (
+    memoryProfileName &&
+    mentionKeys.has(memoryProfileName.toLocaleLowerCase('tr-TR').replace(/['’].*$/, ''))
+  ) {
+    userMemoryContext = userMemoryContext
+      ? userMemoryContext
+          .split('\n')
+          .filter((line) => !/^Ad:/i.test(line.trim()))
+          .join('\n') || null
+      : null;
+  }
+
+  const meta = input.metadata && typeof input.metadata === 'object' ? input.metadata : {};
+  const speakerAttributionContext =
+    Boolean(meta.isGroup) ||
+    trustedSpeaker.mentionedPeople.length > 0 ||
+    Boolean(trustedSpeaker.replyTarget?.displayName || trustedSpeaker.replyTarget?.username)
+      ? buildSpeakerAttributionPromptBlock({
+          senderDisplayName: trustedSpeaker.senderDisplayName,
+          senderUsername: trustedSpeaker.senderUsername,
+          replyTarget: trustedSpeaker.replyTarget,
+          mentionedPeople: trustedSpeaker.mentionedPeople,
+          memoryProfileName:
+            memoryProfileName &&
+            !mentionKeys.has(memoryProfileName.toLocaleLowerCase('tr-TR').replace(/['’].*$/, ''))
+              ? memoryProfileName
+              : null,
+          isGroup: Boolean(meta.isGroup),
+        })
+      : null;
+
   const publicFounderBlock =
     privacyEvaluation.aboutFounder &&
     !privacyEvaluation.authorized &&
@@ -334,13 +537,24 @@ export function buildAtlasPromptBundle(input, options = {}) {
       ? filtered.publicFounderPromptBlock ?? buildPublicFounderPromptBlock()
       : null;
 
+  const abjadVerification = runAbjadEsmaVerification({
+    message,
+    history: filtered.conversationHistory ?? history ?? [],
+  });
+  const abjadVerificationContext = abjadVerification.active
+    ? abjadVerification.promptBlock
+    : null;
+
   const systemPrompt = buildAtlasSystemPrompt({
     profile,
     mode,
     tarotIntent,
-    founderSession: injectFounder ? founderSession : null,
+    // Compact runtime "Kurucu Oturumu Aktif" whenever session is linked;
+    // heavy FOUNDER SYSTEM CONTEXT stays intent-gated inside the loader.
+    founderSession: injectFounderIdentity ? founderSession : null,
     message,
     includePrivacyInstructions: true,
+    injectFounderHeavy,
   });
 
   const userPrompt = buildChatUserPrompt(message, filtered.conversationHistory, mode, tarotIntent, {
@@ -348,6 +562,9 @@ export function buildAtlasPromptBundle(input, options = {}) {
     founderProfileKnowledgeContext,
     founderQuestionDirective,
     userMemoryContext,
+    identityContext: identityClaimsBlock,
+    speakerAttributionContext,
+    abjadVerificationContext,
   });
 
   return {
@@ -363,6 +580,7 @@ export function buildAtlasPromptBundle(input, options = {}) {
     founderProfileKnowledgeContext,
     userMemoryContext,
     privacyEvaluation,
+    abjadVerification: abjadVerification.active ? abjadVerification : null,
     loadOrder: ATLAS_PROMPT_LOAD_ORDER,
   };
 }
@@ -380,16 +598,20 @@ export function buildAtlasPromptBundle(input, options = {}) {
  * @returns {Promise<AtlasMessageResult>}
  */
 export async function processAtlasMessage(input, options = {}) {
-  const message = (input.message ?? '').trim();
+  const longNorm = normalizeLongMessage(input.message ?? '');
+  const message = longNorm.normalized;
   if (!message) {
-    return {
+    return finalizeMessageResult({
       status: 'error',
       reply: normalizeErrorReply('INVALID_INPUT', 'Mesaj boş olamaz.'),
       errorCode: 'INVALID_INPUT',
       intent: 'validation',
       engine: 'atlas',
-    };
+    }, '');
   }
+
+  const hasImage = Boolean(input.image?.base64);
+  const healthSafety = detectHealthSafetyIntent(message);
 
   // Test harness only — never enabled for HTTP handlers.
   if (
@@ -441,13 +663,13 @@ export async function processAtlasMessage(input, options = {}) {
   const userId = requesterContext.authenticated ? requesterContext.userId : null;
 
   if (userId && !isValidUserId(userId)) {
-    return {
+    return finalizeMessageResult({
       status: 'error',
       reply: normalizeErrorReply('INVALID_INPUT', 'Geçersiz kullanıcı kimliği.'),
       errorCode: 'INVALID_INPUT',
       intent: 'validation',
       engine: 'atlas',
-    };
+    }, message);
   }
 
   const privacyEvaluation = evaluatePrivacyRequest({
@@ -460,9 +682,396 @@ export async function processAtlasMessage(input, options = {}) {
     requesterContext,
     evaluation: privacyEvaluation,
     channel: input.channel ?? 'api',
+    originalMessage: message,
+    speakerGuard: null,
   };
 
-  // Privacy short-circuit BEFORE memory / LLM (backend enforcement).
+  const history = input.history ?? [];
+  const mode = options.mode ?? detectAnalysisMode(message);
+  const founderSession =
+    userId &&
+    userId !== 'web:anonymous' &&
+    !String(userId).includes(':sc_')
+      ? resolveFounderSession(userId)
+      : null;
+  const pipelineDebug = buildFounderPipelineDebug(input, founderSession);
+  const identityAmbiguous =
+    Boolean(userId) &&
+    userId !== 'web:anonymous' &&
+    getFounderIdentityAmbiguity(userId);
+
+  logFounderPipelineDebug(pipelineDebug, `Atlas/${input.channel ?? 'web'}`);
+
+  // Duplicate linkedUserId → fail closed for self-identity / role claims.
+  if (identityAmbiguous) {
+    const earlyIdentity = analyzeIdentityClaim(message);
+    const failClosedIdentity =
+      detectConversationIntent(message) === 'who_am_i' ||
+      earlyIdentity.kind === 'role_claim' ||
+      earlyIdentity.kind === 'ambiguous' ||
+      earlyIdentity.kind === 'explicit_name' ||
+      earlyIdentity.kind === 'conversation_address' ||
+      detectFounderIdentityQuestion(message, null);
+
+    if (failClosedIdentity) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: AMBIGUOUS_IDENTITY_USER_REPLY,
+          intent: 'identity:ambiguous_linked_user',
+          engine: 'identity-claims',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            identityKind: 'ambiguous_linked_user',
+            identityAmbiguous: true,
+            reasonCode: DUPLICATE_LINKED_USER_ID,
+            founderSession: false,
+            founderId: null,
+            pipelineDebug: {
+              ...pipelineDebug,
+              founderResolved: false,
+              founderProfileLoaded: false,
+            },
+            model: 'deterministic',
+            provider: 'atlas-identity-claims',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
+  const memoryIntent = userId && userId !== 'web:anonymous' ? detectMemoryIntent(message) : { type: null };
+  const tarotIntent = detectTarotSpreadIntent(message, history);
+  const intent = resolveIntentLabel(message, tarotIntent, memoryIntent);
+
+  // ── Health / visual-symptom safety (before tarot, astrology, identity, LLM) ──
+  // Text-only: deterministic safe redirect. Images still reach multimodal LLM with directive.
+  // Health must never route to tarot / spiritual analysis engines.
+  if (healthSafety.active && !hasImage) {
+    const built = buildHealthSafetyReply(healthSafety);
+    return applyPrivacyGuardToResult(
+      {
+        status: built.status,
+        reply: built.reply,
+        intent: healthSafety.intent ?? 'health:visual_symptom',
+        engine: 'health-safety',
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          resultStatus: built.resultStatus,
+          healthSafety: {
+            version: HEALTH_SAFETY_VERSION,
+            category: healthSafety.category,
+            visualSymptom: healthSafety.visualSymptom,
+            spiritualSeeking: healthSafety.spiritualSeeking,
+            urgentSigns: healthSafety.urgentSigns,
+            blocks: longNorm.blocks.length,
+            suppressedTarot: Boolean(tarotIntent.active),
+          },
+          model: 'deterministic',
+          provider: 'atlas-health-safety',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+      },
+      privacyGuardCtx,
+    );
+  }
+
+  // ── Memory commands BEFORE privacy short-circuit ──
+  // Explicit self-memory writes ("Adım Zeynep, kaydet") must not be stolen by
+  // founder-name privacy matches.
+  if (userId && userId !== 'web:anonymous' && memoryIntent.type) {
+    const analysisBypass =
+      memoryIntent.type === 'profile-update' && messageRequestsAnalysis(message);
+    const isWriteIntent =
+      memoryIntent.type === 'save' || memoryIntent.type === 'profile-update';
+    const validatedEntity = isWriteIntent
+      ? extractValidatedMemoryEntity(message, memoryIntent)
+      : null;
+
+    if (analysisBypass) {
+      if (validatedEntity) {
+        await tryAutoSaveProfile(userId, message);
+      }
+    } else {
+      const allowWritePath = !isWriteIntent || Boolean(validatedEntity);
+      const allowExplicitClarify =
+        isWriteIntent &&
+        !validatedEntity &&
+        (memoryIntent.clarity === 'explicit' || memoryIntent.clarity === 'ambiguous');
+
+      if (allowWritePath || allowExplicitClarify || memoryIntent.clarity === 'ambiguous') {
+        const memoryResult = await processMemoryIntent(userId, message, memoryIntent, {
+          founderSession,
+        });
+        const mayShortCircuit =
+          memoryResult.handled &&
+          (memoryResult.memoryUpdated === true ||
+            memoryIntent.type === 'recall' ||
+            memoryIntent.type === 'forget' ||
+            allowExplicitClarify ||
+            memoryIntent.clarity === 'ambiguous');
+
+        if (mayShortCircuit) {
+          return applyPrivacyGuardToResult(
+            {
+              status: memoryResult.error ? 'error' : 'complete',
+              reply: memoryResult.reply ?? '',
+              intent,
+              engine: 'memory',
+              memoryUpdated: memoryResult.memoryUpdated ?? false,
+              errorCode: memoryResult.error ? 'MEMORY_FAILURE' : undefined,
+              data: {
+                mode,
+                profile: resolveChatProfile(mode),
+                memoryHandled: true,
+                model: 'memory',
+                provider: 'atlas-memory',
+                tokensUsed: 0,
+                costUsd: 0,
+                latencyMs: 0,
+                founderSession: Boolean(founderSession),
+                founderId: founderSession?.knowledge.id ?? null,
+                pipelineDebug,
+                pipelineVersion: PIPELINE_VERSION,
+              },
+            },
+            privacyGuardCtx,
+          );
+        }
+      }
+    }
+  }
+
+  // ── Identity clarification (before founder-privacy biography short-circuit) ──
+  // Casual intents must not be stolen by bare-token name clarification.
+  {
+    const casualIntent = detectConversationIntent(message);
+    const skipIdentityForCasual = [
+      'greeting',
+      'how_are_you',
+      'thanks',
+      'ping',
+      'fatigue',
+      'get_current_hijri_date',
+    ].includes(casualIntent);
+
+    const identityAnalysis = analyzeIdentityClaim(message);
+    const profileName =
+      userId && userId !== 'web:anonymous'
+        ? getUserMemory(userId)?.profile?.name?.trim() || null
+        : null;
+
+    if (!skipIdentityForCasual) {
+    // Verified founder self-ID / recognition — confirm from profile, never clarify away.
+    const founderSelfConfirm =
+      Boolean(founderSession) &&
+      (isFounderSelfNameRecognitionQuestion(message, founderSession) ||
+        (identityAnalysis.kind === 'ambiguous' &&
+          !shouldClarifyIdentityClaim(identityAnalysis, founderSession)) ||
+        (identityAnalysis.kind === 'role_claim' &&
+          !shouldClarifyIdentityClaim(identityAnalysis, founderSession)));
+
+    if (founderSelfConfirm && founderSession) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: buildFounderVerifiedIdentityReply(founderSession),
+          intent: 'identity:founder_verified',
+          engine: 'identity-claims',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            identityKind: 'founder_verified',
+            identityClaims: collectVerifiedIdentityClaims({
+              message,
+              analysis: identityAnalysis,
+              authenticatedProfile: profileName ? { name: profileName } : null,
+              founderSession,
+            }),
+            founderSession: true,
+            founderId: founderSession.knowledge.id,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            model: 'deterministic',
+            provider: 'atlas-identity-claims',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+
+    if (
+      identityAnalysis.kind === 'ambiguous' ||
+      identityAnalysis.kind === 'role_claim' ||
+      privacyEvaluation.requestType === 'ambiguous_identity' ||
+      privacyEvaluation.requestType === 'unverified_role_claim'
+    ) {
+      if (shouldClarifyIdentityClaim(identityAnalysis, founderSession)) {
+        const preferredName = founderSession
+          ? getFounderPreferredName(founderSession)
+          : null;
+        const reply =
+          identityAnalysis.kind === 'role_claim' &&
+          preferredName &&
+          identityAnalysis.name &&
+          identityAnalysis.name.toLocaleLowerCase('tr-TR') !==
+            preferredName.toLocaleLowerCase('tr-TR')
+            ? buildNameConflictClarifyReply(preferredName, identityAnalysis.name)
+            : buildAmbiguousIdentityClarifyReply(identityAnalysis);
+
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply,
+            intent: `identity:${identityAnalysis.kind || privacyEvaluation.requestType}`,
+            engine: 'identity-claims',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              identityKind: identityAnalysis.kind,
+              identityClaims: collectVerifiedIdentityClaims({
+                message,
+                analysis: identityAnalysis,
+                authenticatedProfile: profileName ? { name: profileName } : null,
+                founderSession,
+              }),
+              founderSession: Boolean(founderSession),
+              founderId: founderSession?.knowledge?.id ?? null,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+              model: 'deterministic',
+              provider: 'atlas-identity-claims',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+    }
+    } // end !skipIdentityForCasual
+
+    if (
+      identityAnalysis.name &&
+      profileName &&
+      identityAnalysis.name.toLocaleLowerCase('tr-TR') !==
+        profileName.toLocaleLowerCase('tr-TR') &&
+      (identityAnalysis.kind === 'explicit_name' ||
+        identityAnalysis.kind === 'conversation_address')
+    ) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: buildNameConflictClarifyReply(profileName, identityAnalysis.name),
+          intent: 'identity:name_conflict',
+          engine: 'identity-claims',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            identityKind: 'name_conflict',
+            model: 'deterministic',
+            provider: 'atlas-identity-claims',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+
+    // Conversation-scoped address preference — use in-thread, do not write memory.
+    if (
+      identityAnalysis.kind === 'conversation_address' &&
+      identityAnalysis.name &&
+      !identityAnalysis.wantsPermanentMemory
+    ) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: buildConversationAddressAck(identityAnalysis.name, {
+            conversationScoped: true,
+          }),
+          intent: 'identity:conversation_address',
+          engine: 'identity-claims',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIdentity: { preferredName: identityAnalysis.name },
+            identityClaims: collectVerifiedIdentityClaims({
+              message,
+              analysis: identityAnalysis,
+              authenticatedProfile: profileName ? { name: profileName } : null,
+            }),
+            model: 'deterministic',
+            provider: 'atlas-identity-claims',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+
+    // Explicit name intro without save verb: conversation use + offer permanent save.
+    if (
+      identityAnalysis.kind === 'explicit_name' &&
+      identityAnalysis.name &&
+      !identityAnalysis.wantsPermanentMemory &&
+      !memoryIntent?.type
+    ) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: buildConversationAddressAck(identityAnalysis.name, {
+            conversationScoped: true,
+          }),
+          intent: 'identity:explicit_name_session',
+          engine: 'identity-claims',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIdentity: { preferredName: identityAnalysis.name },
+            identityClaims: collectVerifiedIdentityClaims({
+              message,
+              analysis: identityAnalysis,
+              authenticatedProfile: profileName ? { name: profileName } : null,
+            }),
+            model: 'deterministic',
+            provider: 'atlas-identity-claims',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
+  // Privacy short-circuit BEFORE LLM (backend enforcement).
   if (shouldShortCircuitPrivacy(privacyEvaluation) && privacyEvaluation.safeReply) {
     try {
       logPrivacyEvent({
@@ -503,140 +1112,28 @@ export async function processAtlasMessage(input, options = {}) {
     );
   }
 
-  const history = input.history ?? [];
-  const mode = options.mode ?? detectAnalysisMode(message);
-  const founderSession =
-    userId && userId !== 'web:anonymous' ? resolveFounderSession(userId) : null;
-  const pipelineDebug = buildFounderPipelineDebug(input, founderSession);
-
-  logFounderPipelineDebug(pipelineDebug, `Atlas/${input.channel ?? 'web'}`);
-
-  const memoryIntent = userId && userId !== 'web:anonymous' ? detectMemoryIntent(message) : { type: null };
-  const tarotIntent = detectTarotSpreadIntent(message, history);
-  const intent = resolveIntentLabel(message, tarotIntent, memoryIntent);
-
-  // ── Memory commands ──
-  if (userId && userId !== 'web:anonymous') {
-    if (memoryIntent.type && !(memoryIntent.type === 'profile-update' && messageRequestsAnalysis(message))) {
-      const memoryResult = await processMemoryIntent(userId, message, memoryIntent, {
-        founderSession,
-      });
-      if (memoryResult.handled) {
-        return applyPrivacyGuardToResult(
-          {
-            status: memoryResult.error ? 'error' : 'complete',
-            reply: memoryResult.reply ?? '',
-            intent,
-            engine: 'memory',
-            memoryUpdated: memoryResult.memoryUpdated ?? false,
-            errorCode: memoryResult.error ? 'MEMORY_FAILURE' : undefined,
-            data: {
-              mode,
-              profile: resolveChatProfile(mode),
-              memoryHandled: true,
-              model: 'memory',
-              provider: 'atlas-memory',
-              tokensUsed: 0,
-              costUsd: 0,
-              latencyMs: 0,
-              founderSession: Boolean(founderSession),
-              founderId: founderSession?.knowledge.id ?? null,
-              pipelineDebug,
-              pipelineVersion: PIPELINE_VERSION,
-            },
-          },
-          privacyGuardCtx,
-        );
-      }
-    } else if (memoryIntent.type === 'profile-update') {
-      await tryAutoSaveProfile(userId, message);
-    }
-  }
-
   // ── Deterministic casual / identity replies (shared Web + Telegram) ──
+  // Images must always reach the multimodal LLM — never short-circuit.
   const wantsPersonalAnalysis =
     detectPersonalAnalysisIntent(message) || shouldRouteToPersonalAnalysis(message);
 
-  if (!tarotIntent.active && !wantsPersonalAnalysis) {
-    const deterministic = tryDeterministicConversationReply({
-      message,
-      userId,
-      founderSession,
-    });
-    if (deterministic) {
-      const styleDebug = buildStyleRuntimeDebug({
-        channel: input.channel,
-        userId,
-        founderSession,
-        conversationIntent: deterministic.intent,
-        responseMode: 'deterministic',
-        maxTokens: 0,
-        profile: resolveChatProfile(mode),
-        tarotActive: false,
-      });
-      logStyleRuntimeDebug(styleDebug);
+  if (!hasImage && !tarotIntent.active && !wantsPersonalAnalysis) {
+    const synthesisIntentEarly = detectCrossLayerSynthesisIntent(message);
+    // Fate refusal always wins — even over multi-layer synthesis requests.
+    const astrologyFlowEarly = tryAstrologyFlowReply({ message, history, userId });
+    if (astrologyFlowEarly?.intent === 'fate_refusal') {
       return applyPrivacyGuardToResult(
         {
           status: 'complete',
-          reply: deterministic.reply,
-          intent: `conversation:${deterministic.intent}`,
-          engine: 'conversation-style',
-          memoryUpdated: false,
-          data: {
-            mode,
-            profile: resolveChatProfile(mode),
-            conversationIntent: deterministic.intent,
-            founderSession: Boolean(founderSession),
-            founderId: founderSession?.knowledge.id ?? null,
-            pipelineDebug,
-            pipelineVersion: PIPELINE_VERSION,
-            styleDebug,
-            model: 'deterministic',
-            provider: 'atlas-conversation-style',
-            tokensUsed: 0,
-            costUsd: 0,
-            latencyMs: 0,
-          },
-        },
-        privacyGuardCtx,
-      );
-    }
-
-    const astrologyFlow = tryAstrologyFlowReply({
-      message,
-      history,
-      userId,
-    });
-    if (astrologyFlow) {
-      const styleDebug = buildStyleRuntimeDebug({
-        channel: input.channel,
-        userId,
-        founderSession,
-        conversationIntent: astrologyFlow.intent,
-        responseMode: 'astrology-clarify',
-        maxTokens: 0,
-        profile: resolveChatProfile(mode),
-        tarotActive: false,
-      });
-      logStyleRuntimeDebug(styleDebug);
-      return applyPrivacyGuardToResult(
-        {
-          status: 'complete',
-          reply: astrologyFlow.reply,
-          intent: `astrology:${astrologyFlow.intent}`,
+          reply: astrologyFlowEarly.reply,
+          intent: `astrology:${astrologyFlowEarly.intent}`,
           engine: 'astrology-flow',
           memoryUpdated: false,
           data: {
             mode,
             profile: resolveChatProfile(mode),
-            conversationIntent: astrologyFlow.intent,
+            conversationIntent: astrologyFlowEarly.intent,
             astrologyFlowVersion: ASTROLOGY_FLOW_VERSION,
-            founderSession: Boolean(founderSession),
-            founderId: founderSession?.knowledge.id ?? null,
-            pipelineDebug,
-            pipelineVersion: PIPELINE_VERSION,
-            styleDebug,
-            ...(astrologyFlow.data ?? {}),
             model: 'deterministic',
             provider: 'atlas-astrology-flow',
             tokensUsed: 0,
@@ -646,6 +1143,132 @@ export async function processAtlasMessage(input, options = {}) {
         },
         privacyGuardCtx,
       );
+    }
+
+    // Multi-layer synthesis must not be short-circuited by astrology clarify prompts.
+    if (!synthesisIntentEarly.wantsSynthesis) {
+      // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
+      const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
+      if (abjadDeterministic?.reply) {
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: abjadDeterministic.reply,
+            intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+            engine: 'abjad-verification',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              abjadVerification: {
+                version: ABJAD_VERIFICATION_VERSION,
+                confidence: abjadDeterministic.confidence,
+                kind: abjadDeterministic.intent?.kind,
+                claimAccepted: abjadDeterministic.claimAccepted === true,
+                spelling: abjadDeterministic.spelling,
+                calcTotal:
+                  abjadDeterministic.calc?.total ??
+                  abjadDeterministic.calc?.primary?.total ??
+                  abjadDeterministic.calc?.bare?.total ??
+                  null,
+              },
+              model: 'deterministic',
+              provider: 'atlas-abjad-verification',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
+      const deterministic = tryDeterministicConversationReply({
+        message,
+        userId,
+        founderSession,
+      });
+      if (deterministic) {
+        const styleDebug = buildStyleRuntimeDebug({
+          channel: input.channel,
+          userId,
+          founderSession,
+          conversationIntent: deterministic.intent,
+          responseMode: 'deterministic',
+          maxTokens: 0,
+          profile: resolveChatProfile(mode),
+          tarotActive: false,
+        });
+        logStyleRuntimeDebug(styleDebug);
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: deterministic.reply,
+            intent: `conversation:${deterministic.intent}`,
+            engine: 'conversation-style',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              conversationIntent: deterministic.intent,
+              founderSession: Boolean(founderSession),
+              founderId: founderSession?.knowledge.id ?? null,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+              styleDebug,
+              model: 'deterministic',
+              provider: 'atlas-conversation-style',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
+      if (astrologyFlowEarly) {
+        const styleDebug = buildStyleRuntimeDebug({
+          channel: input.channel,
+          userId,
+          founderSession,
+          conversationIntent: astrologyFlowEarly.intent,
+          responseMode: 'astrology-clarify',
+          maxTokens: 0,
+          profile: resolveChatProfile(mode),
+          tarotActive: false,
+        });
+        logStyleRuntimeDebug(styleDebug);
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: astrologyFlowEarly.reply,
+            intent: `astrology:${astrologyFlowEarly.intent}`,
+            engine: 'astrology-flow',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              conversationIntent: astrologyFlowEarly.intent,
+              astrologyFlowVersion: ASTROLOGY_FLOW_VERSION,
+              founderSession: Boolean(founderSession),
+              founderId: founderSession?.knowledge.id ?? null,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+              styleDebug,
+              ...(astrologyFlowEarly.data ?? {}),
+              model: 'deterministic',
+              provider: 'atlas-astrology-flow',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
     }
   }
 
@@ -769,17 +1392,47 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
-  const astrologyIntent = detectAstrologyFlowIntent(message, history);
-  const astrologyAnalysis = isAstrologyAnalysisIntent(astrologyIntent);
-  const effectiveMode = astrologyAnalysis ? 'daily-guide' : mode;
+  const astrologyIntent = healthSafety.active ? null : detectAstrologyFlowIntent(message, history);
+  const synthesisIntentPre = healthSafety.active
+    ? {
+        wantsSynthesis: false,
+        combineExplicit: false,
+        layersRequested: [],
+        isUserExample: false,
+        skippedReason: 'health_safety',
+      }
+    : detectCrossLayerSynthesisIntent(message);
+  const astrologyAnalysis =
+    isAstrologyAnalysisIntent(astrologyIntent) ||
+    (synthesisIntentPre.wantsSynthesis &&
+      synthesisIntentPre.layersRequested.includes('astrology'));
+  const effectiveMode =
+    astrologyAnalysis || synthesisIntentPre.wantsSynthesis
+      ? synthesisIntentPre.wantsSynthesis
+        ? 'meta-synthesis'
+        : 'daily-guide'
+      : mode;
 
   const conversationIntent = astrologyIntent ?? detectConversationIntent(message);
   const promptBundle = buildAtlasPromptBundle(input, {
     mode: effectiveMode,
     requesterContext,
     privacyEvaluation,
+    atlasBotVerified: options.atlasBotVerified,
   });
   let { systemPrompt, userPrompt, profile, founderProfile } = promptBundle;
+
+  const trustedSpeakerRuntime = resolveTrustedSpeakerForPrompt(input, {
+    atlasBotVerified: options.atlasBotVerified,
+  });
+  privacyGuardCtx.speakerGuard = {
+    senderDisplayName: trustedSpeakerRuntime.senderDisplayName,
+    mentionedPeople: trustedSpeakerRuntime.mentionedPeople,
+    message,
+  };
+  if (healthSafety.active) {
+    systemPrompt = `${systemPrompt}\n\n${buildHealthSafetyPromptDirective()}`;
+  }
 
   let astrologyContext = null;
   if (astrologyAnalysis) {
@@ -789,6 +1442,30 @@ export async function processAtlasMessage(input, options = {}) {
       userId,
     });
     userPrompt = `${userPrompt}\n\n${astrologyContext.promptBlock}`;
+  }
+
+  // ── Cross-layer synthesis (deterministic skeleton before LLM) — at most once ──
+  const synthesisIntent = synthesisIntentPre;
+  let synthesisBridge = {
+    ran: false,
+    skippedReason: 'not_evaluated',
+    synthesis: null,
+    promptBlock: null,
+    intentInfo: synthesisIntent,
+  };
+  if (synthesisIntent.wantsSynthesis) {
+    synthesisBridge = runMessageCrossLayerSynthesis({
+      message,
+      history,
+      userId,
+      sessionId: input.conversationId ?? userId ?? 'anonymous',
+      astrologyContext,
+      verseStore: options.verseStore ?? null,
+      intentInfo: synthesisIntent,
+    });
+    if (synthesisBridge.ran && synthesisBridge.promptBlock) {
+      userPrompt = `${userPrompt}\n\n${synthesisBridge.promptBlock}`;
+    }
   }
 
   const maxTokens = resolveReplyMaxTokens(message, {
@@ -805,42 +1482,62 @@ export async function processAtlasMessage(input, options = {}) {
     conversationIntent,
     responseMode: tarotIntent.active
       ? `llm:tarot:${tarotIntent.intent}`
-      : astrologyAnalysis
-        ? `llm:astrology:${astrologyIntent}`
-        : `llm:${profile}`,
+      : synthesisBridge.ran
+        ? 'llm:cross-layer-synthesis'
+        : astrologyAnalysis
+          ? `llm:astrology:${astrologyIntent}`
+          : `llm:${profile}`,
     maxTokens,
     profile,
     tarotActive: tarotIntent.active,
   });
   logStyleRuntimeDebug(styleDebug);
 
+  const invokeLlm = options.callOpenAI ?? callOpenAI;
+
   try {
-    const result = await callOpenAI({
+    const result = await invokeLlm({
       systemPrompt,
       userPrompt,
       model: options.model,
       temperature: options.temperature ?? 0.4,
       maxTokens,
+      ...(hasImage
+        ? {
+            imageBase64: input.image.base64,
+            mimeType: input.image.mimeType || 'image/jpeg',
+          }
+        : {}),
     });
 
-    const reply = extractResponseText(result);
+    let reply = extractResponseText(result);
+    let synthesisGuard = null;
+    if (synthesisBridge.ran && synthesisBridge.synthesis) {
+      synthesisGuard = guardSynthesisReply(reply, synthesisBridge.synthesis);
+      reply = synthesisGuard.reply;
+    }
+
     const engine = tarotIntent.active
       ? 'tarot'
-      : astrologyAnalysis
-        ? 'astrology-analysis'
-        : profile === 'meta-synthesis'
-          ? 'meta-synthesis'
-          : 'conversation';
+      : synthesisBridge.ran
+        ? 'cross-layer-synthesis'
+        : astrologyAnalysis
+          ? 'astrology-analysis'
+          : profile === 'meta-synthesis'
+            ? 'meta-synthesis'
+            : 'conversation';
 
     return applyPrivacyGuardToResult(
       {
-        status: 'complete',
+        status: synthesisBridge.synthesis?.status === 'partial' ? 'complete' : 'complete',
         reply,
         intent: founderProfile
-          ? `${astrologyAnalysis ? `astrology:${astrologyIntent}` : intent}:founder`
-          : astrologyAnalysis
-            ? `astrology:${astrologyIntent}`
-            : intent,
+          ? `${synthesisBridge.ran ? 'cross-layer-synthesis' : astrologyAnalysis ? `astrology:${astrologyIntent}` : intent}:founder`
+          : synthesisBridge.ran
+            ? 'cross-layer-synthesis'
+            : astrologyAnalysis
+              ? `astrology:${astrologyIntent}`
+              : intent,
         engine,
         memoryUpdated: false,
         data: {
@@ -863,6 +1560,25 @@ export async function processAtlasMessage(input, options = {}) {
           tokensUsed: result.tokensUsed,
           costUsd: result.costUsd,
           latencyMs: result.latencyMs,
+          crossLayerSynthesis: synthesisBridge.ran
+            ? {
+                bridgeVersion: MESSAGE_SYNTHESIS_BRIDGE_VERSION,
+                ran: true,
+                once: true,
+                status: synthesisBridge.synthesis?.status ?? null,
+                primaryRelationship: synthesisBridge.synthesis?.primaryRelationship?.type ?? null,
+                confidence: synthesisBridge.synthesis?.confidence ?? null,
+                failedLayers: synthesisBridge.synthesis?.failedLayers ?? [],
+                sourceVisibility: synthesisBridge.synthesis?.sourceVisibility ?? [],
+                guardViolations: synthesisGuard?.violations ?? [],
+                usedDeterministicFallback: Boolean(synthesisGuard?.usedDeterministicFallback),
+                layersUsed: (synthesisBridge.collection?.layers ?? []).map((l) => l.layerId),
+              }
+            : {
+                ran: false,
+                once: true,
+                skippedReason: synthesisBridge.skippedReason ?? 'no_multi_layer_intent',
+              },
         },
       },
       privacyGuardCtx,
@@ -882,10 +1598,47 @@ export async function processAtlasMessage(input, options = {}) {
 
     console.error(`[Atlas] pipeline error (${errorCode}):`, msg);
 
+    // Timeout / model failure: prefer deterministic synthesis prose over hard failure when available.
+    if (synthesisBridge.ran && synthesisBridge.synthesis?.prose && (errorCode === 'TIMEOUT' || errorCode === 'MODEL_UNAVAILABLE')) {
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: synthesisBridge.synthesis.prose,
+          intent: 'cross-layer-synthesis',
+          engine: 'cross-layer-synthesis',
+          memoryUpdated: false,
+          data: {
+            mode: effectiveMode,
+            profile,
+            fallback: 'deterministic-synthesis-on-llm-error',
+            errorCode,
+            crossLayerSynthesis: {
+              bridgeVersion: MESSAGE_SYNTHESIS_BRIDGE_VERSION,
+              ran: true,
+              once: true,
+              status: synthesisBridge.synthesis.status,
+              primaryRelationship: synthesisBridge.synthesis.primaryRelationship?.type ?? null,
+              usedDeterministicFallback: true,
+              llmError: errorCode,
+            },
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+
+    const healthFallback =
+      errorCode === 'TIMEOUT' || errorCode === 'MODEL_UNAVAILABLE' || errorCode === 'ENGINE_FAILURE'
+        ? buildUserVisibleFallback(message)
+        : null;
+
     return applyPrivacyGuardToResult(
       {
         status,
-        reply: normalizeErrorReply(errorCode, msg),
+        reply: healthFallback?.reply ?? normalizeErrorReply(errorCode, msg),
         errorCode,
         intent: founderSession ? `${intent}:founder` : intent,
         engine: 'openai',
@@ -897,6 +1650,10 @@ export async function processAtlasMessage(input, options = {}) {
           founderBiographyLoaded: Boolean(founderSession?.biography),
           pipelineDebug,
           pipelineVersion: PIPELINE_VERSION,
+          resultStatus: healthFallback?.resultStatus,
+          crossLayerSynthesis: synthesisBridge.ran
+            ? { ran: true, once: true, llmError: errorCode }
+            : { ran: false, once: true },
         },
       },
       privacyGuardCtx,

@@ -9,6 +9,9 @@ import {
   tryDeterministicConversationReply,
   containsForbiddenCasualPhrase,
   FORBIDDEN_CASUAL_PHRASES,
+  isConceptualHijriCalendarQuery,
+  isCurrentHijriDateQuery,
+  formatCurrentHijriDateReply,
 } from '../server/atlas-conversation-style.js';
 import { processAtlasMessage } from '../server/atlas-message-service.js';
 import { clearAtlasModuleCache } from '../server/atlas-prompt-loader.js';
@@ -46,7 +49,37 @@ const intentCases = [
   ['Bugün biraz yorgunum.', 'fatigue'],
   ['Backend neden cevap vermiyor?', 'backend_diag'],
   ['Bunu detaylı anlat.', 'detail'],
+  ['Hicri?', 'get_current_hijri_date'],
+  ['Hicrî?', 'get_current_hijri_date'],
+  ['Hicri tarih?', 'get_current_hijri_date'],
+  ['Bugün hicri?', 'get_current_hijri_date'],
+  ['Hicri bugün kaç?', 'get_current_hijri_date'],
+  ['Bugün hicri tarih ne?', 'get_current_hijri_date'],
+  ['Bugün hicri tarih nedir?', 'get_current_hijri_date'],
+  ['Hicri tarih nedir?', 'get_current_hijri_date'],
+  ['Hicrî tarih nedir?', 'get_current_hijri_date'],
+  ['Şu an hicri hangi gündeyiz?', 'get_current_hijri_date'],
+  ['Hicri ayın kaçı?', 'get_current_hijri_date'],
+  ['Hicri ay ne?', 'get_current_hijri_date'],
+  ['Bugünün hicri tarihi', 'get_current_hijri_date'],
+  ['Bugünün hicri tarihi ne?', 'get_current_hijri_date'],
+  ['Bugünün hicri tarihi nedir?', 'get_current_hijri_date'],
+  ['Bugünün hicri tarihi kaç?', 'get_current_hijri_date'],
+  ['Bugünün hicri tarihi?', 'get_current_hijri_date'],
+  ['Bugün hicri tarih kaç?', 'get_current_hijri_date'],
+  ['bugun hicri?', 'get_current_hijri_date'],
+  ['Hicri kaç?', 'get_current_hijri_date'],
+  ['Hicri tarih kaç?', 'get_current_hijri_date'],
+  ['Şu an hicri kaç?', 'get_current_hijri_date'],
+  ['Bugün hangi hicri aydayız?', 'get_current_hijri_date'],
+  ['Bugünün hijri tarihi ne?', 'get_current_hijri_date'],
+  ['Hicri takvim nedir?', 'other'],
+  ['Hicri takvim nasıl hesaplanır?', 'other'],
+  ['Hicri ve Miladi takvim arasındaki fark nedir?', 'other'],
+  ['Hicri ay nedir?', 'other'],
+  ['Hicri takvimin başlangıcı nedir?', 'other'],
 ];
+
 
 for (const [msg, expected] of intentCases) {
   const got = detectConversationIntent(msg);
@@ -57,6 +90,66 @@ for (const [msg, expected] of intentCases) {
     reply: got,
     pass: got === expected,
     reason: got === expected ? '' : `expected ${expected}`,
+  });
+}
+
+record({
+  label: 'conceptual:Hicri takvim nedir',
+  words: 0,
+  founderResolved: null,
+  reply: String(isConceptualHijriCalendarQuery('Hicri takvim nedir?')),
+  pass:
+    isConceptualHijriCalendarQuery('Hicri takvim nedir?') === true &&
+    isCurrentHijriDateQuery('Hicri takvim nedir?') === false,
+  reason: '',
+});
+
+record({
+  label: 'conceptual:not Hicri tarih nedir',
+  words: 0,
+  founderResolved: null,
+  reply: String(isConceptualHijriCalendarQuery('Hicri tarih nedir?')),
+  pass:
+    isConceptualHijriCalendarQuery('Hicri tarih nedir?') === false &&
+    isCurrentHijriDateQuery('Hicri tarih nedir?') === true,
+  reason: '',
+});
+
+{
+  const rejectCurrent = [
+    'Hicri takvim nedir?',
+    'Hicri takvim nasıl hesaplanır?',
+    'Hicri ve Miladi takvim arasındaki fark nedir?',
+    'Hicri ay nedir?',
+    'Hicri takvimin başlangıcı nedir?',
+    'ne?',
+    'nedir?',
+    'kaç?',
+  ];
+  for (const msg of rejectCurrent) {
+    record({
+      label: `reject-current:${msg}`,
+      words: 0,
+      founderResolved: null,
+      reply: detectConversationIntent(msg),
+      pass: isCurrentHijriDateQuery(msg) === false,
+      reason: isCurrentHijriDateQuery(msg) ? 'should not be current hijri date' : '',
+    });
+  }
+}
+
+{
+  const fixed = formatCurrentHijriDateReply(
+    new Date('2026-08-01T12:00:00+03:00'),
+    'Europe/Istanbul',
+  );
+  record({
+    label: 'format:2026-08-01 → 18 Safer 1448',
+    words: wordCount(fixed),
+    founderResolved: null,
+    reply: fixed,
+    pass: /18 Safer 1448/.test(fixed) && !/Muharrem|24 Muharrem/i.test(fixed),
+    reason: /18 Safer 1448/.test(fixed) ? '' : `got: ${fixed}`,
   });
 }
 
@@ -124,7 +217,32 @@ const det = [
     userId: 'telegram:7142880605',
     maxWords: 15,
   },
+  {
+    label: 'det:Hicri?',
+    message: 'Hicri?',
+    userId: 'telegram:7142880605',
+    maxWords: 25,
+    mustMatch: /hicri takvime göre/i,
+    mustNot: /hitap|muharrem/i,
+  },
+  {
+    label: 'det:Hicri tarih nedir',
+    message: 'Hicri tarih nedir',
+    userId: 'web:style-web-1',
+    maxWords: 25,
+    mustMatch: /hicri takvime göre/i,
+    mustNot: /hitap|takvim.*nedir|muharrem/i,
+  },
+  {
+    label: 'det:Bugünün hicri tarihi ne?',
+    message: 'Bugünün hicri tarihi ne?',
+    userId: 'web:style-web-1',
+    maxWords: 25,
+    mustMatch: /hicri takvime göre/i,
+    mustNot: /hitap|muharrem/i,
+  },
 ];
+
 
 for (const c of det) {
   const out = tryDeterministicConversationReply({
@@ -152,7 +270,7 @@ for (const c of det) {
   });
 }
 
-// ── Prompt assembly: casual founder must NOT inject heavy blocks ──
+// ── Prompt assembly: casual founder gets compact identity, not heavy knowledge ──
 const casualBundle = buildAtlasPromptBundle({
   channel: 'telegram',
   userId: 'telegram:7142880605',
@@ -160,14 +278,27 @@ const casualBundle = buildAtlasPromptBundle({
   message: 'Merhaba',
   history: [],
 });
-const heavyInjected = Boolean(casualBundle.founderIdentityContext);
+const heavyKnowledgeInjected = Boolean(casualBundle.founderProfileKnowledgeContext);
+const compactIdentityInjected = Boolean(casualBundle.founderIdentityContext);
 record({
-  label: 'prompt:casual no heavy founder block',
+  label: 'prompt:casual compact identity, no heavy knowledge',
   words: 0,
   founderResolved: true,
-  reply: heavyInjected ? 'INJECTED' : 'ok',
-  pass: !heavyInjected && casualBundle.systemPrompt.includes('ATLAS CONVERSATION STYLE'),
-  reason: heavyInjected ? 'founder identity still injected' : '',
+  reply: heavyKnowledgeInjected
+    ? 'HEAVY'
+    : compactIdentityInjected
+      ? 'compact'
+      : 'missing-identity',
+  pass:
+    compactIdentityInjected &&
+    !heavyKnowledgeInjected &&
+    casualBundle.systemPrompt.includes('ATLAS CONVERSATION STYLE') &&
+    casualBundle.systemPrompt.includes('Kurucu Oturumu Aktif'),
+  reason: heavyKnowledgeInjected
+    ? 'heavy founder knowledge still injected on greeting'
+    : !compactIdentityInjected
+      ? 'compact founder identity missing on greeting'
+      : '',
 });
 
 const whoBundle = buildAtlasPromptBundle({
@@ -198,6 +329,24 @@ const pipelineCases = [
   { label: 'pipe:Atlas', message: 'Atlas', userId: 'telegram:7142880605', channel: 'telegram', max: 3 },
   { label: 'pipe:Yorgun', message: 'Bugün biraz yorgunum.', userId: 'telegram:7142880605', channel: 'telegram', max: 15 },
   { label: 'pipe:Backend', message: 'Backend neden cevap vermiyor?', userId: 'telegram:7142880605', channel: 'telegram', max: 25 },
+  {
+    label: 'pipe:Hicri?',
+    message: 'Hicri?',
+    userId: 'telegram:7142880605',
+    channel: 'telegram',
+    max: 25,
+    mustMatch: /hicri takvime göre/i,
+    mustNot: /hitap/i,
+  },
+  {
+    label: 'pipe:Hicri tarih nedir',
+    message: 'Hicri tarih nedir',
+    userId: 'web:style-web-1',
+    channel: 'web',
+    max: 25,
+    mustMatch: /hicri takvime göre/i,
+    mustNot: /hitap|24 Muharrem/i,
+  },
 ];
 
 for (const c of pipelineCases) {
@@ -216,6 +365,8 @@ for (const c of pipelineCases) {
   const reasons = [];
   if (words > c.max) reasons.push(`words ${words}>${c.max}`);
   if (forbidden.length) reasons.push(`forbidden ${forbidden.join(',')}`);
+  if (c.mustMatch && !c.mustMatch.test(reply)) reasons.push('mustMatch failed');
+  if (c.mustNot && c.mustNot.test(reply)) reasons.push('mustNot failed');
   if (c.label.includes('Ben kimim F') && /ben atlas/i.test(reply)) reasons.push('self as user');
   if (c.label.includes('Ben kimim NF') && /lara|kurucu/i.test(reply)) reasons.push('founder leak');
   if (c.label.includes('Sen kimsin') && !/ben atlas/i.test(reply)) reasons.push('not atlas');
@@ -225,6 +376,85 @@ for (const c of pipelineCases) {
     founderResolved,
     reply,
     pass: reasons.length === 0 && out.status === 'complete',
+    reason: reasons.join('; '),
+  });
+}
+
+// ── Required fixture: Bugünün hicri tarihi ne? — deterministic, no LLM ──
+{
+  const fixtureMsg = 'Bugünün hicri tarihi ne?';
+  let llmCalled = false;
+  const expectedFixed = formatCurrentHijriDateReply(
+    new Date('2026-08-01T12:00:00+03:00'),
+    'Europe/Istanbul',
+  );
+  const expectedNow = formatCurrentHijriDateReply(new Date(), 'Europe/Istanbul');
+
+  const tg = await processAtlasMessage(
+    {
+      channel: 'telegram',
+      userId: 'telegram:7142880605',
+      conversationId: 'pipe-hijri-bugunun-tg',
+      message: fixtureMsg,
+      history: [],
+      metadata: { telegramFromId: '7142880605' },
+    },
+    {
+      callOpenAI: async () => {
+        llmCalled = true;
+        throw new Error('LLM must not be called for get_current_hijri_date');
+      },
+    },
+  );
+  const web = await processAtlasMessage(
+    {
+      channel: 'web',
+      userId: 'web:style-web-1',
+      conversationId: 'pipe-hijri-bugunun-web',
+      message: fixtureMsg,
+      history: [],
+    },
+    {
+      callOpenAI: async () => {
+        llmCalled = true;
+        throw new Error('LLM must not be called for get_current_hijri_date');
+      },
+    },
+  );
+
+  const reasons = [];
+  if (detectConversationIntent(fixtureMsg) !== 'get_current_hijri_date') {
+    reasons.push('intent not get_current_hijri_date');
+  }
+  if (tg.data?.conversationIntent !== 'get_current_hijri_date') {
+    reasons.push(`tg conversationIntent=${tg.data?.conversationIntent}`);
+  }
+  if (tg.engine !== 'conversation-style') reasons.push(`tg engine=${tg.engine}`);
+  if (web.engine !== 'conversation-style') reasons.push(`web engine=${web.engine}`);
+  if (llmCalled) reasons.push('LLM was invoked');
+  if (tg.reply !== web.reply) reasons.push('telegram/web reply mismatch');
+  if (tg.reply !== expectedNow) reasons.push('reply != formatCurrentHijriDateReply(now)');
+  if (!/hicri takvime göre/i.test(tg.reply ?? '')) reasons.push('missing hicri phrase');
+  if (!/18 Safer 1448/.test(expectedFixed) || /Muharrem/i.test(expectedFixed)) {
+    reasons.push(`fixed Aug1 mapping broken: ${expectedFixed}`);
+  }
+  // When "now" is 1 Aug 2026 Istanbul, live reply must carry 18 Safer 1448 via calendar builder.
+  const nowIstanbulDay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  if (nowIstanbulDay === '2026-08-01' && !/18 Safer 1448/.test(tg.reply ?? '')) {
+    reasons.push('live 2026-08-01 reply missing 18 Safer 1448');
+  }
+
+  record({
+    label: 'pipe:Bugünün hicri tarihi ne? TG+Web LLM-bypass',
+    words: wordCount(tg.reply),
+    founderResolved: Boolean(tg.data?.pipelineDebug?.founderResolved),
+    reply: tg.reply ?? '',
+    pass: reasons.length === 0 && tg.status === 'complete' && web.status === 'complete',
     reason: reasons.join('; '),
   });
 }

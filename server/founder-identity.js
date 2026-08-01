@@ -5,8 +5,15 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { isValidUserId, getUserMemory } from './user-memory.js';
-import { resolveFounderProfile } from './founder-knowledge.js';
+import {
+  lookupFounderIdentity,
+  isAmbiguousFounderIdentity,
+  AMBIGUOUS_IDENTITY_USER_REPLY,
+  DUPLICATE_LINKED_USER_ID,
+} from './founder-knowledge.js';
 import { getFounderBiographyProfile } from './founder-profile.js';
+
+export { AMBIGUOUS_IDENTITY_USER_REPLY, DUPLICATE_LINKED_USER_ID };
 
 export const PIPELINE_VERSION = 'atlas-founder-identity-v1';
 
@@ -26,13 +33,25 @@ export const FOUNDER_FORBIDDEN_DENIALS = [
   'seni ozel bir dosyada saklamiyorum',
   'sıradan bir kullanıcısın',
   'siradan bir kullanicisin',
+  'doğrulanmış bir bilgi yok',
+  'dogrulanmis bir bilgi yok',
+  'doğrulanmış bilgim yok',
+  'dogrulanmis bilgim yok',
+  'elimde doğrulanmış',
+  'elimde dogrulanmis',
+  'seni tanımıyorum',
+  'seni tanimiyorum',
+  'hakkında elimde doğrulanmış',
+  'hakkinda elimde dogrulanmis',
 ];
 
 const IDENTITY_QUESTION_PATTERNS = [
   /\bben kimim\b/i,
+  /\bben sistemde kimim\b/i,
   /\bkim olduğumu\b/i,
   /\bkim oldugumu\b/i,
   /\bkim olduğumu söyle\b/i,
+  /\bbeni\s+tan[ıi](?:d[ıi]n|yor\s+musun)\b/i,
   /\bnormal kullanıcı.*fark\b/i,
   /\bnormal kullanici.*fark\b/i,
   /\baranızdaki fark\b/i,
@@ -44,6 +63,129 @@ const IDENTITY_QUESTION_PATTERNS = [
 ];
 
 /**
+ * @param {string|null|undefined} a
+ * @param {string|null|undefined} b
+ */
+export function namesMatchTr(a, b) {
+  if (!a || !b) return false;
+  return (
+    String(a).trim().toLocaleLowerCase('tr-TR') ===
+    String(b).trim().toLocaleLowerCase('tr-TR')
+  );
+}
+
+/**
+ * @param {FounderSession} session
+ */
+export function getFounderPreferredName(session) {
+  return session?.biography?.preferredName ?? session?.knowledge?.founderName ?? null;
+}
+
+/**
+ * Founder asking about themselves by preferred name ("Lara'yı tanıyor musun?").
+ * Channel-linked founder session required — name text alone never authorizes.
+ * @param {string} message
+ * @param {FounderSession|null|undefined} session
+ */
+export function isFounderSelfNameRecognitionQuestion(message, session) {
+  if (!session?.resolved) return false;
+  const name = getFounderPreferredName(session);
+  if (!name) return false;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `\\b${escaped}(?:'?[nınınun]|'?y[ıi]|'?ya|'?yla)?\\s+tan[ıi](?:yor\\s+musun|d[ıi]n\\s+m[ıi]|r\\s+m[ıi]s[ıi]n)`,
+    'iu',
+  );
+  return re.test(message ?? '');
+}
+
+/**
+ * Deterministic confirmation when a verified founder self-identifies.
+ * @param {FounderSession} session
+ */
+export function buildFounderVerifiedIdentityReply(session) {
+  const name = getFounderPreferredName(session) ?? 'Lara';
+  const title =
+    session.biography?.title ??
+    session.knowledge?.role ??
+    'Cosmicsimya.com! Kurucusu · Atlas Sistem Mimarı';
+  return `Evet. Sen ${name}'sın; ${title} olarak kayıtlısın.`;
+}
+
+/**
+ * Unified identity context — channel ID first; never from message keywords alone.
+ * @param {{
+ *   userId?: string|null,
+ *   channel?: string|null,
+ *   channelUserId?: string|null,
+ *   authenticated?: boolean,
+ *   founderSession?: FounderSession|null,
+ *   memoryLoaded?: boolean,
+ * }} input
+ */
+export function buildUnifiedIdentityContext(input = {}) {
+  const session = input.founderSession ?? null;
+  const preferredName = session ? getFounderPreferredName(session) : null;
+  return {
+    userId: input.userId ?? null,
+    channel: input.channel ?? null,
+    channelUserId: input.channelUserId ?? null,
+    authenticated: Boolean(input.authenticated),
+    isFounder: Boolean(session?.resolved),
+    profileLoaded: Boolean(session?.biography || session?.knowledge),
+    memoryLoaded: Boolean(input.memoryLoaded),
+    profile: session
+      ? {
+          preferredName,
+          role: session.biography?.title ?? session.knowledge?.role ?? null,
+          founderOf: 'Cosmicsimya.com',
+          founderId: session.knowledge?.id ?? null,
+        }
+      : null,
+  };
+}
+
+/**
+ * Safe identity debug lines — env-gated; never logs memory, secrets, or raw IDs.
+ * Enable with ATLAS_IDENTITY_DEBUG=1|true|on
+ * @param {ReturnType<typeof buildUnifiedIdentityContext>} ctx
+ */
+export function logIdentityDebug(ctx) {
+  if (!isIdentityDebugEnabled()) return;
+  console.log(`[identity] channel=${sanitizeDebugChannel(ctx.channel)}`);
+  console.log(`[identity] founderMatched=${Boolean(ctx.isFounder)}`);
+  console.log(`[identity] profileLoaded=${Boolean(ctx.profileLoaded)}`);
+  console.log(`[identity] memoryLoaded=${Boolean(ctx.memoryLoaded)}`);
+}
+
+/**
+ * @returns {boolean}
+ */
+export function isIdentityDebugEnabled() {
+  const raw = String(process.env.ATLAS_IDENTITY_DEBUG ?? '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'on';
+}
+
+/**
+ * Mask identifiers for optional debug output — never full IDs.
+ * @param {string|null|undefined} value
+ */
+export function maskIdentityDebugValue(value) {
+  if (value == null || value === '') return 'null';
+  const s = String(value);
+  if (s.length <= 4) return '****';
+  return `…${s.slice(-4)}`;
+}
+
+function sanitizeDebugChannel(channel) {
+  const c = String(channel ?? 'unknown').toLowerCase();
+  if (c === 'telegram' || c === 'web' || c === 'api') return c;
+  return 'other';
+}
+
+/**
  * @typedef {Object} FounderSession
  * @property {import('./founder-knowledge.js').FounderProfile} knowledge
  * @property {import('./founder-profile.js').FounderBiographyProfile|null} biography
@@ -53,41 +195,46 @@ const IDENTITY_QUESTION_PATTERNS = [
 
 /**
  * Unified founder resolution — same result for Web and Telegram.
+ * Duplicate linkedUserId → fail closed (null session).
  * @param {string|null|undefined} userId
  * @returns {FounderSession|null}
  */
 export function resolveFounderSession(userId) {
-  const id = userId?.trim();
-  if (!id || id === 'web:anonymous' || !isValidUserId(id)) {
+  const lookup = lookupFounderIdentity(userId);
+  if (lookup.status !== 'matched' || !lookup.profile) {
     return null;
   }
 
-  const knowledge = resolveFounderProfile(id);
-  if (!knowledge) {
-    return null;
-  }
-
+  const knowledge = lookup.profile;
   const biography = getFounderBiographyProfile(knowledge.id);
 
   return {
     knowledge,
     biography,
-    userId: id,
+    userId: String(userId).trim(),
     resolved: true,
   };
 }
 
 /**
+ * @param {string|null|undefined} userId
+ */
+export function getFounderIdentityAmbiguity(userId) {
+  return isAmbiguousFounderIdentity(userId);
+}
+
+/**
  * @param {string} message
  */
-export function detectFounderIdentityQuestion(message) {
+export function detectFounderIdentityQuestion(message, founderSession = null) {
   const text = (message ?? '').trim();
   if (!text) return false;
   // "Sen kimsin?" is Atlas self-identity — never treat as user/founder who-am-I.
   if (/\b(sen kimsin|kimsin sen|atlas nedir)\b/i.test(text)) {
     return false;
   }
-  return IDENTITY_QUESTION_PATTERNS.some((p) => p.test(text));
+  if (IDENTITY_QUESTION_PATTERNS.some((p) => p.test(text))) return true;
+  return isFounderSelfNameRecognitionQuestion(text, founderSession);
 }
 
 /**
@@ -191,7 +338,7 @@ export function buildFounderProfileKnowledgeBlock(session) {
  * @param {string} message
  */
 export function buildFounderQuestionDirective(session, message) {
-  if (!detectFounderIdentityQuestion(message)) {
+  if (!detectFounderIdentityQuestion(message, session)) {
     return '';
   }
 
@@ -298,6 +445,19 @@ export function buildFounderPipelineDebug(input, session) {
       ? String(input.metadata.telegramFromId)
       : null;
 
+  const channelUserId =
+    telegramFromId ??
+    (userId?.startsWith('web:') ? userId.slice('web:'.length) : null);
+
+  const identityContext = buildUnifiedIdentityContext({
+    userId: userId || null,
+    channel: input.channel ?? 'web',
+    channelUserId,
+    authenticated: Boolean(userId && userId !== 'web:anonymous'),
+    founderSession: session,
+    memoryLoaded,
+  });
+
   return {
     founderResolved: Boolean(session),
     founderId: session?.knowledge.id ?? null,
@@ -306,17 +466,26 @@ export function buildFounderPipelineDebug(input, session) {
     channel: input.channel ?? 'web',
     userId: userId || null,
     telegramFromId,
+    channelUserId,
+    identityContext,
     pipelineVersion: PIPELINE_VERSION,
   };
 }
 
 /**
- * Always print founder pipeline debug to stdout (backend + telegram terminals).
+ * Env-gated founder/identity pipeline debug (ATLAS_IDENTITY_DEBUG=1|true|on).
+ * Default OFF. Never prints raw userId, telegramFromId, memory, tokens, or linked IDs.
  * @param {ReturnType<typeof buildFounderPipelineDebug>} debug
  * @param {string} [source]
  */
 export function logFounderPipelineDebug(debug, source = 'Atlas') {
+  if (!isIdentityDebugEnabled()) return;
+
+  const channel = sanitizeDebugChannel(debug.channel);
   console.log(
-    `[${source}] founder-debug | founderResolved=${debug.founderResolved} | founderId=${debug.founderId ?? 'null'} | founderProfileLoaded=${debug.founderProfileLoaded} | userId=${debug.userId ?? 'null'} | telegramFromId=${debug.telegramFromId ?? 'null'} | channel=${debug.channel} | memoryLoaded=${debug.memoryLoaded} | pipelineVersion=${debug.pipelineVersion}`,
+    `[${source}] founder-debug | founderMatched=${Boolean(debug.founderResolved)} | profileLoaded=${Boolean(debug.founderProfileLoaded)} | memoryLoaded=${Boolean(debug.memoryLoaded)} | channel=${channel}`,
   );
+  if (debug.identityContext) {
+    logIdentityDebug(debug.identityContext);
+  }
 }

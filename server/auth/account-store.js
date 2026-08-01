@@ -88,11 +88,48 @@ export async function verifyPassword(password, passwordHash) {
 }
 
 /**
+ * @param {string|null|undefined} value
+ */
+export function normalizeEmail(value) {
+  const s = String(value ?? '').trim().toLowerCase();
+  return s || null;
+}
+
+/**
+ * Lightweight email shape check (not full RFC).
+ * @param {string|null|undefined} value
+ */
+export function isValidEmailShape(value) {
+  const email = normalizeEmail(value);
+  if (!email || email.length > 254) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/**
  * @param {string} username
  */
 export function findAccountByUsername(username) {
   const store = loadStore();
   const needle = String(username ?? '').trim().toLowerCase();
+  return (
+    Object.values(store.accounts).find(
+      (a) => String(a.username ?? '').trim().toLowerCase() === needle,
+    ) ?? null
+  );
+}
+
+/**
+ * Lookup by email field; falls back to username when username equals email.
+ * @param {string} email
+ */
+export function findAccountByEmail(email) {
+  const needle = normalizeEmail(email);
+  if (!needle) return null;
+  const store = loadStore();
+  const byEmail = Object.values(store.accounts).find(
+    (a) => normalizeEmail(a.email) === needle,
+  );
+  if (byEmail) return byEmail;
   return (
     Object.values(store.accounts).find(
       (a) => String(a.username ?? '').trim().toLowerCase() === needle,
@@ -135,6 +172,7 @@ export function findAccountByTelegramBinding(telegramUserId) {
  *   id?: string,
  *   username: string,
  *   password: string,
+ *   email?: string|null,
  *   roles?: string[],
  *   userId: string,
  *   telegramBindings?: string[],
@@ -147,10 +185,13 @@ export async function upsertAccount(input) {
   const existing = store.accounts[id] ?? findAccountByUsername(input.username);
   const accountId = existing?.id ?? id;
   const passwordHash = await hashPassword(input.password);
+  const emailInput =
+    input.email !== undefined ? normalizeEmail(input.email) : normalizeEmail(existing?.email);
 
   store.accounts[accountId] = {
     id: accountId,
     username: String(input.username).trim(),
+    email: emailInput,
     passwordHash,
     roles: Array.isArray(input.roles) ? [...input.roles] : ['user'],
     userId: input.userId,
@@ -169,6 +210,69 @@ export async function upsertAccount(input) {
 }
 
 /**
+ * Grant a role to an existing account (CLI / server-side only — no HTTP).
+ * Does not accept or return password material.
+ * @param {{
+ *   email: string,
+ *   role: string,
+ *   actor?: string,
+ * }} input
+ */
+export function grantAccountRole(input) {
+  const email = normalizeEmail(input.email);
+  const role = String(input.role ?? '').trim().toLowerCase();
+  if (!email || !isValidEmailShape(email)) {
+    const err = new Error('invalid_email');
+    err.code = 'invalid_email';
+    throw err;
+  }
+  if (!role || !/^[a-z][a-z0-9_]{1,31}$/.test(role)) {
+    const err = new Error('invalid_role');
+    err.code = 'invalid_role';
+    throw err;
+  }
+
+  const store = loadStore();
+  const account =
+    Object.values(store.accounts).find((a) => normalizeEmail(a.email) === email) ??
+    Object.values(store.accounts).find(
+      (a) => String(a.username ?? '').trim().toLowerCase() === email,
+    );
+
+  if (!account) {
+    const err = new Error('account_not_found');
+    err.code = 'account_not_found';
+    throw err;
+  }
+  if (account.disabled) {
+    const err = new Error('account_disabled');
+    err.code = 'account_disabled';
+    throw err;
+  }
+
+  const rolesBefore = [...(account.roles ?? [])];
+  const rolesAfter = rolesBefore.includes(role) ? [...rolesBefore] : [...rolesBefore, role];
+  const emailToStore = normalizeEmail(account.email) || email;
+
+  store.accounts[account.id] = {
+    ...account,
+    email: emailToStore,
+    roles: rolesAfter,
+    updatedAt: new Date().toISOString(),
+  };
+  saveStore(store);
+
+  const { passwordHash: _ph, ...safe } = store.accounts[account.id];
+  void _ph;
+  return {
+    account: safe,
+    rolesBefore,
+    rolesAfter,
+    alreadyHadRole: rolesBefore.includes(role),
+  };
+}
+
+/**
  * Public-safe account view (no password hash).
  * @param {object} account
  */
@@ -177,6 +281,7 @@ export function toPublicAccount(account) {
   return {
     id: account.id,
     username: account.username,
+    email: account.email ?? null,
     roles: [...(account.roles ?? [])],
     userId: account.userId,
     disabled: Boolean(account.disabled),

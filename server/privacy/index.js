@@ -83,14 +83,23 @@ export function evaluatePrivacyRequest(input) {
     }
   }
 
-  if (!classification.aboutFounder && classification.requestType === 'unknown') {
+  if (
+    !classification.aboutFounder &&
+    (classification.requestType === 'unknown' ||
+      classification.requestType === 'ambiguous_identity' ||
+      classification.requestType === 'self_identity' ||
+      classification.requestType === 'unverified_role_claim')
+  ) {
     return {
       subject: 'none',
-      requestType: 'unknown',
+      requestType: classification.requestType,
       privacyLevel: PRIVACY_LEVELS.PUBLIC,
       authorized: true,
       action: PRIVACY_ACTIONS.ALLOW_PUBLIC,
-      reason: 'not_founder_related',
+      reason:
+        classification.requestType === 'unknown'
+          ? 'not_founder_related'
+          : `identity_${classification.requestType}`,
       aboutFounder: false,
       safeReply: null,
       classification,
@@ -167,6 +176,14 @@ export function evaluatePrivacyRequest(input) {
 export function shouldShortCircuitPrivacy(evaluation) {
   if (!evaluation) return false;
   if (evaluation.action === PRIVACY_ACTIONS.ALLOW_OWNER) return false;
+  // Identity clarification is handled outside the founder-privacy short-circuit.
+  if (
+    evaluation.requestType === 'ambiguous_identity' ||
+    evaluation.requestType === 'self_identity' ||
+    evaluation.requestType === 'unverified_role_claim'
+  ) {
+    return false;
+  }
   if (evaluation.action === PRIVACY_ACTIONS.ALLOW_PUBLIC && evaluation.requestType === 'public_profile') {
     return true;
   }

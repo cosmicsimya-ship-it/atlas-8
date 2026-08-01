@@ -40,7 +40,14 @@ export function getCsrfCookieOptions(opts = {}) {
  */
 export function getAllowedOrigins() {
   const raw = process.env.ATLAS_CORS_ORIGINS ?? process.env.FRONTEND_ORIGIN ?? '';
-  const defaults = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173'];
+  const defaults = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+  ];
   const fromEnv = raw
     .split(',')
     .map((s) => s.trim())

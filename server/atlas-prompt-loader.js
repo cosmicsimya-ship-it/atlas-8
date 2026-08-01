@@ -16,6 +16,9 @@ import {
   shouldInjectFounderContextBlocks,
 } from './atlas-conversation-style.js';
 import { PRIVACY_SYSTEM_INSTRUCTION } from './privacy/privacy-policy.js';
+import { IDENTITY_SAFETY_SYSTEM_RULES } from './identity-claims.js';
+import { SPEAKER_ATTRIBUTION_SYSTEM_RULES } from './speaker-attribution.js';
+import { ABJAD_VERIFICATION_SYSTEM_RULES } from './abjad-verification.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SERVER_DIR = __dirname;
@@ -172,6 +175,9 @@ Kesin kehanet sunma; sembolik farkındalık odaklı kal.`
     ? `
 Numeroloji hesabında yalnızca VERIFIED NUMEROLOGY DATA varsa onu kullan; işlemleri gerektiğinde kısaca göster.
 
+Ebced / Esma sayısal sonuçlarında yalnızca VERIFIED ABJAD / ESMA DATA veya deterministik calculateAbjad / findEsmaMatches çıktısını kullan.
+Kullanıcı itirazını otomatik doğru kabul etme; harf harf yeniden hesapla. Esma adı uydurma.
+
 ## Astroloji / Günlük Sembolik Analiz Kuralları
 
 - Analiz türü (genel / natal transit / ilişki / konu) açık değilse uzun gökyüzü yorumu YAZMA; kısa netleştirme sor.
@@ -255,10 +261,13 @@ export function buildAtlasSystemPrompt(options = {}) {
         }
       : null);
 
-  const injectFounder = shouldInjectFounderContextBlocks(
-    options.message ?? '',
-    founderSession?.knowledge ? founderSession : null,
-  );
+  const injectFounderHeavy =
+    options.injectFounderHeavy === true ||
+    (options.injectFounderHeavy !== false &&
+      shouldInjectFounderContextBlocks(
+        options.message ?? '',
+        founderSession?.knowledge ? founderSession : null,
+      ));
 
   const base = loadAtlasModules(modules);
   const tarotExtra =
@@ -267,17 +276,18 @@ export function buildAtlasSystemPrompt(options = {}) {
       : '';
 
   const founderSystemSection =
-    injectFounder && founderSession?.knowledge
+    injectFounderHeavy && founderSession?.knowledge
       ? buildFounderSystemPromptSection(founderSession)
       : '';
 
+  // Compact "Kurucu Oturumu Aktif" whenever channel-linked founder session exists.
   const runtime = buildRuntimeRules({
     currentDate: options.currentDate,
     mode: options.mode,
     profile,
     tarotIntent: options.tarotIntent,
-    founderSession: injectFounder && founderSession?.knowledge ? founderSession : null,
-    founderProfile: injectFounder ? options.founderProfile : null,
+    founderSession: founderSession?.knowledge ? founderSession : null,
+    founderProfile: founderSession?.knowledge ? options.founderProfile : null,
   });
 
   const styleOverride = buildConversationStyleRuntimeBlock();
@@ -288,6 +298,9 @@ export function buildAtlasSystemPrompt(options = {}) {
   }
   if (options.includePrivacyInstructions !== false) {
     parts.push('---', PRIVACY_SYSTEM_INSTRUCTION);
+    parts.push('---', IDENTITY_SAFETY_SYSTEM_RULES);
+    parts.push('---', SPEAKER_ATTRIBUTION_SYSTEM_RULES);
+    parts.push('---', ABJAD_VERIFICATION_SYSTEM_RULES);
   }
   parts.push('---', runtime);
   parts.push('---', styleOverride);

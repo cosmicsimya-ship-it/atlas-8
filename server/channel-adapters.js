@@ -4,8 +4,32 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { webUserId, telegramUserId, isValidUserId } from './user-memory.js';
+import {
+  buildTelegramSpeakerAttribution,
+  speakerAttributionToMetadata,
+  filterSafeExtraMetadata,
+  SPEAKER_LABEL_FALLBACK,
+} from './speaker-attribution.js';
 
 /** @typedef {'web' | 'telegram'} AtlasChannel */
+
+/** Neutral instruction when a Telegram photo has no caption. */
+export const DEFAULT_PHOTO_INSTRUCTION =
+  'Analyze the attached image and respond appropriately.';
+
+/** In-flight queue notice — name-free; never personalize with speaker/mentions. */
+export const TELEGRAM_IN_FLIGHT_NOTICE =
+  'Önceki mesajını hâlâ işliyorum; bu mesajını sıraya aldım, hemen ardından yanıtlayacağım.';
+
+export function getTelegramInFlightNotice() {
+  return TELEGRAM_IN_FLIGHT_NOTICE;
+}
+
+/**
+ * @typedef {Object} AtlasImageAttachment
+ * @property {string} mimeType
+ * @property {string} base64
+ */
 
 /**
  * @typedef {Object} NormalizedAtlasMessage
@@ -18,7 +42,24 @@ import { webUserId, telegramUserId, isValidUserId } from './user-memory.js';
  * @property {string} [displayName]
  * @property {Record<string, unknown>} [metadata]
  * @property {Record<string, unknown>} [context]
+ * @property {AtlasImageAttachment} [image]
  */
+
+/**
+ * @param {unknown} raw
+ * @returns {AtlasImageAttachment|undefined}
+ */
+function normalizeImageAttachment(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const base64 = typeof raw.base64 === 'string' ? raw.base64.trim() : '';
+  if (!base64) return undefined;
+  let mimeType =
+    typeof raw.mimeType === 'string' && raw.mimeType.trim()
+      ? raw.mimeType.trim().toLowerCase().split(';')[0]
+      : 'image/jpeg';
+  if (mimeType === 'image/jpg') mimeType = 'image/jpeg';
+  return { mimeType, base64 };
+}
 
 /**
  * Normalize any channel request body into NormalizedAtlasMessage.
@@ -28,6 +69,7 @@ import { webUserId, telegramUserId, isValidUserId } from './user-memory.js';
  */
 export function normalizeAtlasMessageRequest(body) {
   const channel = body?.channel === 'telegram' ? 'telegram' : 'web';
+  const image = normalizeImageAttachment(body?.image);
 
   if (channel === 'telegram') {
     const message = String(body.message ?? '').trim();
@@ -56,11 +98,15 @@ export function normalizeAtlasMessageRequest(body) {
       username: body.username ? String(body.username) : undefined,
       displayName: body.displayName ? String(body.displayName) : undefined,
       metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
-      context: body.context && typeof body.context === 'object' ? body.context : {},
+      // context may include speakerAttribution; trust is enforced in index/message-service
+      context: body.context && typeof body.context === 'object' ? { ...body.context } : {},
+      ...(image ? { image } : {}),
     };
   }
 
-  return normalizeWebChatRequest(body);
+  const web = normalizeWebChatRequest(body);
+  if (image) web.image = image;
+  return web;
 }
 
 /**
@@ -207,17 +253,35 @@ export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = nu
 /**
  * Normalize a Telegram message object.
  * Uses Telegram user ID for memory; chat ID for conversation history.
+ * Multimodal handlers may supply `options.resolvedMessage` / `options.image`.
  * @param {import('node-telegram-bot-api').Message} msg
  * @param {Array<{ role: 'user' | 'assistant', content: string }>} history
- * @param {{ id?: number, username?: string, requireGroupMention?: boolean } | null} [options]
+ * @param {{
+ *   id?: number,
+ *   username?: string,
+ *   requireGroupMention?: boolean,
+ *   resolvedMessage?: string,
+ *   mediaKind?: string|null,
+ *   extraMetadata?: Record<string, unknown>,
+ *   image?: AtlasImageAttachment,
+ * } | null} [options]
  */
 export function normalizeTelegramMessage(msg, history = [], options = null) {
-  const { text, mediaKind } = extractTelegramText(msg);
+  const extracted = extractTelegramText(msg);
+  const resolvedOverride =
+    typeof options?.resolvedMessage === 'string' ? options.resolvedMessage.trim() : '';
+  const text = resolvedOverride || extracted.text;
+  const mediaKind =
+    options?.mediaKind !== undefined ? options.mediaKind : extracted.mediaKind;
+
   if (!text) {
     const kind = mediaKind && mediaKind !== 'unknown' ? mediaKind : 'non-text';
-    throw new Error(`Unsupported message type — text messages only (${kind})`);
+    throw new Error(`Unsupported message type (${kind})`);
   }
-  if (!msg.from?.id) {
+
+  const hasUserSender = Boolean(msg.from?.id);
+  const hasSenderChat = Boolean(msg.sender_chat?.id);
+  if (!hasUserSender && !hasSenderChat) {
     throw new Error('Telegram message missing sender identity');
   }
 
@@ -231,30 +295,62 @@ export function normalizeTelegramMessage(msg, history = [], options = null) {
       id: options?.id,
       username: options?.username,
     };
-    if (!isTelegramGroupMessageAddressedToBot(msg, text, botIdentity)) {
+    const addressText = extracted.text || text;
+    if (!isTelegramGroupMessageAddressedToBot(msg, addressText, botIdentity)) {
       throw new Error('GROUP_MESSAGE_IGNORED');
     }
   }
 
-  return {
+  const attribution = buildTelegramSpeakerAttribution(msg, text);
+  const attributionMeta = speakerAttributionToMetadata(attribution);
+  const safeExtra = filterSafeExtraMetadata(options?.extraMetadata);
+
+  // Synthetic id for sender_chat-only (anonymous admin / channel) — not a personal memory key.
+  const resolvedUserId = hasUserSender
+    ? telegramUserId(msg.from.id)
+    : telegramUserId(`sc_${String(msg.chat.id).replace(/[^a-zA-Z0-9_]/g, '_')}`);
+
+  /** @type {NormalizedAtlasMessage} */
+  const normalized = {
     channel: 'telegram',
-    userId: telegramUserId(msg.from.id),
+    userId: resolvedUserId,
     conversationId: String(msg.chat.id),
     message: text,
     history,
-    username: msg.from.username ?? undefined,
-    displayName: [msg.from.first_name, msg.from.last_name].filter(Boolean).join(' ') || undefined,
+    // Sender display fields: Telegram from.* / sender_chat only — never from message text.
+    username: attribution.sender.username ?? undefined,
+    displayName: attribution.sender.displayName ?? SPEAKER_LABEL_FALLBACK,
     metadata: {
       chatType: msg.chat.type,
       chatTitle: msg.chat.title ?? null,
       messageId: msg.message_id,
       messageThreadId: msg.message_thread_id ?? null,
       isGroup,
-      telegramFromId: String(msg.from.id),
+      telegramFromId: hasUserSender ? String(msg.from.id) : null,
       mediaKind: mediaKind ?? null,
+      hasImage: Boolean(options?.image?.base64),
+      ...attributionMeta,
+      ...safeExtra,
     },
-    context: {},
+    context: {
+      speakerAttribution: {
+        ...attribution,
+        ...attributionMeta,
+        trusted: true,
+        channel: 'telegram',
+        sender: attribution.sender,
+      },
+    },
   };
+
+  if (options?.image?.base64) {
+    normalized.image = {
+      mimeType: options.image.mimeType || 'image/jpeg',
+      base64: options.image.base64,
+    };
+  }
+
+  return normalized;
 }
 
 /**
@@ -334,14 +430,18 @@ export function toWebChatResponse(result) {
 export function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu.') {
   const map = {
     BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
-    MODEL_UNAVAILABLE: 'Model sağlayıcı yapılandırılmamış. OPENAI_API_KEY gerekli.',
-    TIMEOUT: 'Yanıt süresi aşıldı. Lütfen tekrar dene.',
+    MODEL_UNAVAILABLE: 'Model şu an geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar dene.',
+    TIMEOUT: 'Mesajını aldım ancak şu anda yanıtı tamamlayamadım. Lütfen birkaç saniye sonra tekrar dene.',
     RATE_LIMIT: 'İstek limiti aşıldı. Kısa bir süre sonra tekrar dene.',
     INVALID_INPUT: 'Geçersiz istek.',
     MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
     ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
+    IMAGE_DOWNLOAD_FAILED: 'Görseli indiremedim. Lütfen fotoğrafı tekrar gönder.',
+    UNSUPPORTED_IMAGE_FORMAT:
+      'Bu görsel formatını desteklemiyorum. JPEG, PNG, WebP veya GIF gönder.',
+    IMAGE_TOO_LARGE: 'Görsel çok büyük. Daha küçük bir fotoğraf gönder (en fazla 10 MB).',
     UNSUPPORTED_MESSAGE:
-      'Şimdilik yalnızca metin mesajlarını okuyabiliyorum. Ses, sticker veya metinsiz fotoğraf yerine yazarak gönder (fotoğrafa yazı eklersen caption olarak okurum).',
+      'Bu içerik türünü henüz işleyemiyorum. Metin veya fotoğraf gönderebilirsin.',
   };
   return map[errorCode] ?? fallback;
 }
