@@ -100,14 +100,15 @@ export default function AppLayout() {
                   if (e.key === 'ArrowUp') { e.preventDefault(); setSelected((s) => Math.max(s - 1, 0)); }
                   if (e.key === 'Enter' && filtered[selected]) { runCommand(filtered[selected].path); }
                 }}
-                placeholder="Type a command or search..."
+                placeholder="Komut veya sayfa ara…"
                 className="flex-1 bg-transparent text-sm text-atlas-text placeholder-atlas-text-dim/50 outline-none"
+                aria-label="Komut paleti araması"
               />
               <kbd className="text-[10px] font-mono text-atlas-text-dim bg-atlas-surface2 px-1.5 py-0.5 rounded border border-atlas-border">ESC</kbd>
             </div>
             <div className="max-h-72 overflow-y-auto py-2">
               {filtered.length === 0 && (
-                <div className="px-4 py-8 text-center text-sm text-atlas-text-dim">No results found</div>
+                <div className="px-4 py-8 text-center text-sm text-atlas-text-dim">Sonuç bulunamadı</div>
               )}
               {(() => {
                 let lastSection = '';

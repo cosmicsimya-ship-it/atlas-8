@@ -1,4 +1,4 @@
-import type { PersonalAnalysisEnvelope } from '../../types/personal-analysis';
+﻿import type { PersonalAnalysisEnvelope } from '../../types/personal-analysis';
 import { formatAnalysisSections, statusPresentation } from '../../utils/result-formatter';
 
 interface ResultRendererProps {
@@ -14,7 +14,7 @@ export default function ResultRenderer({ title, envelope }: ResultRendererProps)
     <article className="space-y-8 print:text-black">
       <header className="space-y-3 border-b border-white/10 pb-6 print:border-black/20">
         <p className="text-xs uppercase tracking-[0.22em] text-[#c9b37a]/70">Analiz Sonucu</p>
-        <h1 className="font-display text-3xl leading-tight text-[#f5f0e8] md:text-4xl">{title}</h1>
+        <h1 className="font-display text-3xl leading-tight text-[#e8ecf2] md:text-4xl">{title}</h1>
         <span
           className={`inline-flex rounded-full px-3 py-1 text-xs uppercase tracking-[0.16em] ${
             status.tone === 'success'
@@ -37,14 +37,14 @@ export default function ResultRenderer({ title, envelope }: ResultRendererProps)
       )}
 
       {sections.length === 0 ? (
-        <p className="text-[#f5f0e8]/55">
+        <p className="text-[#e8ecf2]/55">
           Bu yanıt için görüntülenecek sentez bölümü bulunamadı. Ham veri kaydedildi.
         </p>
       ) : (
         sections.map((section) => (
           <section key={section.id} className="space-y-3 print:break-inside-avoid">
-            <h2 className="font-display text-xl text-[#f5f0e8]/92">{section.title}</h2>
-            <div className="whitespace-pre-wrap text-sm leading-7 text-[#f5f0e8]/72">
+            <h2 className="font-display text-xl text-[#e8ecf2]/92">{section.title}</h2>
+            <div className="whitespace-pre-wrap text-sm leading-7 text-[#e8ecf2]/72">
               {section.content}
             </div>
           </section>

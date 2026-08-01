@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 
 const STAGES = [
   'Veriler eşleştiriliyor',
@@ -25,12 +25,12 @@ export default function AnalysisLoader() {
         className="mx-auto mb-6 h-12 w-12 rounded-full border border-[#c9b37a]/30 border-t-[#c9b37a] motion-safe:animate-spin"
         aria-hidden="true"
       />
-      <p className="font-display text-xl text-[#f5f0e8]/90">Atlas analiz katmanlarını işliyor</p>
+      <p className="font-display text-xl text-[#e8ecf2]/90">Atlas analiz katmanlarını işliyor</p>
       <p className="mt-3 text-sm text-[#c9b37a]/75 motion-safe:transition-opacity" aria-live="polite">
         {STAGES[index]}…
       </p>
-      <p className="mt-6 text-xs leading-relaxed text-[#f5f0e8]/38">
-        Bu adımlar arayüz mesajlarıdır; gerçek ilerleme backend yanıtına bağlıdır.
+      <p className="mt-6 text-xs leading-relaxed text-[#e8ecf2]/38">
+        Analiz sürüyor. Bu kısa sürebilir.
       </p>
     </div>
   );

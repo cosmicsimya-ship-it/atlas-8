@@ -38,3 +38,36 @@ export {
   resolveClassicalShadowLetterCount,
   CLASSICAL_ERROR_CODES,
 } from './layers/classical-abjad-runner.js';
+
+export {
+  calculateAbjad,
+  formatAbjadBreakdown,
+  ABJAD_KABIR_CLASSICAL_V1,
+} from './calculate-abjad.js';
+
+export {
+  resolveArabicSpelling,
+  extractArabicSpans,
+  hasArabicLetters,
+} from './resolve-arabic-spelling.js';
+
+export {
+  findEsmaMatches,
+  verifyEsmaValueClaim,
+  reduceToDigit,
+  ESMA_MATCH_TYPES,
+  ESMA_MATCH_TYPE_LABELS,
+  ESMA_MATCH_METHODOLOGY,
+} from './esma-abjad-match.js';
+
+export {
+  ESMA_ABJAD_CATALOG,
+  ESMA_ABJAD_CATALOG_VERSION,
+  lookupEsmaAbjadEntry,
+} from './data/esma-abjad-catalog.js';
+
+export {
+  ARABIC_NAME_SPELLINGS,
+  lookupNameSpelling,
+  classifyArabicNameVariant,
+} from './data/arabic-name-spellings.js';

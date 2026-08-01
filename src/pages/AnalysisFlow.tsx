@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+﻿import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -26,7 +26,7 @@ function createAnalysisId() {
 }
 
 const fieldClass =
-  'w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[#f5f0e8] outline-none transition placeholder:text-[#f5f0e8]/28 focus:border-[#c9b37a]/45 focus:ring-1 focus:ring-[#c9b37a]/25';
+  'w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-[#e8ecf2] outline-none transition placeholder:text-[#e8ecf2]/28 focus:border-[#c9b37a]/45 focus:ring-1 focus:ring-[#c9b37a]/25';
 
 export default function AnalysisFlow() {
   const navigate = useNavigate();
@@ -201,9 +201,13 @@ export default function AnalysisFlow() {
   return (
     <CosmicShell>
       <main className="mx-auto max-w-2xl px-4 pb-16 pt-28 md:px-8">
-        <p className="text-xs uppercase tracking-[0.22em] text-[#c9b37a]/65">Haritamı Oku</p>
-        <h1 className="mt-2 font-display text-3xl text-[#f5f0e8]">Koordinatlar toplanıyor</h1>
-        <p className="mt-3 text-sm leading-relaxed text-[#f5f0e8]/48">
+        <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-[#c9b37a]/65">
+          Haritamı Oku
+        </p>
+        <h1 className="mt-4 font-display text-[clamp(1.85rem,4vw,2.6rem)] font-medium tracking-[-0.02em] text-[#e8ecf2]">
+          Koordinatlar toplanıyor
+        </h1>
+        <p className="mt-3 text-sm leading-relaxed text-[#e8ecf2]/48">
           Atlas analiz için gerekli verileri adım adım toplar. Her adım bir form alanı değil, bir
           katman.
         </p>
@@ -216,8 +220,8 @@ export default function AnalysisFlow() {
                 i === step
                   ? 'bg-[#c9b37a]/15 text-[#c9b37a]'
                   : i < step
-                    ? 'bg-white/8 text-[#f5f0e8]/55'
-                    : 'bg-white/[0.03] text-[#f5f0e8]/28'
+                    ? 'bg-white/8 text-[#e8ecf2]/55'
+                    : 'bg-white/[0.03] text-[#e8ecf2]/28'
               }`}
             >
               {i + 1}. {label}
@@ -228,7 +232,7 @@ export default function AnalysisFlow() {
         <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-6 md:p-8">
           {step === 0 && (
             <label className="block">
-              <span className="mb-2 block text-sm text-[#f5f0e8]/70">Adın veya tercih ettiğin hitap</span>
+              <span className="mb-2 block text-sm text-[#e8ecf2]/70">Adın veya tercih ettiğin hitap</span>
               <input
                 className={fieldClass}
                 value={form.name}
@@ -241,7 +245,7 @@ export default function AnalysisFlow() {
 
           {step === 1 && (
             <label className="block">
-              <span className="mb-2 block text-sm text-[#f5f0e8]/70">Doğum tarihi</span>
+              <span className="mb-2 block text-sm text-[#e8ecf2]/70">Doğum tarihi</span>
               <input
                 className={fieldClass}
                 placeholder="GG.AA.YYYY"
@@ -255,7 +259,7 @@ export default function AnalysisFlow() {
           {step === 2 && (
             <div className="space-y-4">
               <label className="block">
-                <span className="mb-2 block text-sm text-[#f5f0e8]/70">Doğum saati</span>
+                <span className="mb-2 block text-sm text-[#e8ecf2]/70">Doğum saati</span>
                 <input
                   className={fieldClass}
                   placeholder="SS:DD"
@@ -265,7 +269,7 @@ export default function AnalysisFlow() {
                 />
                 <MemoryHint field="birthTime" />
               </label>
-              <label className="flex items-center gap-3 text-sm text-[#f5f0e8]/70">
+              <label className="flex items-center gap-3 text-sm text-[#e8ecf2]/70">
                 <input
                   type="checkbox"
                   checked={form.birthTimeUnknown}
@@ -281,7 +285,7 @@ export default function AnalysisFlow() {
 
           {step === 3 && (
             <label className="block">
-              <span className="mb-2 block text-sm text-[#f5f0e8]/70">Doğum yeri</span>
+              <span className="mb-2 block text-sm text-[#e8ecf2]/70">Doğum yeri</span>
               <input
                 className={fieldClass}
                 value={form.birthPlace}
@@ -293,7 +297,7 @@ export default function AnalysisFlow() {
 
           {step === 4 && (
             <label className="block">
-              <span className="mb-2 block text-sm text-[#f5f0e8]/70">Güncel konum</span>
+              <span className="mb-2 block text-sm text-[#e8ecf2]/70">Güncel konum</span>
               <input
                 className={fieldClass}
                 value={form.location}
@@ -305,7 +309,7 @@ export default function AnalysisFlow() {
 
           {step === 5 && (
             <label className="block">
-              <span className="mb-2 block text-sm text-[#f5f0e8]/70">Referans tarihi</span>
+              <span className="mb-2 block text-sm text-[#e8ecf2]/70">Referans tarihi</span>
               <input
                 className={fieldClass}
                 type="date"
@@ -319,7 +323,7 @@ export default function AnalysisFlow() {
           {step === 6 && (
             <div className="space-y-4">
               <fieldset>
-                <legend className="mb-3 text-sm text-[#f5f0e8]/70">Analiz niyeti</legend>
+                <legend className="mb-3 text-sm text-[#e8ecf2]/70">Analiz niyeti</legend>
                 <div className="grid gap-2">
                   {INTENTION_OPTIONS.map((opt) => (
                     <label
@@ -343,7 +347,7 @@ export default function AnalysisFlow() {
               </fieldset>
               {form.intention === 'custom' && (
                 <label className="block">
-                  <span className="mb-2 block text-sm text-[#f5f0e8]/70">Özel sorun</span>
+                  <span className="mb-2 block text-sm text-[#e8ecf2]/70">Özel sorun</span>
                   <textarea
                     className={`${fieldClass} min-h-28 resize-y`}
                     value={form.customQuestion}
@@ -366,8 +370,8 @@ export default function AnalysisFlow() {
                 ['Niyet', INTENTION_OPTIONS.find((o) => o.id === form.intention)?.label],
               ].map(([label, value]) => (
                 <div key={String(label)} className="flex justify-between gap-4 border-b border-white/6 pb-2">
-                  <dt className="text-[#f5f0e8]/45">{label}</dt>
-                  <dd className="text-right text-[#f5f0e8]/82">{value}</dd>
+                  <dt className="text-[#e8ecf2]/45">{label}</dt>
+                  <dd className="text-right text-[#e8ecf2]/82">{value}</dd>
                 </div>
               ))}
             </dl>
@@ -390,25 +394,21 @@ export default function AnalysisFlow() {
             type="button"
             onClick={goBack}
             disabled={step === 0}
-            className="inline-flex min-h-11 items-center gap-1 rounded-full border border-white/10 px-4 py-2 text-sm text-[#f5f0e8]/70 disabled:opacity-35"
+            className="atlas-btn-secondary gap-1.5 !min-h-11 !px-4 disabled:pointer-events-none disabled:opacity-35"
           >
-            <ChevronLeft size={16} /> Geri
+            <ChevronLeft size={16} aria-hidden /> Geri
           </button>
 
           {step < ANALYSIS_STEPS.length - 1 ? (
             <button
               type="button"
               onClick={goNext}
-              className="inline-flex min-h-11 items-center gap-1 rounded-full bg-[#f5f0e8] px-5 py-2 text-sm font-medium text-[#050505]"
+              className="atlas-btn-primary gap-1.5 !min-h-11 !px-5"
             >
-              İleri <ChevronRight size={16} />
+              İleri <ChevronRight size={16} aria-hidden />
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={submit}
-              className="inline-flex min-h-11 items-center rounded-full bg-[#c9b37a] px-5 py-2 text-sm font-medium text-[#050505]"
-            >
+            <button type="button" onClick={submit} className="atlas-btn-primary !min-h-11 !px-5">
               Analizi Başlat
             </button>
           )}

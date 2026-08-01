@@ -1,4 +1,4 @@
-import { Copy, MessageCircle, Plus, Printer } from 'lucide-react';
+﻿import { Copy, MessageCircle, Plus, Printer } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
@@ -14,7 +14,7 @@ export default function AnalysisResult() {
   const navigate = useNavigate();
   const [record, setRecord] = useState<AnalysisArchiveRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
   useEffect(() => {
     if (!id) return;
@@ -26,19 +26,31 @@ export default function AnalysisResult() {
   const copyResult = async () => {
     if (!record?.envelope) return;
     const text = buildResultPlainText(record.title, record.envelope);
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied('done');
+    } catch {
+      setCopied('failed');
+    }
+    setTimeout(() => setCopied('idle'), 2400);
   };
 
   if (error) {
     return (
       <CosmicShell>
-        <main className="mx-auto max-w-2xl px-4 py-28 text-center md:px-8">
-          <p className="text-red-300">{error}</p>
-          <Link to="/archive" className="mt-6 inline-block text-[#c9b37a]">
-            Arşive dön
-          </Link>
+        <main className="mx-auto max-w-2xl px-4 py-28 md:px-8">
+          <div
+            className="rounded-2xl border border-red-400/20 bg-red-950/20 p-6 text-center"
+            role="alert"
+          >
+            <p className="text-sm leading-6 text-red-100/90">{error}</p>
+            <Link
+              to="/archive"
+              className="site-focus mt-4 inline-block text-sm text-red-100/80 underline-offset-4 transition hover:underline"
+            >
+              Arşive dön
+            </Link>
+          </div>
         </main>
       </CosmicShell>
     );
@@ -47,8 +59,18 @@ export default function AnalysisResult() {
   if (!record) {
     return (
       <CosmicShell>
-        <main className="mx-auto max-w-2xl px-4 py-28 text-center text-[#f5f0e8]/50 md:px-8">
-          Sonuç yükleniyor…
+        <main
+          className="mx-auto max-w-3xl px-4 pb-16 pt-28 md:px-8"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <span className="sr-only">Sonuç yükleniyor.</span>
+          <div className="space-y-4 motion-safe:animate-pulse" aria-hidden="true">
+            <div className="h-3 w-28 rounded-full bg-white/[0.06]" />
+            <div className="h-9 w-2/3 rounded-lg bg-white/[0.05]" />
+            <div className="h-40 rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
+            <div className="h-40 rounded-2xl border border-white/[0.06] bg-white/[0.02]" />
+          </div>
         </main>
       </CosmicShell>
     );
@@ -60,24 +82,13 @@ export default function AnalysisResult() {
         {record.envelope ? (
           <ResultRenderer title={record.title} envelope={record.envelope} />
         ) : (
-          <p className="text-[#f5f0e8]/55">Sonuç verisi bulunamadı.</p>
+          <p className="text-[#e8ecf2]/55">Sonuç verisi bulunamadı.</p>
         )}
 
-        <div className="mt-10 flex flex-wrap gap-3 print:hidden">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm"
-          >
-            <Printer size={16} /> Yazdır
-          </button>
-          <button
-            type="button"
-            onClick={copyResult}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm"
-          >
-            <Copy size={16} /> {copied ? 'Kopyalandı' : 'Kopyala'}
-          </button>
+        <div className="mt-10 flex flex-wrap gap-2.5 print:hidden">
+          <Link to="/analysis" className="atlas-btn-primary gap-2 !min-h-11 !px-5">
+            <Plus size={16} aria-hidden /> Yeni Analiz
+          </Link>
           <button
             type="button"
             onClick={() =>
@@ -87,21 +98,25 @@ export default function AnalysisResult() {
                 },
               })
             }
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm"
+            className="atlas-btn-secondary gap-2 !min-h-11 !px-5"
           >
-            <MessageCircle size={16} /> Atlas’a Sor
+            <MessageCircle size={16} aria-hidden /> Atlas’a Sor
           </button>
-          <Link
-            to="/analysis"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#f5f0e8] px-4 py-2 text-sm font-medium text-[#050505]"
-          >
-            <Plus size={16} /> Yeni Analiz
-          </Link>
-          <Link
-            to="/archive"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#c9b37a]/30 px-4 py-2 text-sm text-[#c9b37a]"
-          >
-            Arşive Kaydedildi — Görüntüle
+          <button type="button" onClick={copyResult} className="atlas-btn-ghost">
+            <Copy size={16} aria-hidden />
+            <span aria-live="polite">
+              {copied === 'done'
+                ? 'Kopyalandı'
+                : copied === 'failed'
+                  ? 'Kopyalanamadı'
+                  : 'Kopyala'}
+            </span>
+          </button>
+          <button type="button" onClick={() => window.print()} className="atlas-btn-ghost">
+            <Printer size={16} aria-hidden /> Yazdır
+          </button>
+          <Link to="/archive" className="atlas-btn-ghost">
+            Arşivi Görüntüle
           </Link>
         </div>
       </main>

@@ -10,7 +10,7 @@ export default function SymbolicBackground({ className }: SymbolicBackgroundProp
       className={cn('pointer-events-none absolute inset-0 overflow-hidden', className)}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[#050505]" />
+      <div className="absolute inset-0 bg-[#050608]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(15,23,42,0.55),transparent_55%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.65))]" />
 

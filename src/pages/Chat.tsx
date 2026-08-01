@@ -1,21 +1,26 @@
 import { Loader2, RotateCcw, Send } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+import AtlasCorePresence from '../components/cosmic/AtlasCorePresence';
+import CapabilityDiscovery from '../components/cosmic/CapabilityDiscovery';
+import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
+import ChatInvitations, {
+  type ChatInvitation,
+} from '../components/cosmic/ChatInvitations';
 import CosmicShell from '../components/cosmic/CosmicShell';
+import { discoveryCopy } from '../data/capability-discovery';
 import { atlasChat } from '../services/atlas-chat';
 import { ensureAtlasSession } from '../utils/atlas-session';
-import type { AtlasAnalysisMode, AtlasChatMessage } from '../types/atlas-chat';
+import { prefersReducedMotion } from '../utils/scroll-section';
+import type { AtlasChatMessage } from '../types/atlas-chat';
+
+/** Composer grows with the message, then scrolls internally. */
+const COMPOSER_MAX_HEIGHT = 168;
 
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
-
-const MODE_LABELS: Record<AtlasAnalysisMode, string> = {
-  conversational: 'Sohbet',
-  'meta-synthesis': 'Meta Sentez',
-  'daily-guide': 'Günlük Rehber',
-};
 
 export default function Chat() {
   const location = useLocation();
@@ -29,6 +34,8 @@ export default function Chat() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const seededContext = useRef(false);
 
+  const isEmpty = messages.length === 0;
+
   useEffect(() => {
     atlasChat.checkBackend().then(setBackendReady);
     ensureAtlasSession().catch(() => {
@@ -37,8 +44,23 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+    if (!isEmpty) {
+      bottomRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        block: 'end',
+      });
+    }
+  }, [messages, loading, isEmpty]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(
+      Math.max(el.scrollHeight, isEmpty ? 80 : 52),
+      COMPOSER_MAX_HEIGHT,
+    )}px`;
+  }, [input, isEmpty]);
 
   useEffect(() => {
     if (contextPrompt && !seededContext.current) {
@@ -47,11 +69,26 @@ export default function Chat() {
         {
           id: createId(),
           role: 'assistant',
-          content: 'Analiz bağlamın yüklendi. Bu sonuç hakkında neyi netleştirmek istiyorsun?',
+          content: 'Analiz bağlamın hazır. Ne üzerinde netleşmek istiyorsun?',
         },
       ]);
     }
   }, [contextPrompt]);
+
+  const { completedExchanges, userTexts } = useMemo(() => {
+    const users = messages.filter((m) => m.role === 'user' && !m.pending && !m.error);
+    let completed = 0;
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role !== 'user' || m.pending || m.error) continue;
+      const reply = messages.slice(i + 1).find((x) => x.role === 'assistant');
+      if (reply && !reply.pending && !reply.error && reply.content) completed += 1;
+    }
+    return {
+      completedExchanges: completed,
+      userTexts: users.map((m) => m.content),
+    };
+  }, [messages]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -113,12 +150,21 @@ export default function Chat() {
     }
   }, [input, loading, messages]);
 
+  /** Rewind the failed exchange so retrying never duplicates the question. */
   const retryLast = () => {
-    const lastUser = [...messages].reverse().find((m) => m.role === 'user' && !m.pending);
-    if (lastUser) {
-      setInput(lastUser.content);
-      setMessages((prev) => prev.filter((m) => !m.error));
+    const kept = messages.filter((m) => !m.error);
+    const lastUserIndex = kept.map((m) => m.role).lastIndexOf('user');
+    if (lastUserIndex >= 0) {
+      setInput(kept[lastUserIndex].content);
+      kept.splice(lastUserIndex, 1);
     }
+    setMessages(kept);
+    textareaRef.current?.focus();
+  };
+
+  const recheckBackend = () => {
+    setBackendReady(null);
+    atlasChat.checkBackend().then(setBackendReady);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -128,95 +174,144 @@ export default function Chat() {
     }
   };
 
+  const handleInvitation = (invitation: ChatInvitation) => {
+    if (invitation.prompt) {
+      setInput(invitation.prompt);
+    }
+    textareaRef.current?.focus();
+  };
+
   return (
-    <CosmicShell showBackground={false}>
-      <main className="flex min-h-[100dvh] flex-col pt-20">
-        <div className="border-b border-white/8 px-4 py-4 md:px-8">
-          <div className="mx-auto flex max-w-3xl items-center justify-between">
-            <div>
-              <h1 className="font-display text-xl text-[#f5f0e8]">Atlas Konsolu</h1>
-              <p className="text-xs text-[#f5f0e8]/40">Sembolik zekâ katmanı</p>
+    <CosmicShell showBackground={false} transparentNav chatMode>
+      <ChatAtmosphere />
+
+      <main className="relative z-10 flex h-[100dvh] flex-col pt-[4.5rem]">
+        {/* Connection — screen reader only; no prototype badges */}
+        <p className="sr-only" aria-live="polite">
+          {backendReady === false
+            ? 'Atlas şu an bağlantı kuramıyor.'
+            : backendReady === true
+              ? 'Atlas hazır.'
+              : 'Atlas bağlantısı kontrol ediliyor.'}
+        </p>
+
+        <section
+          className={`flex min-h-0 flex-1 flex-col px-4 md:px-8 ${isEmpty ? 'justify-end pb-3' : 'overflow-y-auto py-4 md:py-5'}`}
+          aria-label="Konuşma"
+        >
+          {isEmpty ? (
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-0 pb-2 pt-2 text-center">
+              <AtlasCorePresence state={loading ? 'thinking' : 'idle'} />
+              <p className="mt-8 max-w-[16rem] text-[16px] leading-[1.7] tracking-[-0.01em] text-[#c5ccd6] sm:mt-9 sm:max-w-sm sm:text-[17px]">
+                {discoveryCopy.emptyInvite.line1}
+                <br />
+                <span className="text-[#e8ecf2]/90">{discoveryCopy.emptyInvite.line2}</span>
+              </p>
+              {backendReady !== false && (
+                <ChatInvitations
+                  onSelect={handleInvitation}
+                  className="mt-8 max-w-xl sm:mt-9"
+                />
+              )}
             </div>
-            {backendReady === false && (
-              <span className="text-xs text-amber-300/80">Backend kapalı</span>
-            )}
-          </div>
-        </div>
-
-        <section className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
-          <div className="mx-auto max-w-3xl space-y-4">
-            {messages.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
-                <h2 className="font-display text-2xl text-[#f5f0e8]">Atlas</h2>
-                <p className="mt-3 text-sm leading-relaxed text-[#f5f0e8]/48">
-                  Düşünceni yaz. Atlas örüntüleri sembolik katmanlarda karşılaştırır.
-                </p>
-              </div>
-            )}
-
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-[#f5f0e8] text-[#050505]'
-                      : msg.error
-                        ? 'border border-red-500/30 bg-red-500/10 text-red-200'
-                        : 'border border-white/10 bg-[#0b1220]/70 text-[#f5f0e8]/88'
-                  }`}
+          ) : (
+            <div className="mx-auto w-full max-w-[760px] space-y-5 pb-2">
+              {messages.map((msg) => (
+                <article
+                  key={msg.id}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  aria-label={msg.role === 'user' ? 'Sen' : 'Atlas'}
                 >
-                  {msg.pending ? (
-                    <span className="flex items-center gap-2 text-[#f5f0e8]/50">
-                      <Loader2 size={16} className="animate-spin" />
-                      Atlas düşünüyor…
-                    </span>
+                  {msg.role === 'user' ? (
+                    <div className="max-w-[88%] rounded-[18px] rounded-br-md bg-[#e8ecf2]/94 px-5 py-3.5 text-[15px] leading-[1.65] text-[#050608] sm:max-w-[75%]">
+                      {msg.content}
+                    </div>
                   ) : (
-                    msg.content
+                    <div className="max-w-[92%] sm:max-w-[85%]">
+                      {msg.pending ? (
+                        <div className="flex items-center gap-3 py-1 text-[#8b93a3]" aria-live="polite">
+                          <AtlasCorePresence
+                            state="thinking"
+                            className="!w-10 !min-w-10 sm:!w-12"
+                          />
+                          <span className="text-[14px]">Düşünüyorum…</span>
+                        </div>
+                      ) : msg.error ? (
+                        <div className="rounded-[18px] border border-red-400/20 bg-red-950/20 px-5 py-3.5 text-[15px] leading-[1.65] text-red-100/90">
+                          {msg.content}
+                          <button
+                            type="button"
+                            onClick={retryLast}
+                            className="site-focus mt-3 inline-flex items-center gap-1.5 text-[13px] text-red-100/80 underline-offset-2 hover:underline"
+                          >
+                            <RotateCcw size={13} aria-hidden /> Tekrar dene
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[15px] leading-[1.75] tracking-[-0.005em] text-[#e8ecf2]/90 whitespace-pre-wrap sm:text-[16px] sm:leading-[1.8]">
+                          {msg.content}
+                        </p>
+                      )}
+                    </div>
                   )}
-                  {msg.error && (
-                    <button
-                      type="button"
-                      onClick={retryLast}
-                      className="mt-3 inline-flex items-center gap-1 text-xs text-red-200/90 underline-offset-2 hover:underline"
-                    >
-                      <RotateCcw size={12} /> Tekrar dene
-                    </button>
-                  )}
-                  {msg.mode && msg.mode !== 'conversational' && !msg.pending && (
-                    <p className="mt-2 text-xs text-[#c9b37a]/55">{MODE_LABELS[msg.mode]}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-            <div ref={bottomRef} />
-          </div>
+                </article>
+              ))}
+
+              <CapabilityDiscovery
+                completedExchanges={completedExchanges}
+                userTexts={userTexts}
+              />
+
+              <div ref={bottomRef} />
+            </div>
+          )}
         </section>
 
-        <footer className="border-t border-white/8 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
-          <div className="mx-auto flex max-w-3xl gap-3 items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Atlas’a sor…"
-              disabled={loading}
-              rows={2}
-              aria-label="Mesaj"
-              className="flex-1 resize-none rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-[#f5f0e8] outline-none focus:border-[#c9b37a]/40 disabled:opacity-50"
-            />
-            <button
-              type="button"
-              onClick={send}
-              disabled={loading || !input.trim()}
-              aria-label="Gönder"
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#f5f0e8] text-[#050505] disabled:opacity-40"
-            >
-              {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-            </button>
+        <footer className="relative shrink-0 border-t border-white/[0.04] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2.5 md:px-8">
+          <div className="mx-auto w-full max-w-[760px]">
+            {backendReady === false && (
+              <div className="mb-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-center text-[13px] leading-[1.6] text-[#8b93a3]">
+                <span>Atlas şu an bağlantı kuramıyor. Birazdan tekrar açılacak.</span>
+                <button
+                  type="button"
+                  onClick={recheckBackend}
+                  className="site-focus inline-flex items-center gap-1.5 rounded-full text-[#c5ccd6] underline-offset-4 transition duration-200 hover:text-[#e8ecf2] hover:underline"
+                >
+                  <RotateCcw size={13} aria-hidden /> Yeniden dene
+                </button>
+              </div>
+            )}
+
+            <div className="atlas-composer flex items-end gap-3">
+              <label htmlFor="atlas-message" className="sr-only">
+                Atlas’a yaz
+              </label>
+              <textarea
+                id="atlas-message"
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isEmpty ? 'Buradan yazmaya başla…' : 'Ne üzerinde düşünelim?'}
+                disabled={loading || backendReady === false}
+                rows={isEmpty ? 2 : 1}
+                aria-label="Mesaj"
+                className="atlas-field atlas-field-hero flex-1 resize-none overflow-y-auto disabled:opacity-40"
+              />
+              <button
+                type="button"
+                onClick={send}
+                disabled={loading || !input.trim() || backendReady === false}
+                aria-label="Gönder"
+                className="atlas-send flex h-12 w-12 shrink-0 items-center justify-center rounded-full disabled:opacity-30"
+              >
+                {loading ? (
+                  <Loader2 size={18} className="motion-safe:animate-spin" aria-hidden />
+                ) : (
+                  <Send size={18} aria-hidden />
+                )}
+              </button>
+            </div>
           </div>
         </footer>
       </main>

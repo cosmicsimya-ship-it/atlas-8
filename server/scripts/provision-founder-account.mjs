@@ -7,6 +7,7 @@
  *
  * Optional:
  *   ATLAS_FOUNDER_USER_ID          default web:founder
+ *   ATLAS_FOUNDER_EMAIL            account email (for grant:admin lookup)
  *   ATLAS_FOUNDER_TELEGRAM_IDS     comma-separated numeric ids → telegram: bindings
  *   ATLAS_FOUNDER_ACCOUNT_ID       stable account id
  *
@@ -20,12 +21,15 @@ import {
   upsertAccount,
   configureAccountStore,
   getAccountStorePath,
+  isValidEmailShape,
 } from '../auth/account-store.js';
 
 const username = process.env.ATLAS_FOUNDER_USERNAME?.trim();
 const password = process.env.ATLAS_FOUNDER_PASSWORD;
 const userId = (process.env.ATLAS_FOUNDER_USER_ID || 'web:founder').trim();
 const accountId = (process.env.ATLAS_FOUNDER_ACCOUNT_ID || 'acc_founder_primary').trim();
+const emailRaw = process.env.ATLAS_FOUNDER_EMAIL?.trim();
+const email = emailRaw ? emailRaw.toLowerCase() : null;
 
 if (!username || !password) {
   console.error('Missing ATLAS_FOUNDER_USERNAME or ATLAS_FOUNDER_PASSWORD');
@@ -34,6 +38,11 @@ if (!username || !password) {
 
 if (password.length < 12) {
   console.error('ATLAS_FOUNDER_PASSWORD must be at least 12 characters');
+  process.exit(1);
+}
+
+if (email && !isValidEmailShape(email)) {
+  console.error('ATLAS_FOUNDER_EMAIL is not a valid email shape');
   process.exit(1);
 }
 
@@ -56,6 +65,7 @@ try {
     id: accountId,
     username,
     password,
+    email,
     roles: ['founder', 'user'],
     userId,
     telegramBindings,
@@ -65,6 +75,7 @@ try {
   console.log('Founder account provisioned successfully.');
   console.log(`  accountId: ${safe.id}`);
   console.log(`  username:  ${safe.username}`);
+  console.log(`  email:     ${safe.email ?? '(none — set ATLAS_FOUNDER_EMAIL for grant:admin)'}`);
   console.log(`  userId:    ${safe.userId}`);
   console.log(`  roles:     ${safe.roles.join(', ')}`);
   console.log(`  telegram:  ${telegramBindings.join(', ') || '(none)'}`);
