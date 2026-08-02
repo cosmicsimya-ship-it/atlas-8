@@ -24,6 +24,7 @@ import {
   buildAtlasPromptBundle,
   ATLAS_PROMPT_LOAD_ORDER,
 } from './atlas-message-service.js';
+import { resolvePersonaVoice } from './persona-engine.js';
 import { initializeFounderKnowledge } from './founder-knowledge.js';
 import { telegramUserId, webUserId, resetMemoryStoreForTests, updateUserMemory, getUserMemory } from './user-memory.js';
 
@@ -42,6 +43,21 @@ function fail(name, detail = '') {
 function assert(name, condition, detail = '') {
   if (condition) pass(name, detail);
   else fail(name, detail);
+}
+
+/**
+ * Strip channel-specific register / scoped-feedback surfaces for semantic parity.
+ * Format/register may differ by channel; analysis stack must stay equivalent.
+ * @param {string} prompt
+ */
+function normalizePromptForSemanticParity(prompt) {
+  return String(prompt ?? '')
+    .replace(/## Voice —[\s\S]*?(?=\n## |\n---)/g, '## Voice — [CHANNEL_REGISTER]\n')
+    .replace(/Aktif voice: [^\n]+/g, 'Aktif voice: [CHANNEL]')
+    .replace(
+      /## Active Editorial Feedback \(scoped\)[\s\S]*?(?=\n## |\n---|$)/g,
+      '## Active Editorial Feedback (scoped)\n- [scoped]\n',
+    );
 }
 
 console.log('\n=== Adapter normalization ===\n');
@@ -237,7 +253,33 @@ const tgBundle = buildAtlasPromptBundle(
 );
 
 assert('load order is canonical', JSON.stringify(webBundle.loadOrder) === JSON.stringify(ATLAS_PROMPT_LOAD_ORDER));
-assert('web/telegram system prompt identical', webBundle.systemPrompt === tgBundle.systemPrompt);
+
+// Channel register (persona voice) may differ by design; content stack must stay equivalent.
+const webVoice = resolvePersonaVoice({
+  channel: 'web',
+  mode: 'meta-synthesis',
+});
+const tgVoice = resolvePersonaVoice({
+  channel: 'telegram',
+  mode: 'meta-synthesis',
+});
+assert(
+  'channel voice profiles are explicit',
+  webVoice?.id === 'atlas-analysis' && tgVoice?.id === 'telegram',
+  `web=${webVoice?.id} tg=${tgVoice?.id}`,
+);
+
+assert(
+  'web/telegram semantic system prompt parity (channel register excluded)',
+  normalizePromptForSemanticParity(webBundle.systemPrompt) ===
+    normalizePromptForSemanticParity(tgBundle.systemPrompt),
+);
+assert(
+  'web/telegram system prompts differ by channel register',
+  webBundle.systemPrompt !== tgBundle.systemPrompt &&
+    webBundle.systemPrompt.includes(webVoice.displayName || webVoice.id) &&
+    tgBundle.systemPrompt.includes(tgVoice.displayName || tgVoice.id),
+);
 assert('web/telegram user prompt identical', webBundle.userPrompt === tgBundle.userPrompt);
 assert('memory context in both bundles', webBundle.userMemoryContext?.includes('Berlin'));
 assert('channel does not affect profile mode', webBundle.profile === tgBundle.profile && webBundle.profile === 'meta-synthesis');
@@ -291,8 +333,13 @@ assert(
     founderWebBundle.userPrompt.includes('## Founder Profile & Founder Knowledge'),
 );
 assert(
-  'founder web/telegram system prompt parity',
-  founderWebBundle.systemPrompt === founderTgBundle.systemPrompt,
+  'founder web/telegram semantic system prompt parity',
+  normalizePromptForSemanticParity(founderWebBundle.systemPrompt) ===
+    normalizePromptForSemanticParity(founderTgBundle.systemPrompt),
+);
+assert(
+  'founder web/telegram channel registers differ',
+  founderWebBundle.systemPrompt !== founderTgBundle.systemPrompt,
 );
 assert(
   'founder web/telegram user prompt parity',

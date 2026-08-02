@@ -12,11 +12,16 @@ import {
   isConceptualHijriCalendarQuery,
   isCurrentHijriDateQuery,
   formatCurrentHijriDateReply,
+  resolveReplyMaxTokens,
 } from '../server/atlas-conversation-style.js';
-import { processAtlasMessage } from '../server/atlas-message-service.js';
+import {
+  processAtlasMessage,
+  buildAtlasPromptBundle,
+  scoreDetailReplyLayers,
+  buildDetailIntentRuntimeDirective,
+} from '../server/atlas-message-service.js';
 import { clearAtlasModuleCache } from '../server/atlas-prompt-loader.js';
 import { resolveFounderSession } from '../server/founder-identity.js';
-import { buildAtlasPromptBundle } from '../server/atlas-message-service.js';
 
 clearAtlasModuleCache();
 
@@ -509,27 +514,86 @@ record({
   reason: greets.every((g) => g === greets[0]) ? '' : 'inconsistent',
 });
 
-// detail still uses LLM (optional if no key)
-let detailPass = true;
-let detailReply = '(skipped — no key)';
-if (process.env.OPENAI_API_KEY) {
-  const out = await processAtlasMessage({
+// detail intent: deterministic contract (no live LLM flake)
+const detailMessage = 'Atlas nedir, bunu detaylı anlat.';
+const detailIntent = detectConversationIntent(detailMessage);
+const detailBudget = resolveReplyMaxTokens(detailMessage, { intent: detailIntent });
+record({
+  label: 'detail:intent+budget',
+  words: 0,
+  founderResolved: false,
+  reply: `intent=${detailIntent} maxTokens=${detailBudget}`,
+  pass: detailIntent === 'detail' && detailBudget >= 900,
+  reason:
+    detailIntent === 'detail' && detailBudget >= 900
+      ? ''
+      : 'detail intent must unlock long first-turn budget',
+});
+
+const detailDirective = buildDetailIntentRuntimeDirective(detailMessage);
+record({
+  label: 'detail:runtime directive layers',
+  words: wordCount(detailDirective),
+  founderResolved: false,
+  reply: detailDirective.slice(0, 120),
+  pass:
+    /DETAIL MODE/i.test(detailDirective) &&
+    /kimliği|yetenek|sınır/i.test(detailDirective) &&
+    /kısa özet.*DEĞİL|yeterli DEĞİL/i.test(detailDirective),
+  reason: /DETAIL MODE/i.test(detailDirective) ? '' : 'missing detail directive',
+});
+
+const mockDetailReply = [
+  'Atlas, Cosmic Simya’nın yapay zekâ asistanı ve analiz rehberidir.',
+  'Numeroloji, astroloji, tarot ve sembolik sentez alanlarında katmanlı yorum üretir; bellek ve kimlik bağlamını korur.',
+  'Çalışma biçimi: önce deterministik motorlarla hesap/çerçeve kurar, sonra bağlama göre sentezler; prosedür anlatmak yerine örüntüyü açar.',
+  'Sınırı nettir: kesin kehanet, tıbbi/hukuki/finansal hüküm ve uydurma kişisel biyografi üretmez; sembolik olasılık dilinde kalır.',
+  'Pratik değeri: kullanıcının sorusunu netleştirip karar ve farkındalık için kullanılabilir bir çerçeve vermektir.',
+].join(' ');
+
+let capturedMaxTokens = null;
+let capturedSystemHasDetail = false;
+const detailOut = await processAtlasMessage(
+  {
     channel: 'web',
     userId: 'web:style-web-1',
     conversationId: 'detail-1',
-    message: 'Atlas nedir, bunu detaylı anlat.',
+    message: detailMessage,
     history: [],
-  });
-  detailReply = out.reply ?? '';
-  detailPass = wordCount(detailReply) >= 30 && out.engine !== 'conversation-style';
-}
+  },
+  {
+    callOpenAI: async (opts) => {
+      capturedMaxTokens = opts.maxTokens ?? null;
+      capturedSystemHasDetail = /DETAIL MODE/i.test(String(opts.systemPrompt || ''));
+      return {
+        content: mockDetailReply,
+        model: 'mock-detail',
+        provider: 'mock',
+        tokensUsed: 120,
+        costUsd: 0,
+        latencyMs: 1,
+      };
+    },
+  },
+);
+
+const detailLayers = scoreDetailReplyLayers(detailOut.reply || '', { aboutAtlas: true });
+const detailPass =
+  detailOut.engine !== 'conversation-style' &&
+  Number(capturedMaxTokens) >= 900 &&
+  capturedSystemHasDetail &&
+  detailLayers.ok &&
+  detailLayers.failed.length === 0;
+
 record({
   label: 'api:detail longer',
-  words: wordCount(detailReply),
+  words: wordCount(detailOut.reply),
   founderResolved: false,
-  reply: detailReply.slice(0, 160),
+  reply: (detailOut.reply || '').slice(0, 160),
   pass: detailPass,
-  reason: detailPass ? '' : 'expected longer LLM detail',
+  reason: detailPass
+    ? ''
+    : `engine=${detailOut.engine} maxTokens=${capturedMaxTokens} directive=${capturedSystemHasDetail} layers=${detailLayers.passed}/${detailLayers.total} failed=${detailLayers.failed.join(',')}`,
 });
 
 const failed = results.filter((r) => !r.pass);

@@ -259,6 +259,87 @@ function detectPersonalAnalysisIntent(message) {
   );
 }
 
+/**
+ * Runtime directive when conversation intent is explicit detail.
+ * Prevents casual brevity rules from collapsing a first-turn detail answer.
+ * @param {string} message
+ */
+export function buildDetailIntentRuntimeDirective(message = '') {
+  const aboutAtlas = /\b(atlas\s+nedir|sen kimsin|ne\s+yaparsın|neler\s+yapabilirsin)\b/i.test(
+    String(message ?? ''),
+  );
+  const layers = aboutAtlas
+    ? [
+        '1) Atlas’ın kimliği ve rolü',
+        '2) Ana yetenek / analiz alanları',
+        '3) Nasıl çalıştığı (kısa yöntem)',
+        '4) Sınırlar / kesin kehanet yapmama',
+        '5) Kullanıcıya pratik değer',
+      ]
+    : [
+        '1) Ana cevap / sonuç',
+        '2) Gerekçe veya mekanizma',
+        '3) Bağlam / ikincil katman',
+        '4) Gerilim, gölge veya dikkat noktası',
+        '5) Pratik çıkarım',
+      ];
+  return `
+## DETAIL MODE (explicit user request)
+
+Kullanıcı açıkça detay istedi. Kısa özet veya 1–2 cümlelik tanıtım yeterli DEĞİLDİR.
+Casual brevity / “kısa yaz” kuralları bu turda uygulanmaz.
+Aşağıdaki katmanları tek yanıtta karşıla (başlık zorunlu değil, içerik zorunlu):
+${layers.map((l) => `- ${l}`).join('\n')}
+Tekrar etme, sözlük dökme, yapay uzatma yok.
+`.trim();
+}
+
+/**
+ * Deterministic layer checks for a detail-mode reply (tests + guards).
+ * @param {string} reply
+ * @param {{ aboutAtlas?: boolean }} [opts]
+ */
+export function scoreDetailReplyLayers(reply, opts = {}) {
+  const text = String(reply ?? '');
+  const aboutAtlas = Boolean(opts.aboutAtlas);
+  /** @type {Array<{ id: string, pass: boolean }>} */
+  const checks = aboutAtlas
+    ? [
+        { id: 'identity_role', pass: /atlas|asistan|rehber|yapay\s*zek/i.test(text) },
+        {
+          id: 'capabilities',
+          pass: /analiz|numerol|astroloj|tarot|sembolik|yorum|bellek|sentez/i.test(text),
+        },
+        {
+          id: 'method_or_how',
+          pass: /nasıl|yöntem|katman|veri|hesap|motor|bağlam|örüntü/i.test(text),
+        },
+        {
+          id: 'boundaries',
+          pass: /sınır|kehanet|kesin|tıbbi|hukuki|finans|olasılık|sembolik/i.test(text),
+        },
+        {
+          id: 'practical_value',
+          pass: /yardım|karar|farkındalık|netleştir|kullanıcı|soru|rehber/i.test(text),
+        },
+      ]
+    : [
+        { id: 'main_answer', pass: text.trim().length >= 180 },
+        { id: 'rationale', pass: /çünkü|neden|bu\s+yüzden|gerekçe|anlam/i.test(text) },
+        { id: 'secondary_layer', pass: /ayrıca|ikinci|katman|bağlam|öte\s+yandan/i.test(text) },
+        { id: 'tension_or_caveat', pass: /ancak|ama|gölge|risk|dikkat|sınır/i.test(text) },
+        { id: 'practical', pass: /öneri|adım|yapabilir|dene|net/i.test(text) },
+      ];
+  const passed = checks.filter((c) => c.pass).length;
+  return {
+    ok: passed >= 4,
+    passed,
+    total: checks.length,
+    failed: checks.filter((c) => !c.pass).map((c) => c.id),
+    checks,
+  };
+}
+
 function parseBirthDateToIso(value) {
   if (!value) return null;
   const trimmed = String(value).trim();
@@ -1919,6 +2000,11 @@ export async function processAtlasMessage(input, options = {}) {
   });
   let { systemPrompt, userPrompt, profile, founderProfile } = promptBundle;
 
+  // Explicit detail requests must not inherit casual brevity defaults.
+  if (conversationIntent === 'detail') {
+    systemPrompt = `${systemPrompt}\n\n${buildDetailIntentRuntimeDirective(message)}`;
+  }
+
   const trustedSpeakerRuntime = resolveTrustedSpeakerForPrompt(input, {
     atlasBotVerified: options.atlasBotVerified,
   });
@@ -1968,8 +2054,17 @@ export async function processAtlasMessage(input, options = {}) {
   const modeTokenCap = resolveMaxTokensForResponseMode(
     contextResolution.responseMode || 'other',
   );
+  // Explicit detail / symbolic analysis budgets must not be crushed by casual
+  // response-mode caps (e.g. direct_fact → 80 tokens).
+  const preferIntentBudget =
+    conversationIntent === 'detail' ||
+    tarotIntent.active ||
+    Boolean(astrologyAnalysis) ||
+    synthesisBridge.ran;
   const maxTokens = resolveReplyMaxTokens(message, {
-    maxTokens: options.maxTokens ?? modeTokenCap ?? undefined,
+    maxTokens:
+      options.maxTokens ??
+      (preferIntentBudget ? undefined : modeTokenCap ?? undefined),
     mode: effectiveMode,
     tarotActive: tarotIntent.active,
     intent: conversationIntent,
