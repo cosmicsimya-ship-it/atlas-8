@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "moduleId": "editing-v1",
+  "status": "seed",
+  "description": "Revision signals Lara uses. Captured feedback maps here; does not invent identity.",
+  "signals": [
+    { "id": "dislike", "phrases": ["bunu sevmedim", "bunu beğenmedim"], "action": "mark_rejected" },
+    { "id": "mechanical", "phrases": ["bu mekanik", "çok robotik", "yapay duruyor"], "action": "mark_rejected_mechanical" },
+    { "id": "too_long", "phrases": ["fazla uzun", "kısalt", "çok uzun"], "action": "prefer_shorter" },
+    { "id": "not_my_voice", "phrases": ["bu benim dilim değil", "dilim değil"], "action": "mark_rejected_voice" },
+    { "id": "more_symbolic", "phrases": ["daha sembolik yaz", "daha sembolik"], "action": "prefer_symbolic" },
+    { "id": "more_dense", "phrases": ["daha tok olsun", "daha tok"], "action": "prefer_dense" },
+    { "id": "remove", "phrases": ["bunu kaldır", "şunu çıkar"], "action": "note_removal" }
+  ]
+}

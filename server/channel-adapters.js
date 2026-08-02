@@ -214,8 +214,12 @@ export function extractTelegramText(msg) {
  * @param {{ id?: number, username?: string } | null} botIdentity
  */
 export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = null) {
-  const lower = (text ?? '').toLowerCase();
-  if (lower.includes('atlas')) return true;
+  const raw = text ?? '';
+  const lower = raw.toLowerCase();
+  // Word-ish "atlas" / @atlas — avoid matching unrelated substrings mid-token.
+  if (/(?:^|[\s@])atlas(?:[\s,!?.:;…]|$)/iu.test(lower) || /^@?atlas\b/iu.test(lower)) {
+    return true;
+  }
 
   const replyFrom = msg.reply_to_message?.from;
   if (replyFrom) {
@@ -247,7 +251,28 @@ export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = nu
     if (entity.type === 'bot_command') return true;
   }
 
+  // Presence / wake and slash commands also count as addressed at the edge.
+  if (/^\s*\/[a-z0-9_]{2,32}(@\w+)?\b/i.test(raw)) return true;
+  if (
+    /^(?:ordam[ıi]s[ıi]n|orada\s*m[ıi]s[ıi]n|burada\s*m[ıi]s[ıi]n|burdam[ıi]s[ıi]n|aktif\s*m[ıi]s[ıi]n|ses\s*ver|dinliyor\s*musun)\s*[?.!…]*$/iu.test(
+      raw.trim(),
+    )
+  ) {
+    return true;
+  }
+
   return false;
+}
+
+/**
+ * @param {import('node-telegram-bot-api').Message} msg
+ * @param {{ id?: number, username?: string } | null} botIdentity
+ */
+export function isTelegramReplyToBot(msg, botIdentity = null) {
+  const replyFrom = msg?.reply_to_message?.from;
+  if (!replyFrom) return false;
+  if (botIdentity?.id != null && Number(replyFrom.id) === Number(botIdentity.id)) return true;
+  return replyFrom.is_bot === true;
 }
 
 /**
@@ -286,19 +311,22 @@ export function normalizeTelegramMessage(msg, history = [], options = null) {
   }
 
   const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  const botIdentity = {
+    id: options?.id,
+    username: options?.username,
+  };
+  const addressText = extracted.text || text;
+  const replyToBot = isTelegramReplyToBot(msg, botIdentity);
+  const addressedToBot =
+    replyToBot || isTelegramGroupMessageAddressedToBot(msg, addressText, botIdentity);
+
+  // Opt-in hard throw (legacy). Pipeline + telegram edge enforce silence by default.
   const requireGroupMention =
     options?.requireGroupMention === true ||
     process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true';
 
-  if (isGroup && requireGroupMention) {
-    const botIdentity = {
-      id: options?.id,
-      username: options?.username,
-    };
-    const addressText = extracted.text || text;
-    if (!isTelegramGroupMessageAddressedToBot(msg, addressText, botIdentity)) {
-      throw new Error('GROUP_MESSAGE_IGNORED');
-    }
+  if (isGroup && requireGroupMention && !addressedToBot && options?.allowActiveSession !== true) {
+    throw new Error('GROUP_MESSAGE_IGNORED');
   }
 
   const attribution = buildTelegramSpeakerAttribution(msg, text);
@@ -329,6 +357,9 @@ export function normalizeTelegramMessage(msg, history = [], options = null) {
       telegramFromId: hasUserSender ? String(msg.from.id) : null,
       mediaKind: mediaKind ?? null,
       hasImage: Boolean(options?.image?.base64),
+      replyToBot,
+      addressedToBot,
+      botUsername: botIdentity.username ?? null,
       ...attributionMeta,
       ...safeExtra,
     },

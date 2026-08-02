@@ -18,7 +18,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
-const MEMORY_FILE = join(DATA_DIR, 'user_memory.json');
+const DEFAULT_MEMORY_FILE = join(DATA_DIR, 'user_memory.json');
 
 /** @type {Promise<void>} */
 let writeLock = Promise.resolve();
@@ -26,6 +26,12 @@ let writeLock = Promise.resolve();
 const USER_ID_PATTERN = /^(telegram|web|anonymous):[a-zA-Z0-9_-]{1,128}$/;
 
 /** @typedef {Record<string, unknown>} JsonObject */
+
+/** @returns {string} */
+export function getMemoryFilePath() {
+  const override = process.env.ATLAS_MEMORY_FILE?.trim();
+  return override || DEFAULT_MEMORY_FILE;
+}
 
 /**
  * @returns {{
@@ -102,7 +108,8 @@ function ensureDataDir() {
  */
 function recoverCorruptFile(raw, err) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const corruptPath = `${MEMORY_FILE}.corrupt.${stamp}.json`;
+  const memoryFile = getMemoryFilePath();
+  const corruptPath = `${memoryFile}.corrupt.${stamp}.json`;
   try {
     writeFileSync(corruptPath, raw, 'utf-8');
     console.error(`[Memory] Corrupt file archived to ${corruptPath}: ${err.message}`);
@@ -117,6 +124,7 @@ function recoverCorruptFile(raw, err) {
  */
 export function loadMemory() {
   ensureDataDir();
+  const MEMORY_FILE = getMemoryFilePath();
 
   if (!existsSync(MEMORY_FILE)) {
     const empty = createEmptyStore();
@@ -168,14 +176,15 @@ export function saveMemory(store) {
 
   ensureDataDir();
 
+  const memoryFile = getMemoryFilePath();
   const payload = `${JSON.stringify(store, null, 2)}\n`;
-  const tempPath = `${MEMORY_FILE}.${process.pid}.${Date.now()}.tmp`;
+  const tempPath = `${memoryFile}.${process.pid}.${Date.now()}.tmp`;
 
   try {
     writeFileSync(tempPath, payload, 'utf-8');
-    renameSync(tempPath, MEMORY_FILE);
+    renameSync(tempPath, memoryFile);
 
-    if (!existsSync(MEMORY_FILE)) {
+    if (!existsSync(memoryFile)) {
       return { ok: false, error: 'Write verification failed' };
     }
 
@@ -467,12 +476,21 @@ export async function deleteMemoryField(userId, path) {
   });
 }
 
-/** @returns {string} */
-export function getMemoryFilePath() {
-  return MEMORY_FILE;
-}
-
-/** Test helper — reset store (used only in verification scripts). */
+/**
+ * Test helper — reset store.
+ * Refuses to wipe production data/user_memory.json unless ATLAS_MEMORY_FILE
+ * points at an isolated test file (or ATLAS_ALLOW_MEMORY_RESET=1).
+ */
 export async function resetMemoryStoreForTests(store = createEmptyStore()) {
+  const target = getMemoryFilePath();
+  const isOverride = Boolean(process.env.ATLAS_MEMORY_FILE?.trim());
+  const allowProd = process.env.ATLAS_ALLOW_MEMORY_RESET === '1';
+  if (!isOverride && !allowProd && target === DEFAULT_MEMORY_FILE) {
+    console.warn(
+      `[Memory] resetMemoryStoreForTests refused for production file ${target}. ` +
+        `Set ATLAS_MEMORY_FILE to a temp path.`,
+    );
+    return { ok: false, error: 'refused_production_memory_reset' };
+  }
   return withWriteLock(() => saveMemory(store));
 }

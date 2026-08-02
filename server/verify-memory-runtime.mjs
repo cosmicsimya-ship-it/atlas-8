@@ -5,6 +5,11 @@
 import { createHash } from 'crypto';
 import { writeFileSync, readFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { tmpdir } from 'os';
+process.env.ATLAS_MEMORY_FILE = join(
+  tmpdir(),
+  `atlas-user-memory-runtime-test-${process.pid}.json`,
+);
 import {
   buildRelevantMemoryContext,
   detectMemoryIntent,

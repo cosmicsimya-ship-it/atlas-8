@@ -5,7 +5,12 @@
 process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
+process.env.ATLAS_MEMORY_FILE = join(
+  tmpdir(),
+  `atlas-user-memory-privacy-test-${process.pid}.json`,
+);
 import {
   evaluatePrivacyRequest,
   buildFounderPublicResponse,

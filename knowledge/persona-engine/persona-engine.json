@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "engineId": "persona-v1",
+  "displayName": "Atlas Persona Engine",
+  "description": "Lara cognitive model & adaptive author system. Modular, file-based, LLM-independent knowledge layer. Does not copy ChatGPT; sustains Lara's editorial and symbolic working style.",
+  "status": "phase-2-feedback",
+  "authorProfilePath": "../author-profile",
+  "activeVoiceId": "atlas-analysis",
+  "modules": {
+    "author-profile": { "status": "active", "version": "author-profile-v1.1", "path": "../author-profile" },
+    "voice": { "status": "active", "version": "voice-v1", "path": "voice" },
+    "reasoning": { "status": "seed", "version": "reasoning-v1", "path": "reasoning" },
+    "editing": { "status": "active", "version": "editing-v1", "path": "editing" },
+    "conversation": { "status": "seed", "version": "conversation-v1", "path": "conversation" },
+    "preferences": { "status": "seed", "version": "preferences-v1", "path": "preferences" },
+    "decision-patterns": { "status": "seed", "version": "decision-patterns-v1", "path": "decision-patterns" },
+    "learning": { "status": "seed", "version": "learning-v1", "path": "learning" },
+    "feedback": { "status": "active", "version": "feedback-v1", "path": "feedback" },
+    "fingerprints": { "status": "seed", "version": "fingerprints-v1", "path": "fingerprints" },
+    "symbolic-thinking": { "status": "seed", "version": "symbolic-thinking-v1", "path": "symbolic-thinking" }
+  },
+  "runtimeInjectionOrder": [
+    "conversation-style",
+    "persona-engine",
+    "voice",
+    "author-profile",
+    "reasoning",
+    "conversation-context",
+    "current-task"
+  ],
+  "safety": {
+    "learnsStyleNotIdentity": true,
+    "noIdentityInvention": true,
+    "noDecideOnBehalfOfUser": true,
+    "noAbsoluteFateClaims": true,
+    "respectPersonalBoundaries": true
+  },
+  "phases": {
+    "phase1": "Scaffold + voice profiles + facade wiring over existing author-profile",
+    "phase2": "Feedback/editing signal capture + rejected/accepted patterns",
+    "phase3": "Fingerprints + adaptive learning loop",
+    "phase4": "Full reasoning + decision-pattern runtime influence"
+  }
+}

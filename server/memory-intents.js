@@ -886,6 +886,7 @@ export function buildRelevantMemoryContext(userId, message, mode = 'conversation
     if (memory.profile.birthTime) lines.push(`Doğum saati: ${memory.profile.birthTime}`);
     if (memory.profile.birthPlace) lines.push(`Doğum yeri: ${memory.profile.birthPlace}`);
     if (memory.profile.referenceDate) lines.push(`Referans tarihi: ${memory.profile.referenceDate}`);
+    if (memory.facts?.zodiac) lines.push(`Burç: ${memory.facts.zodiac}`);
   }
 
   if (wantsLocation || wantsDaily || wantsMeta) {

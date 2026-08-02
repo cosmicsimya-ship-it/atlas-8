@@ -136,7 +136,11 @@ assert('unrelated "Yorumla." does not trigger tarot', !unrelatedYorumla.active);
 // Short commands WITH context
 const ctxHistory = [
   { role: 'user', content: 'Aklımdaki kişinin duygularına üç kart aç.' },
-  { role: 'assistant', content: "Classic Tarot'tan sembolik olarak üç kart seçiyorum:\n1. Kupa Şövalyesi\n2. İki Kılıç\n3. Ermiş" },
+  {
+    role: 'assistant',
+    content:
+      "Bu dinamikte ilk dikkat çeken enerji Kupa Şövalyesi'nde.\n1. Kupa Şövalyesi\n2. İki Kılıç\n3. Ermiş",
+  },
 ];
 for (const cmd of ['aç', 'bak', 'çek', 'yorumla', 'hangi kartlar?']) {
   const intent = detectTarotSpreadIntent(cmd, ctxHistory);

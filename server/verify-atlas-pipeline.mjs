@@ -5,6 +5,12 @@
  * No paid API calls — mocks OpenAI and routeTask where needed.
  */
 process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
+import { join } from 'path';
+import { tmpdir } from 'os';
+process.env.ATLAS_MEMORY_FILE = join(
+  tmpdir(),
+  `atlas-user-memory-pipeline-test-${process.pid}.json`,
+);
 import {
   normalizeWebChatRequest,
   normalizeTelegramMessage,

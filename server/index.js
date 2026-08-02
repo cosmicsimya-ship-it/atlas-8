@@ -13,6 +13,8 @@ import { processAtlasMessage } from './atlas-message-service.js';
 import { normalizeAtlasMessageRequest, toWebChatResponse } from './channel-adapters.js';
 import { initializeFounderKnowledge, getFounderKnowledgeStatus } from './founder-knowledge.js';
 import { initializeFounderProfiles, getFounderProfileStatus } from './founder-profile.js';
+import { initializeAuthorProfile } from './author-profile.js';
+import { initializePersonaEngine } from './persona-engine.js';
 import { logFounderPipelineDebug } from './founder-identity.js';
 import {
   deleteMemoryField,
@@ -76,6 +78,14 @@ const runner = new Runner();
 
 const founderInit = initializeFounderKnowledge();
 const founderProfileInit = initializeFounderProfiles();
+const authorProfileInit = initializeAuthorProfile();
+if (!authorProfileInit.ok) {
+  console.warn('[AuthorProfile] init warning:', authorProfileInit.error);
+}
+const personaEngineInit = initializePersonaEngine();
+if (!personaEngineInit.ok) {
+  console.warn('[PersonaEngine] init warning:', personaEngineInit.error);
+}
 
 /**
  * Memory ACL — uses server auth only. Path userId must match req.auth.userId.

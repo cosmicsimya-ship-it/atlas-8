@@ -57,6 +57,9 @@ export const CLASSICAL_ABJAD_INTERPRETATION_LIMITATIONS = Object.freeze([
   'Sonuç sembolik/geleneksel bir çerçevedir; kesinlik veya dinî hüküm ifade etmez.',
 ]);
 
+/** Personal birth-date Pythagorean numerology (not daily day-number, not letter motif). */
+export const ATLAS_PYTHAGOREAN_BIRTH_METHODOLOGY_ID = 'atlas-pythagorean-birth-v1';
+
 /**
  * Feature flag: ATLAS_SYMBOLIC_METADATA_V2
  * When off, legacy source strings and response shape (minus additive fields).

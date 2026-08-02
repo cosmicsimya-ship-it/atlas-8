@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "moduleId": "feedback-rejected-v1",
+  "status": "seed",
+  "description": "Patterns that were rejected or corrected. Prevents repeating the same editorial mistakes.",
+  "patterns": [
+    {
+      "id": "mechanical-tarot-opener",
+      "kind": "rejected",
+      "summary": "Mekanik tarot prosedür cümleleri",
+      "examples": ["Kartları karıştırıyorum", "Şimdi kart çekiyorum", "Klasik tarot destesinden… seçiyorum"]
+    },
+    {
+      "id": "ai-self-reminder",
+      "kind": "rejected",
+      "summary": "Sürekli yapay zekâ olduğunu hatırlatma",
+      "examples": ["Bir yapay zekâ olarak", "Bir dil modeli olarak"]
+    }
+  ]
+}

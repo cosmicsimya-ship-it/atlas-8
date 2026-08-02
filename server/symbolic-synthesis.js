@@ -312,6 +312,10 @@ export function buildChatUserPrompt(
     parts.push(speakerAttributionContext, '');
   }
 
+  if (context?.conversationContext) {
+    parts.push(String(context.conversationContext).trim(), '');
+  }
+
   if (abjadVerificationContext) {
     parts.push(abjadVerificationContext, '');
   }
@@ -372,7 +376,12 @@ export function buildChatUserPrompt(
     } else if (tarotIntent.intent === 'continue') {
       taskLines.push('Önceki tarot bağlamını koruyarak yeni alt açılım yap.');
     } else {
-      taskLines.push('Classic Tarot destesinden sembolik kart seç ve açılımı tamamla.');
+      taskLines.push(
+        'Tanımlı Classic Tarot destesinden sembolik kart seçimini içsel olarak yap ve açılımı tamamla.',
+        'Kullanıcıya prosedür anlatma: "kart seçiyorum / karıştırıyorum / çekiyorum / destesinden seçiyorum" deme.',
+        'Lara Author Profile sesiyle doğrudan enerjiye gir ("Bu dinamikte ilk dikkat çeken…", "Bana göre burada asıl vurgu…").',
+        'Kart isimlerini doğal anlatım içinde açıkça yaz.',
+      );
     }
 
     taskLines.push('', `Kullanıcı: ${trimmed}`);

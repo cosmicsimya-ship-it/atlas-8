@@ -10,7 +10,13 @@ import {
   normalizeErrorReply,
   splitTelegramMessage,
   getTelegramInFlightNotice,
+  isTelegramGroupMessageAddressedToBot,
+  isTelegramReplyToBot,
 } from './channel-adapters.js';
+import {
+  shouldForwardGroupMessage,
+  hasActiveSession,
+} from './conversation-activation.js';
 import {
   resolveFounderSession,
   buildFounderPipelineDebug,
@@ -196,9 +202,8 @@ bot
       `[Telegram] Resilience ${TELEGRAM_RESILIENCE_VERSION}: queue + send retry + polling reconnect + heartbeat.`,
     );
     console.log(
-      '[Telegram] Group mode: responds to all messages this bot receives. ' +
-        'If groups stay silent, disable Privacy Mode in BotFather (/setprivacy → Disable) ' +
-        'or @mention / reply to the bot.',
+      '[Telegram] Group mode: silent by default — mention @Atlas / reply / command, ' +
+        'or continue an active session. Privacy Mode in BotFather still filters delivery.',
     );
     console.warn(
       '[Telegram] Local dependency: this process runs on the host PC. ' +
@@ -477,18 +482,50 @@ async function processOneMessage(msg) {
     return;
   }
 
+  const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  const inboundTextForGate = (msg.text || msg.caption || '').trim();
+  const fromIdForGate =
+    msg.from?.id != null
+      ? `telegram:${msg.from.id}`
+      : msg.sender_chat?.id != null
+        ? `telegram:sc_${String(msg.chat.id).replace(/[^a-zA-Z0-9_]/g, '_')}`
+        : null;
+  const addressedToBot =
+    isTelegramReplyToBot(msg, botIdentity) ||
+    isTelegramGroupMessageAddressedToBot(msg, inboundTextForGate, botIdentity);
+  const allowForward = shouldForwardGroupMessage({
+    message: inboundTextForGate || 'media',
+    conversationId,
+    userId: fromIdForGate,
+    isGroup: isGroupChat,
+    addressedToBot,
+  });
+
+  if (isGroupChat && !allowForward) {
+    logTelegramMessageTrace({
+      ...traceBase,
+      intent: 'activation:no_response',
+      resultStatus: 'no_response',
+      processingStartedAt: receivedAt,
+      processingCompletedAt: new Date().toISOString(),
+      sendResult: 'skipped_activation_gate',
+    });
+    console.log(
+      `[Telegram] Group silent (activation gate): chat=${chatId} from=${msg.from?.id}`,
+    );
+    return;
+  }
+
   const inboundKind = detectInboundKind(msg);
   try {
-    if (
-      (msg.chat.type === 'group' || msg.chat.type === 'supergroup') &&
-      process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true'
-    ) {
+    if (isGroupChat && process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true') {
       normalizeTelegramMessage(
         msg,
         getChatHistory(conversationId),
         normalizeOptions({
           resolvedMessage: msg.text || msg.caption || 'media',
           mediaKind: inboundKind === 'text' ? null : inboundKind,
+          allowActiveSession: hasActiveSession(conversationId, fromIdForGate),
         }),
       );
     }
@@ -587,6 +624,24 @@ async function processOneMessage(msg) {
 
     if (resolved.image) {
       resolved.image.base64 = '';
+    }
+
+    if (
+      backend?.data?.noResponse === true ||
+      backend?.intent === 'activation:no_response'
+    ) {
+      logTelegramMessageTrace({
+        ...traceBase,
+        intent: 'activation:no_response',
+        resultStatus: 'no_response',
+        processingCompletedAt: new Date().toISOString(),
+        sendResult: 'skipped_no_response',
+        retryCount,
+      });
+      console.log(
+        `[Telegram] NO_RESPONSE (pipeline): chat=${chatId} from=${msg.from?.id}`,
+      );
+      return;
     }
 
     const reply =

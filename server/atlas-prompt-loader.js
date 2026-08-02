@@ -15,6 +15,13 @@ import {
   buildConversationStyleRuntimeBlock,
   shouldInjectFounderContextBlocks,
 } from './atlas-conversation-style.js';
+import {
+  buildAuthorProfileRuntimeRules,
+} from './author-profile.js';
+import {
+  buildPersonaEngineRuntimeBlock,
+  buildPersonaEngineRuntimeRules,
+} from './persona-engine.js';
 import { PRIVACY_SYSTEM_INSTRUCTION } from './privacy/privacy-policy.js';
 import { IDENTITY_SAFETY_SYSTEM_RULES } from './identity-claims.js';
 import { SPEAKER_ATTRIBUTION_SYSTEM_RULES } from './speaker-attribution.js';
@@ -122,7 +129,7 @@ export function resolveChatProfile(mode) {
 /**
  * Runtime rules appended to Atlas-powered chat profiles.
  * Symbolic / numerology / synthesis directives appear ONLY for meta-synthesis mode.
- * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null }} [options]
+ * @param {{ currentDate?: string, mode?: string, profile?: PromptProfile, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null, channel?: string, domain?: string, voiceId?: string }} [options]
  */
 export function buildRuntimeRules(options = {}) {
   const currentDate = options.currentDate ?? getCurrentDateTr();
@@ -197,9 +204,11 @@ Kullanıcı itirazını otomatik doğru kabul etme; harf harf yeniden hesapla. E
 Kullanıcı tarot açılımı komutu verdi veya aktif tarot bağlamı devam ediyor.
 atlas_tarot_spread.md protokolünü uygula:
 - Fiziksel deste reddi veya tarot eğitimi verme; doğrudan eyleme geç
-- Classic Tarot destesinden sembolik kart seç
+- Kart seçimini içsel olarak yap; kullanıcıya prosedür anlatma
 - Kart isimlerini açıkça yaz
 - Örüntü, gizli dinamik, kör nokta ve sentez içeren yorum yap
+- Açılışı Lara Author Profile sesiyle yap: doğrudan enerjiye gir ("Bu dinamikte ilk dikkat çeken…")
+- "kart seçiyorum / karıştırıyorum / çekiyorum / destesinden seçiyorum" deme
 - Bağlam sormadan önceki talimatı uygula
 ${
   tarotIntent.intent === 'reveal-cards'
@@ -210,6 +219,20 @@ ${
 }`
     : '';
 
+  const authorRules = buildAuthorProfileRuntimeRules({
+    tarotActive: Boolean(tarotIntent?.active),
+    mode,
+  });
+  const personaRules = buildPersonaEngineRuntimeRules({
+    tarotActive: Boolean(tarotIntent?.active),
+    mode,
+    channel: options.channel,
+    domain: options.domain,
+    voiceId: options.voiceId,
+    brand: options.brand,
+    conversationId: options.conversationId,
+  });
+
   return `
 Sen Atlas'sın; Cosmic Simya grubunun yapay zekâ asistanısın.
 
@@ -218,6 +241,10 @@ Saat dilimi: Europe/Istanbul
 ${modeDirective}
 ${founderDirective ? `\n${founderDirective}\n` : ''}
 ${tarotDirective}
+
+${personaRules}
+
+${authorRules}
 
 Tarih gerektiren sorularda yalnızca yukarıdaki tarihi kullan.
 Eski veya tahminî bir tarih uydurma.
@@ -238,8 +265,8 @@ Kullanıcının dilinde cevap ver.
 
 /**
  * Build a system prompt for a named profile.
- * Priority: style override > user intent > founder context > persona modules.
- * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null, message?: string }} [options]
+ * Priority: style > persona engine (voice + author + reasoning) > user intent > founder > persona modules.
+ * @param {{ profile?: PromptProfile, mode?: string, currentDate?: string, tarotIntent?: import('./symbolic-synthesis.js').TarotSpreadIntent|null, founderProfile?: import('./founder-knowledge.js').FounderProfile|null, founderSession?: import('./founder-identity.js').FounderSession|null, message?: string, channel?: string, domain?: string, voiceId?: string, conversationId?: string, feedbackResolution?: object|null, brand?: string }} [options]
  * @returns {string} Empty string for shorts/generic — caller must supply the prompt.
  */
 export function buildAtlasSystemPrompt(options = {}) {
@@ -298,11 +325,26 @@ export function buildAtlasSystemPrompt(options = {}) {
     founderSession: injectFounderIdentity && gateSession ? gateSession : null,
     founderProfile:
       injectFounderIdentity && founderSession?.knowledge ? options.founderProfile : null,
+    channel: options.channel,
+    domain: options.domain,
+    voiceId: options.voiceId,
   });
 
   const styleOverride = buildConversationStyleRuntimeBlock();
+  const personaOverride = buildPersonaEngineRuntimeBlock({
+    tarotActive: Boolean(options.tarotIntent?.active),
+    mode: options.mode ?? 'conversational',
+    channel: options.channel,
+    domain: options.domain ?? options.mode,
+    voiceId: options.voiceId,
+    brand: options.brand,
+    conversationId: options.conversationId,
+    feedbackResolution: options.feedbackResolution ?? null,
+  });
 
-  const parts = [styleOverride, '---', base + tarotExtra];
+  // RFC-011 order: style → persona (voice+author+reasoning) → modules → ...
+  // Trailing overrides keep high-priority editorial constraints near the end.
+  const parts = [styleOverride, '---', personaOverride, '---', base + tarotExtra];
   if (founderSystemSection) {
     parts.push('---', founderSystemSection);
   }
@@ -313,6 +355,7 @@ export function buildAtlasSystemPrompt(options = {}) {
     parts.push('---', ABJAD_VERIFICATION_SYSTEM_RULES);
   }
   parts.push('---', runtime);
+  parts.push('---', personaOverride);
   parts.push('---', styleOverride);
   return parts.join('\n\n');
 }

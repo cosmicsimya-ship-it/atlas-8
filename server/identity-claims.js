@@ -164,6 +164,41 @@ const NON_NAME_SINGLE = new Set([
   'hicrî',
   'hijri',
   'ummalqura',
+  // Presence / repair / pronoun / zodiac — never "call me X"
+  'ordamısin',
+  'ordamısın',
+  'ordamisin',
+  'buradamısın',
+  'buradamisin',
+  'burdamısın',
+  'burdamisin',
+  'senin',
+  'benim',
+  'onun',
+  'bizim',
+  'sizin',
+  'yanlış',
+  'yanlis',
+  'error',
+  'kova',
+  'aslan',
+  'yengeç',
+  'yengec',
+  'akrep',
+  'balık',
+  'balik',
+  'koç',
+  'koc',
+  'boğa',
+  'boga',
+  'ikizler',
+  'başak',
+  'basak',
+  'terazi',
+  'yay',
+  'oğlak',
+  'oglak',
+  'hepsi',
 ]);
 
 /** First-person identity questions — not name introductions. */
@@ -173,6 +208,20 @@ const IDENTITY_QUESTION_RE =
 /**
  * @param {string|null|undefined} value
  */
+function foldTokenTr(value) {
+  return String(value ?? '')
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFC')
+    .replace(/[î]/g, 'i')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ş/g, 's')
+    .replace(/ç/g, 'c')
+    .replace(/ğ/g, 'g')
+    .replace(/ı/g, 'i')
+    .replace(/['’]/g, '');
+}
+
 function normalizeName(value) {
   if (!value || typeof value !== 'string') return null;
   const trimmed = value.trim().replace(/\s+/g, ' ');
@@ -182,6 +231,9 @@ function normalizeName(value) {
   }
   const lower = trimmed.toLocaleLowerCase('tr-TR');
   if (NON_NAME_SINGLE.has(lower)) return null;
+  // Folded form catches orthographic variants (ordamısın / Ordamisin, Kova, etc.)
+  const folded = foldTokenTr(trimmed);
+  if (NON_NAME_SINGLE.has(folded)) return null;
   return trimmed;
 }
 

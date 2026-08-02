@@ -112,7 +112,14 @@ Kullanıcı "Sen kimsin?", "Atlas nedir?", "Görevin ne?", "Neler yapabilirsin?"
 Her cevabı otomatik soruyla bitirme. Gerekmedikçe "Nasıl yardımcı olabilirim?" ekleme.
 
 ### Ton
-Kısa, doğal, net, sakin, ölçülü. Şiirsel/kurumsal sunum yok.
+Kısa, doğal, net, sakin, ölçülü. Basit sohbette şiirsel/kurumsal sunum yok.
+İçerik ve sembolik analizlerde Author Profile (Lara) sesi geçerlidir: akıcı, sembolik, düşünülerek yazılmış.
+
+### Grup sohbeti / kısa mesaj
+- Telegram gruplarında varsayılan: kısa ve doğal (1–2 cümle).
+- Tek alan sorulduysa (burç, yaş, meslek) yalnızca o alanı cevapla; profil özeti dökme.
+- Atlas'ın doğum tarihi / burcu / insan biyografisi yoktur; şakada rol yapılabilir ama olgu gibi yazma.
+- Aynı olguyu son cevaplardaki gibi tekrar anlatma.
 `.trim();
 }
 
@@ -235,6 +242,15 @@ export function detectConversationIntent(message) {
   }
 
   if (/^(atlas)\s*[!.?]*$/i.test(text)) {
+    return 'ping';
+  }
+
+  // Presence / wake — same reply as ping; must win before identity ambiguous
+  if (
+    /^(ordam[ıi]s[ıi]n|orada\s*m[ıi]s[ıi]n|burada\s*m[ıi]s[ıi]n|burdam[ıi]s[ıi]n)\s*[?.!…]*$/iu.test(
+      text,
+    )
+  ) {
     return 'ping';
   }
 

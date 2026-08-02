@@ -4,6 +4,7 @@
 
 import { PRIVACY_LEVELS } from './privacy-policy.js';
 import { analyzeIdentityClaim, isSelfReferentialIdentityMessage } from '../identity-claims.js';
+import { detectProfilePropertyQuery } from '../conversation-context-engine.js';
 
 const FOUNDER_NAME_RE =
   /\b(lara|lara'nın|laranın|lara'ya|laraya|lara'yı|larayi|lara'yla|larayla)\b/i;
@@ -191,6 +192,25 @@ export function classifyPrivacyIntent(message) {
   const wantsPrivate = PRIVATE_DATA_RE.some((p) => p.test(text));
   const wantsCrossUser = CROSS_USER_MEMORY_RE.some((p) => p.test(text));
   const wantsPublic = PUBLIC_PROFILE_RE.some((p) => p.test(text));
+
+  // Non-private single-field queries ("Lara'nın burcu?") must not dump public bio.
+  // Birth-date / private cues still follow private_data below — never demote those.
+  const propertyQuery = detectProfilePropertyQuery(text);
+  if (
+    propertyQuery &&
+    !wantsPrivate &&
+    propertyQuery.field !== 'birthDate' &&
+    propertyQuery.field !== 'age'
+  ) {
+    return {
+      aboutFounder: false,
+      requestType: 'profile_property_query',
+      privacyLevel: PRIVACY_LEVELS.PUBLIC,
+      isInjectionAttempt: false,
+      isMixed: false,
+      wantsPrivateData: false,
+    };
+  }
 
   // Self-referential naming must not flip aboutFounder via name substring alone.
   const founderMention =

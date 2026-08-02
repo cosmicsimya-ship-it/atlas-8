@@ -1,0 +1,10 @@
+{
+  "id": "pdf-report",
+  "version": "voice-v1",
+  "displayName": "PDF Report",
+  "domains": ["pdf", "report", "premium"],
+  "tone": "Premium, minimal, yüksek estetik. Gereksiz açıklama yok.",
+  "register": "Kısa başlıklar; tok cümleler; boş kalıp yok.",
+  "prefer": ["minimal", "net başlık", "yoğun sentez"],
+  "avoid": ["robotik dil", "fazla emoji", "tekrarlayan özet", "doldurma paragraf"]
+}

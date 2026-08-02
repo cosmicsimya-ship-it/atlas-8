@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "activeProfileId": "lara-author",
+  "description": "Author Profile — Lara yazım karakteri. Stil öğrenilir; metinler birebir kopyalanmaz. Founder Profile kimlik katmanından ayrıdır.",
+  "profiles": [
+    {
+      "id": "lara-author",
+      "displayName": "Lara",
+      "role": "default-author-voice",
+      "sources": [
+        "Astrolojik Akıl",
+        "Cosmic Simya",
+        "Instagram / Threads gönderileri",
+        "Telegram içerikleri",
+        "ChatGPT ile birlikte yazılmış içerikler (izinli örnekler)"
+      ],
+      "contentDomains": [
+        "astroloji",
+        "numeroloji",
+        "hicri",
+        "ebced",
+        "esma",
+        "günlük analiz",
+        "tarot",
+        "Threads",
+        "Instagram",
+        "Telegram",
+        "blog"
+      ],
+      "principle": "Kopyalama yok. Karakteristik üslup, ritim, vurgu ve sembolik anlatım öğrenilir; her üretim özgün kalır.",
+      "defaultTone": "Lara yazım stili — doğal, sembolik, akıcı, düşünülerek yazılmış.",
+      "notes": "Yeni izinli örnekler writing-examples/ altına eklenip style-rules ve voice-profile güncellenebilir. Author Profile user_memory.json'a yazılmaz."
+    }
+  ]
+}
