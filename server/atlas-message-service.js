@@ -138,6 +138,15 @@ import {
   tryNumerologyFlowReply,
   NUMEROLOGY_FLOW_VERSION,
 } from './numerology-flow.js';
+import {
+  tryTarotFlowReply,
+  TAROT_FLOW_VERSION,
+  NO_ACTIVE_TAROT_SPREAD_REPLY,
+} from './tarot-flow.js';
+import {
+  createRequestTiming,
+  attachRequestTiming,
+} from './request-timing.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -170,13 +179,14 @@ function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu
  * @returns {AtlasMessageResult}
  */
 function applyPrivacyGuardToResult(result, ctx) {
+  const timing = ctx?.timing ?? null;
   if (!result || typeof result.reply !== 'string') {
     return finalizeMessageResult(result ?? {
       status: 'error',
       reply: '',
       errorCode: 'ENGINE_FAILURE',
       engine: 'atlas',
-    }, ctx?.originalMessage ?? '');
+    }, ctx?.originalMessage ?? '', timing);
   }
   try {
     const guarded = guardOutboundReply(result.reply, {
@@ -203,7 +213,7 @@ function applyPrivacyGuardToResult(result, ctx) {
                 ...(speakerCorrected ? { speakerAddressCorrected: true } : {}),
               },
             };
-      return finalizeMessageResult(next, ctx.originalMessage ?? '');
+      return finalizeMessageResult(next, ctx.originalMessage ?? '', timing);
     }
     return finalizeMessageResult(
       {
@@ -217,9 +227,10 @@ function applyPrivacyGuardToResult(result, ctx) {
         },
       },
       ctx.originalMessage ?? '',
+      timing,
     );
   } catch {
-    return finalizeMessageResult(result, ctx.originalMessage ?? '');
+    return finalizeMessageResult(result, ctx.originalMessage ?? '', timing);
   }
 }
 
@@ -283,14 +294,15 @@ function resolveIntentLabel(message, tarotIntent, memoryIntent) {
  * Ensure every result carries a user-visible reply + resultStatus contract.
  * @param {AtlasMessageResult} result
  * @param {string} [originalMessage]
+ * @param {ReturnType<typeof createRequestTiming>|null} [timing]
  * @returns {AtlasMessageResult}
  */
-function finalizeMessageResult(result, originalMessage = '') {
+function finalizeMessageResult(result, originalMessage = '', timing = null) {
   if (
     result?.data?.noResponse === true ||
     result?.intent === 'activation:no_response'
   ) {
-    return {
+    const bare = {
       ...result,
       status: 'complete',
       reply: '',
@@ -302,6 +314,7 @@ function finalizeMessageResult(result, originalMessage = '') {
         resultStatus: 'no_response',
       },
     };
+    return timing ? attachRequestTiming(bare, timing) : bare;
   }
 
   const withReply = { ...result };
@@ -333,7 +346,7 @@ function finalizeMessageResult(result, originalMessage = '') {
     ...(withReply.data ?? {}),
     resultStatus,
   };
-  return withReply;
+  return timing ? attachRequestTiming(withReply, timing) : withReply;
 }
 
 /**
@@ -694,8 +707,19 @@ export function buildAtlasPromptBundle(input, options = {}) {
  * @returns {Promise<AtlasMessageResult>}
  */
 export async function processAtlasMessage(input, options = {}) {
+  const conversationIdForTiming = String(
+    input.conversationId ?? input.userId ?? 'default',
+  );
+  const requestTiming = createRequestTiming({
+    channel: input.channel ?? 'api',
+    conversationId: conversationIdForTiming,
+  });
+  requestTiming.mark('received');
+  requestTiming.start('normalization');
+
   const longNorm = normalizeLongMessage(input.message ?? '');
   let message = longNorm.normalized;
+  requestTiming.end('normalization');
   if (!message) {
     return finalizeMessageResult({
       status: 'error',
@@ -703,11 +727,13 @@ export async function processAtlasMessage(input, options = {}) {
       errorCode: 'INVALID_INPUT',
       intent: 'validation',
       engine: 'atlas',
-    }, '');
+    }, '', requestTiming);
   }
 
   const hasImage = Boolean(input.image?.base64);
+  requestTiming.start('health_safety');
   const healthSafety = detectHealthSafetyIntent(message);
+  requestTiming.end('health_safety');
 
   // Test harness only — never enabled for HTTP handlers.
   if (
@@ -765,10 +791,11 @@ export async function processAtlasMessage(input, options = {}) {
       errorCode: 'INVALID_INPUT',
       intent: 'validation',
       engine: 'atlas',
-    }, message);
+    }, message, requestTiming);
   }
 
   // ── Conversation activation & session gate (default NO_RESPONSE in groups) ──
+  requestTiming.start('activation');
   const conversationIdEarly = String(input.conversationId ?? userId ?? 'default');
   const metaEarly =
     input.metadata && typeof input.metadata === 'object' ? input.metadata : {};
@@ -780,6 +807,7 @@ export async function processAtlasMessage(input, options = {}) {
     isGroup: Boolean(metaEarly.isGroup),
     metadata: metaEarly,
   });
+  requestTiming.end('activation');
   console.log(
     `[Atlas/activation] decision=${activation.decision} reason=${activation.reason}` +
       ` isGroup=${activation.isGroup} skipResolvers=${activation.skipResolvers}` +
@@ -803,6 +831,7 @@ export async function processAtlasMessage(input, options = {}) {
         },
       },
       message,
+      requestTiming,
     );
   }
 
@@ -834,6 +863,7 @@ export async function processAtlasMessage(input, options = {}) {
         },
       },
       message,
+      requestTiming,
     );
   }
 
@@ -854,6 +884,7 @@ export async function processAtlasMessage(input, options = {}) {
     channel: input.channel ?? 'api',
     originalMessage: message,
     speakerGuard: null,
+    timing: requestTiming,
   };
 
   const history = input.history ?? [];
@@ -1048,6 +1079,7 @@ export async function processAtlasMessage(input, options = {}) {
   // ── Personal numerology engine (layered analysis; before short self-profile) ──
   // Follow-ups stay in numerology session — do not fall through to profile resolvers.
   if (!hasImage && !healthSafety.active) {
+    requestTiming.start('numerology_engine');
     const numerologyFlow = tryNumerologyFlowReply({
       message,
       history,
@@ -1055,6 +1087,7 @@ export async function processAtlasMessage(input, options = {}) {
       conversationId,
       now: new Date(),
     });
+    requestTiming.end('numerology_engine');
     if (numerologyFlow?.handled && numerologyFlow.reply) {
       noteAssistantTurn(conversationId, {
         reply: numerologyFlow.reply,
@@ -1091,6 +1124,119 @@ export async function processAtlasMessage(input, options = {}) {
             styleDebug,
             model: 'deterministic',
             provider: 'atlas-numerology-engine',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
+  // ── Tarot interpretation engine (selection ≠ interpretation; depth guard) ──
+  // Engine-first for text AND image captions. Never fall through to LLM tarot
+  // dictionary dumps. Multimodal card-from-image is not supported in v1.
+  if (!healthSafety.active) {
+    requestTiming.start('tarot_engine');
+    const tarotFlow = tryTarotFlowReply({
+      message,
+      history,
+      userId,
+      conversationId,
+    });
+    requestTiming.end('tarot_engine');
+    if (tarotFlow?.handled && tarotFlow.reply) {
+      noteAssistantTurn(conversationId, {
+        reply: tarotFlow.reply,
+        intent: tarotFlow.intent,
+        responseMode: 'tarot_analysis',
+      });
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: tarotFlow.intent,
+        responseMode: 'tarot_analysis',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: true,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: tarotFlow.reply,
+          intent: tarotFlow.intent,
+          engine: tarotFlow.engine || 'tarot-engine',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIntent: tarotFlow.intent,
+            responseMode: 'tarot_analysis',
+            domain: 'tarot',
+            tarotFlowVersion: TAROT_FLOW_VERSION,
+            imageIgnoredForTarot: Boolean(hasImage),
+            ...(tarotFlow.data ?? {}),
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            model: 'deterministic',
+            provider: 'atlas-tarot-engine',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+
+    // Remaining tarot protocol hits that the engine did not handle (should be rare).
+    // Never open the LLM tarot prompt path — controlled fallback only.
+    if (tarotIntent.active) {
+      const fallbackReply = hasImage
+        ? 'Görsel üzerinden tarot açılımı bu sürümde desteklenmiyor. Niyetini yazarak metin üzerinden açılım isteyebilirsin.'
+        : NO_ACTIVE_TAROT_SPREAD_REPLY;
+      noteAssistantTurn(conversationId, {
+        reply: fallbackReply,
+        intent: `tarot:${tarotIntent.intent}`,
+        responseMode: 'tarot_fallback',
+      });
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: `tarot:${tarotIntent.intent}`,
+        responseMode: 'tarot_fallback',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: true,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: fallbackReply,
+          intent: `tarot:${tarotIntent.intent}`,
+          engine: 'tarot-engine',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIntent: `tarot:${tarotIntent.intent}`,
+            responseMode: 'tarot_fallback',
+            domain: 'tarot',
+            tarotFlowVersion: TAROT_FLOW_VERSION,
+            tarotFallback: hasImage ? 'multimodal_unsupported' : 'engine_miss',
+            drewCards: false,
+            reusedCards: false,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            model: 'deterministic',
+            provider: 'atlas-tarot-engine',
             tokensUsed: 0,
             costUsd: 0,
             latencyMs: 0,
@@ -1853,6 +1999,8 @@ export async function processAtlasMessage(input, options = {}) {
   const invokeLlm = options.callOpenAI ?? callOpenAI;
 
   try {
+    requestTiming.start('llm');
+    requestTiming.noteLlmCall();
     const result = await invokeLlm({
       systemPrompt,
       userPrompt,
@@ -1866,12 +2014,17 @@ export async function processAtlasMessage(input, options = {}) {
           }
         : {}),
     });
+    requestTiming.end('llm');
 
+    requestTiming.start('post_llm_guards');
     let reply = extractResponseText(result);
     let synthesisGuard = null;
     if (synthesisBridge.ran && synthesisBridge.synthesis) {
       synthesisGuard = guardSynthesisReply(reply, synthesisBridge.synthesis);
       reply = synthesisGuard.reply;
+      if (synthesisGuard.usedDeterministicFallback) {
+        requestTiming.noteRetryOrFallback();
+      }
     }
 
     const authorVoiceGuard = applyPersonaGuards(reply, {
@@ -1887,6 +2040,7 @@ export async function processAtlasMessage(input, options = {}) {
         contextResolution.responseMode === 'casual_ack',
     });
     reply = guarded.reply;
+    requestTiming.end('post_llm_guards');
     noteAssistantTurn(conversationId, {
       reply,
       intent: conversationIntent,

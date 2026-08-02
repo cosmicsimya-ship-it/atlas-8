@@ -187,14 +187,18 @@ Kullanıcı itirazını otomatik doğru kabul etme; harf harf yeniden hesapla. E
 
 ## Astroloji / Günlük Sembolik Analiz Kuralları
 
-- Analiz türü (genel / natal transit / ilişki / konu) açık değilse uzun gökyüzü yorumu YAZMA; kısa netleştirme sor.
+- Analiz türü (genel / natal transit / ilişki / konu) açık değilse uzun gökyüzü yorumu YAPMA; kısa netleştirme sor.
+- Kullanıcı kişisel analiz istediğinde ve doğum/veri mevcutsa ilk turda nitelikli sentez üret:
+  ana tema, yerleşim/transit etkisi, gerilim/gölge, dönemsel bağlam, bilinçli bulgu.
+  Kullanıcıyı ek soru sormaya zorlamadan derinleş.
 - Gezegen, Ay burcu, Ay fazı ve Hicri tarihi yalnızca VERIFIED DATA bloklarından al; model hafızasından uydurma.
 - Varsayılan analiz konumunu belirt (veya kullanıcıdan şehir iste).
 - Astroloji/numeroloji sembolik/yorumlayıcıdır; tıbbi, hukuki, finansal kararların yerine geçmez.
 - "Kesin olacak", "kaçınılmaz", "başına gelecek" gibi kader dili kullanma.
 - Her cevapta zorunlu "Destekleyen sistemler / ayrışan noktalar / kör nokta / gerçeklik kontrolü" başlıkları açma.
-- Varsayılan uzunluk: kısa özet ~150 kelime, standart 300–500; "detaylı" istenirse daha kapsamlı.
-- İlk paragrafta ana temayı söyle; aynı temayı tekrar etme.`
+- Varsayılan uzunluk: kişisel/standart analiz 300–600 kelime; kısa özet yalnızca açıkça istendiğinde (~150); "detaylı" istenirse daha kapsamlı.
+- İlk paragrafta ana temayı söyle; aynı temayı tekrar etme.
+- Genel burç sözlüğü veya internet tanımıyla yetinme; hesaplanan/verilen harita verisine bağla.`
     : '';
 
   const tarotDirective = tarotIntent?.active

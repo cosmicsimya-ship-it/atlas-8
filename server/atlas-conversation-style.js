@@ -89,7 +89,10 @@ Bu bölüm, alttaki/üstteki persona, founder ve örnek metinlerden ÖNCE uygula
 - Basit sohbet: 1–2 kısa cümle.
 - Basit bilgi: 1–3 kısa cümle.
 - Teknik: kısa teşhis + tek adım.
-- Yalnızca kullanıcı açıkça detay isterse uzun yaz.
+- Sembolik / kişisel analiz (numeroloji, astroloji, kader matrisi, ebced, tarot, sentez):
+  veri yeterliyse ilk turda nitelikli analiz yaz; kullanıcıyı zorlatma.
+  Kısa cevap yalnız açıkça istendiğinde.
+- Diğer konularda yalnızca kullanıcı açıkça detay isterse uzun yaz.
 
 ### Kendini anlatmama
 Kullanıcı "Sen kimsin?", "Atlas nedir?", "Görevin ne?", "Neler yapabilirsin?" demedikçe:
@@ -343,6 +346,17 @@ export function resolveReplyMaxTokens(message, options = {}) {
   if (intent === 'backend_diag') return 90;
 
   const text = String(message ?? '').trim();
+  // First-turn symbolic / personal analysis — do not starve depth with casual caps.
+  if (
+    /\b(numerol|astroloj|kader\s*matris|ebced|cifir|tarot|ya[sş]am\s+yol|haritam|sentez|kişisel\s+analiz)\b/iu.test(
+      text,
+    ) &&
+    !/\b(k[ıi]saca|k[ıi]sa\s+anlat|özetle)\b/u.test(text)
+  ) {
+    if (/\b(detayl[ıi]|tam\s+analiz|derin|yorumla)\b/u.test(text)) return 1200;
+    return 900;
+  }
+
   // Short technical/diagnostic questions still need room for a full diagnosis sentence.
   if (/\?|neden|niye|nas[ıi]l|fix|error|bug|backend|polling|node|api|crash|leak/i.test(text)) {
     return 350;

@@ -100,11 +100,18 @@ const masterAnalysis = getMasterAnalysis(33);
 record('master analysis has active/passive', Boolean(masterAnalysis?.activeMode && masterAnalysis?.passiveMode));
 
 // ── Depth resolution ──────────────────────────────────────────────────
-record('default depth standard', resolveNumerologyDepth(FIXTURE_MSG) === DEPTH_LEVEL.STANDARD);
+record(
+  'default depth deep for personal anlat',
+  resolveNumerologyDepth(FIXTURE_MSG) === DEPTH_LEVEL.DEEP,
+);
 record('short depth', resolveNumerologyDepth('kısaca numerolojim') === DEPTH_LEVEL.SHORT);
 record(
   'deep depth',
   resolveNumerologyDepth('detaylı tam analiz, bilmediğim şeyleri söyle') === DEPTH_LEVEL.DEEP,
+);
+record(
+  'birth+numeroloji without analiz verb → standard',
+  resolveNumerologyDepth('27.01.1986 numeroloji') === DEPTH_LEVEL.STANDARD,
 );
 
 // ── Test 1: full analysis scope ───────────────────────────────────────
@@ -282,6 +289,133 @@ record('named deep includes expression', /ifade/i.test(named.reply));
 
 record('engine version set', Boolean(NUMEROLOGY_ENGINE_VERSION));
 record('flow version set', Boolean(NUMEROLOGY_FLOW_VERSION));
+
+// ── Hüseyin first-turn depth acceptance ───────────────────────────────
+_resetAllNumerologySessions();
+record(
+  'huseyin: number-only → L1',
+  resolveNumerologyDepth('Benim yaşam yolu sayım kaç?') === DEPTH_LEVEL.SHORT,
+);
+const huseyinShort = tryNumerologyFlowReply({
+  message: '27.01.1986 — benim yaşam yolu sayım kaç?',
+  conversationId: 'num-huseyin-l1',
+  userId: 'telegram:huseyin-l1',
+  now: NOW,
+});
+record('huseyin L1 handled', Boolean(huseyinShort?.handled));
+record(
+  'huseyin L1 has number',
+  /yaşam yolu|7\b/i.test(huseyinShort?.reply || ''),
+);
+record(
+  'huseyin L1 not full L3 dump',
+  (huseyinShort?.reply || '').length < 900 &&
+    !/## Zirve|## Mücadele/i.test(huseyinShort?.reply || ''),
+  `len=${(huseyinShort?.reply || '').length}`,
+);
+record(
+  'huseyin L1 still has brief meaning',
+  /gölge|okuma|kişisel yıl|frekans/i.test(huseyinShort?.reply || ''),
+);
+
+_resetAllNumerologySessions();
+record(
+  'huseyin: detaylı yorumla → L3',
+  resolveNumerologyDepth('Numerolojimi detaylı yorumla.') === DEPTH_LEVEL.DEEP,
+);
+const huseyinDeep = tryNumerologyFlowReply({
+  message: '27.01.1986 Numerolojimi detaylı yorumla.',
+  conversationId: 'num-huseyin-l3',
+  userId: 'telegram:huseyin-l3',
+  now: NOW,
+});
+record('huseyin L3 handled', Boolean(huseyinDeep?.handled));
+record('huseyin L3 depth deep', huseyinDeep?.data?.depth === DEPTH_LEVEL.DEEP);
+record(
+  'huseyin L3 first-turn has layers',
+  /yaşam yolu/i.test(huseyinDeep?.reply || '') &&
+    /doğum günü/i.test(huseyinDeep?.reply || '') &&
+    /döngü|kişisel yıl|şu an/i.test(huseyinDeep?.reply || '') &&
+    /güçlü/i.test(huseyinDeep?.reply || '') &&
+    /gölge/i.test(huseyinDeep?.reply || '') &&
+    /zirve|mücadele/i.test(huseyinDeep?.reply || ''),
+  `len=${(huseyinDeep?.reply || '').length}`,
+);
+
+_resetAllNumerologySessions();
+const huseyinBirth = tryNumerologyFlowReply({
+  message: '27.01.1986 doğumluyum, numeroloji analizi yap',
+  conversationId: 'num-huseyin-birth',
+  userId: 'telegram:huseyin-birth',
+  now: NOW,
+});
+record('huseyin birth+analiz handled', Boolean(huseyinBirth?.handled));
+record(
+  'huseyin birth first-turn not number-only',
+  /yaşam yolu/i.test(huseyinBirth?.reply || '') &&
+    /doğum günü/i.test(huseyinBirth?.reply || '') &&
+    /döngü|kişisel yıl/i.test(huseyinBirth?.reply || '') &&
+    /güçlü/i.test(huseyinBirth?.reply || '') &&
+    /gölge/i.test(huseyinBirth?.reply || '') &&
+    (huseyinBirth?.reply || '').length > 500,
+  `len=${(huseyinBirth?.reply || '').length} depth=${huseyinBirth?.data?.depth}`,
+);
+
+_resetAllNumerologySessions();
+tryNumerologyFlowReply({
+  message: FIXTURE_MSG,
+  conversationId: 'num-huseyin-past',
+  userId: 'telegram:huseyin-past',
+  now: NOW,
+});
+const huseyinPast = tryNumerologyFlowReply({
+  message: 'Geçmiş hayatım var mıydı?',
+  history: [
+    { role: 'user', content: FIXTURE_MSG },
+    { role: 'assistant', content: 'numeroloji yaşam yolu analizi' },
+  ],
+  conversationId: 'num-huseyin-past',
+  userId: 'telegram:huseyin-past',
+  now: NOW,
+});
+record('huseyin past-life handled', Boolean(huseyinPast?.handled));
+record(
+  'huseyin past-life no hard reincarnation claim',
+  !/kesin(?:likle)?\s+(?:geçmiş\s+hayat|reenkarnasyon)|doğrulanmış\s+geçmiş\s+hayat|reenkarnasyon\s+gerçektir/i.test(
+    huseyinPast?.reply || '',
+  ),
+);
+record(
+  'huseyin past-life symbolic/method frame',
+  /sembolik|yorum|metodoloji|karmik|pythagorean|kesin\s+kanıt|doğrulanamaz/i.test(
+    huseyinPast?.reply || '',
+  ),
+  (huseyinPast?.reply || '').slice(0, 200),
+);
+
+_resetAllNumerologySessions();
+const huseyinSeed = tryNumerologyFlowReply({
+  message: FIXTURE_MSG,
+  conversationId: 'num-huseyin-fu',
+  userId: 'telegram:huseyin-fu',
+  now: NOW,
+});
+const huseyinFu = tryNumerologyFlowReply({
+  message: 'Başka ne görüyorsun?',
+  history: [
+    { role: 'user', content: FIXTURE_MSG },
+    { role: 'assistant', content: huseyinSeed?.reply || 'numeroloji' },
+  ],
+  conversationId: 'num-huseyin-fu',
+  userId: 'telegram:huseyin-fu',
+  now: NOW,
+});
+record('huseyin follow-up handled', Boolean(huseyinFu?.handled));
+record(
+  'huseyin follow-up opens new layer without full repeat',
+  /zirve|mücadele|eksik|titreşim|ad soyad|ifade/i.test(huseyinFu?.reply || '') &&
+    !(huseyinSeed?.reply && huseyinFu?.reply === huseyinSeed.reply),
+);
 
 console.log('');
 console.log(`Numerology tests: ${passed} passed, ${failed} failed`);

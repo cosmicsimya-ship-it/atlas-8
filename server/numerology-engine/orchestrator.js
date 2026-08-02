@@ -21,11 +21,28 @@ import { applyNumerologyDepthGuard } from './depth-guard.js';
  */
 export function resolveNumerologyDepth(message) {
   const t = String(message ?? '').toLocaleLowerCase('tr-TR');
+
+  // L1: user asked only for the number / short fact
   if (
     /\b(k[ıi]saca|k[ıi]sa\s+anlat|özetle|k[ıi]sa\s+özet|briefly|short)\b/u.test(t)
   ) {
     return DEPTH_LEVEL.SHORT;
   }
+  if (
+    /(?:ya[sş]am\s+yol(?:u|um)?\s+say[ıi]m?\s*(?:kaç|nedir|ne)|life\s*path\s*(?:number\s*)?(?:kaç|nedir|ne|\?))/.test(
+      t,
+    ) ||
+    /(?:say[ıi]m?\s+kaç|kaç\s+(?:olur|eder|çıkar))\b/.test(t)
+  ) {
+    // Pure number ask — unless they also demand analysis/yorum
+    if (
+      !/\b(detayl[ıi]|yorumla|analiz|derin|anlat|incele|tam\s+analiz)\b/u.test(t)
+    ) {
+      return DEPTH_LEVEL.SHORT;
+    }
+  }
+
+  // L3: explicit deep / detailed analysis
   if (
     /\b(detayl[ıi]|tam\s+analiz|derin|bilmedi[gğ]im|bilmedigim|full\s+analiz|ayr[ıi]nt[ıi]|deep\s+dive|her\s+katman)\b/u.test(
       t,
@@ -33,6 +50,17 @@ export function resolveNumerologyDepth(message) {
   ) {
     return DEPTH_LEVEL.DEEP;
   }
+
+  // L2+/L3-leaning: personal analysis/yorum without "kısa"
+  if (
+    /\b(yorumla|analiz\s+et|analiz\s+yap|numerolojimi\s+(?:anlat|incele)|kişisel\s+analiz)\b/u.test(
+      t,
+    )
+  ) {
+    return DEPTH_LEVEL.DEEP;
+  }
+
+  // L2 default for birth-date + numerology cues
   return DEPTH_LEVEL.STANDARD;
 }
 

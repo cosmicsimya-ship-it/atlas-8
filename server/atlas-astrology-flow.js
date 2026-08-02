@@ -257,8 +257,8 @@ export function buildAstrologyAnalysisContext(options = {}) {
     length === 'short'
       ? 'Uzunluk: en fazla ~150 kelime (kısa özet).'
       : length === 'detailed'
-        ? 'Uzunluk: kapsamlı ama tekrarsız (yaklaşık 500–800 kelime).'
-        : 'Uzunluk: standart 300–500 kelime; aynı temayı tekrar etme.';
+        ? 'Uzunluk: kapsamlı ama tekrarsız (yaklaşık 500–800 kelime). İlk turda ana tema + yerleşim/açı etkisi + gölge/gerilim + dönemsel bağlam ver; kullanıcıyı zorlatma.'
+        : 'Uzunluk: standart 300–500 kelime; kişisel veriler varsa sözlük tanımıyla yetinme; aynı temayı tekrar etme.';
 
   return {
     intent,
@@ -302,7 +302,13 @@ ${includeNumerology ? numerologyBlock : ''}
 
 export function detectLengthPreference(message) {
   if (/k[ıi]sa [oö]zet|k[ıi]saca|özetle/i.test(message)) return 'short';
-  if (/detayl[ıi]|kapsaml[ıi]|derine/i.test(message)) return 'detailed';
+  if (/detayl[ıi]|kapsaml[ıi]|derine|yorumla|kişisel analiz|tam analiz/i.test(message)) {
+    return 'detailed';
+  }
+  // Personal chart / transit asks default to richer first-turn depth
+  if (/haritam|natal|bana özel|kişisel transit|doğum harita/i.test(message)) {
+    return 'detailed';
+  }
   return 'standard';
 }
 
