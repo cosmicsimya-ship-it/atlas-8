@@ -65,6 +65,12 @@ import {
   logAdminAudit,
 } from './auth/index.js';
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
+import { createAudioStudioRouter } from './audio-studio-routes.js';
+import {
+  getCapabilityRegistry,
+  audioHealthSnapshot,
+  getJobStats,
+} from './audio-studio/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -205,6 +211,22 @@ mountAtlasLiveRoutes(app, {
   rateLimit: atlasLiveRateLimit,
 });
 
+const audioStudioRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 30,
+  keyFn: (req) => `audio-studio:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.use(
+  '/api/audio',
+  attachAuthFromSession({ createAnonymous: true }),
+  createAudioStudioRouter({
+    requireAuth: requireAuthenticated,
+    requireCsrf: requireCsrfProtection,
+    rateLimit: audioStudioRateLimit,
+  }),
+);
+
 // ══════════════════════════════════════════════════════════════════════
 // AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════
@@ -335,9 +357,16 @@ app.all('/api/auth/roles', (_req, res) => {
 // AI ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════
 
-app.get('/api/ai/health', (_req, res) => {
+app.get('/api/ai/health', async (_req, res) => {
   const founderStatus = getFounderKnowledgeStatus();
   const founderProfileStatus = getFounderProfileStatus();
+  let audio = null;
+  try {
+    const registry = await getCapabilityRegistry();
+    audio = audioHealthSnapshot(registry, getJobStats());
+  } catch (err) {
+    audio = { error: 'audio_health_unavailable' };
+  }
   res.json({
     status: 'ok',
     configured: OPENAI_API_KEY.length > 0,
@@ -351,6 +380,7 @@ app.get('/api/ai/health', (_req, res) => {
     founderBiography: founderProfileStatus.loaded && founderProfileStatus.profileCount > 0,
     founderBiographyProfiles: founderProfileStatus.profileCount,
     modelProvider: OPENAI_API_KEY.length > 0,
+    audio,
   });
 });
 
@@ -1303,7 +1333,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  Assets: ${GENERATED_DIR}`);
     console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
-    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health');
+    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
     console.log('  Memory: ✓ JSON persistence initialized');
     console.log(
       `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,

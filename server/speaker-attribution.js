@@ -59,6 +59,12 @@ export const EXTRA_METADATA_ALLOWLIST = new Set([
   'fileSize',
   'sttProvider',
   'attachmentType',
+  'audioStudioFile',
+  'detectedType',
+  'byteLength',
+  'duration',
+  'transcriptionModel',
+  'transcriptionError',
 ]);
 
 const MONTH_OR_DATE_STOP = new Set([

@@ -144,6 +144,10 @@ import {
   NO_ACTIVE_TAROT_SPREAD_REPLY,
 } from './tarot-flow.js';
 import {
+  tryAudioStudioFlowReply,
+  AUDIO_STUDIO_FLOW_VERSION,
+} from './audio-studio-flow.js';
+import {
   createRequestTiming,
   attachRequestTiming,
 } from './request-timing.js';
@@ -1154,6 +1158,78 @@ export async function processAtlasMessage(input, options = {}) {
         : null;
     if (tgFrom != null && String(tgFrom).trim()) {
       alternateMemoryIds.push(`telegram:${String(tgFrom).trim()}`);
+    }
+  }
+
+  // ── Audio Studio (capability-honest; before numerology / LLM) ──
+  // Never let the LLM invent "gönder, düzenlerim" for studio production.
+  if (!hasImage && !healthSafety.active) {
+    requestTiming.start('audio_studio');
+    const meta = input.metadata && typeof input.metadata === 'object' ? input.metadata : {};
+    const audioStudioMedia =
+      input.audioMedia ||
+      (meta.audioStudioFile && typeof meta.audioStudioFile === 'object'
+        ? meta.audioStudioFile
+        : null);
+    const displayNameForAudio =
+      trustedSpeakerEarly.senderDisplayName ||
+      input.displayName ||
+      null;
+    const audioStudioFlow = await tryAudioStudioFlowReply({
+      message,
+      history,
+      userId,
+      displayName: displayNameForAudio,
+      channel: input.channel || 'api',
+      chatId: meta.chatId || input.conversationId || null,
+      messageId: meta.messageId || null,
+      conversationId,
+      media: audioStudioMedia,
+    });
+    requestTiming.end('audio_studio');
+    if (audioStudioFlow?.handled && audioStudioFlow.reply) {
+      noteAssistantTurn(conversationId, {
+        reply: audioStudioFlow.reply,
+        intent: audioStudioFlow.intent,
+        responseMode: 'audio_studio',
+      });
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: audioStudioFlow.intent,
+        responseMode: 'audio_studio',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: false,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: audioStudioFlow.reply,
+          intent: audioStudioFlow.intent,
+          engine: audioStudioFlow.engine || 'audio-studio',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIntent: audioStudioFlow.intent,
+            responseMode: 'audio_studio',
+            audioStudioFlowVersion: AUDIO_STUDIO_FLOW_VERSION,
+            ...(audioStudioFlow.data ?? {}),
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            model: 'deterministic',
+            provider: 'atlas-audio-studio',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
     }
   }
 
