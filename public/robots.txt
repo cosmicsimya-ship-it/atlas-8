@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Hash-routed SPA — crawl the shell; deep paths are client-side.
+Sitemap:

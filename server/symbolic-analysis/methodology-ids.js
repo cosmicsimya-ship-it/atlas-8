@@ -63,6 +63,9 @@ export const ATLAS_PYTHAGOREAN_BIRTH_METHODOLOGY_ID = 'atlas-pythagorean-birth-v
 /** Classic Tarot spread interpretation engine (selection separate from interpretation). */
 export const ATLAS_CLASSIC_TAROT_METHODOLOGY_ID = 'atlas-classic-tarot-v1';
 
+/** Multi-layer symbolic dream interpretation engine. */
+export const ATLAS_DREAM_METHODOLOGY_ID = 'atlas-dream-v1';
+
 /**
  * Feature flag: ATLAS_SYMBOLIC_METADATA_V2
  * When off, legacy source strings and response shape (minus additive fields).

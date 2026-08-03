@@ -144,6 +144,10 @@ import {
   NO_ACTIVE_TAROT_SPREAD_REPLY,
 } from './tarot-flow.js';
 import {
+  tryDreamFlowReply,
+  DREAM_FLOW_VERSION,
+} from './dream-flow.js';
+import {
   tryAudioStudioFlowReply,
   AUDIO_STUDIO_FLOW_VERSION,
 } from './audio-studio-flow.js';
@@ -1394,6 +1398,64 @@ export async function processAtlasMessage(input, options = {}) {
             styleDebug,
             model: 'deterministic',
             provider: 'atlas-tarot-engine',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
+  // ── Dream interpretation engine (multi-layer; after tarot; before context) ──
+  // Deterministic symbolic reading. Health intents already blocked above.
+  if (!hasImage && !healthSafety.active) {
+    requestTiming.start('dream_engine');
+    const dreamFlow = tryDreamFlowReply({
+      message,
+      history,
+      userId,
+      conversationId,
+    });
+    requestTiming.end('dream_engine');
+    if (dreamFlow?.handled && dreamFlow.reply) {
+      noteAssistantTurn(conversationId, {
+        reply: dreamFlow.reply,
+        intent: dreamFlow.intent,
+        responseMode: 'dream_analysis',
+      });
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: dreamFlow.intent,
+        responseMode: 'dream_analysis',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: false,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: dreamFlow.reply,
+          intent: dreamFlow.intent,
+          engine: dreamFlow.engine || 'dream-engine',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIntent: dreamFlow.intent,
+            responseMode: 'dream_analysis',
+            domain: 'dream',
+            dreamFlowVersion: DREAM_FLOW_VERSION,
+            ...(dreamFlow.data ?? {}),
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            model: 'deterministic',
+            provider: 'atlas-dream-engine',
             tokensUsed: 0,
             costUsd: 0,
             latencyMs: 0,

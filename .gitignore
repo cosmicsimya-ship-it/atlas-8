@@ -4,6 +4,7 @@ dist/
 build/
 coverage/
 *.log
+release/
 
 # Local credential recovery — never commit
 .atlas-local-founder-credentials.txt

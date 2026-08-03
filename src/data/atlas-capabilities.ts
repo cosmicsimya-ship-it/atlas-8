@@ -111,6 +111,17 @@ export const capabilityModules: CapabilityModule[] = [
         extensibility: 'Ephemeris modules swap without UI redesign.',
         status: 'beta',
       },
+      {
+        id: 'dream-interpretation',
+        name: 'Rüya Analizi',
+        purpose: 'Rüyayı sembol, duygu ve olay örgüsü katmanlarında okur.',
+        micro: 'Kehanet değil; çok katmanlı sembolik anlamlandırma.',
+        iconConcept: 'Soft night horizon with layered translucent motifs',
+        interaction: 'Rüyayı anlat — Atlas katmanlı yorum döner.',
+        animationIdea: 'Motifs surface from depth then settle into layers.',
+        extensibility: 'Symbol corpora and classical schools version independently.',
+        status: 'live',
+      },
     ],
   },
   {

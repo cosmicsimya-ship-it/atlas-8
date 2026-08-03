@@ -1318,6 +1318,38 @@ app.post(
 );
 
 // ══════════════════════════════════════════════════════════════════════
+// PRODUCTION FRONTEND (optional) — serve Vite `dist/` from same origin
+// Enable: NODE_ENV=production (and dist present) or ATLAS_SERVE_FRONTEND=1
+// Disable: ATLAS_SERVE_FRONTEND=0
+// ══════════════════════════════════════════════════════════════════════
+
+const DIST_DIR = join(__dirname, '..', 'dist');
+const serveFrontendExplicit = process.env.ATLAS_SERVE_FRONTEND;
+const serveFrontend =
+  serveFrontendExplicit === '1' ||
+  (serveFrontendExplicit !== '0' &&
+    process.env.NODE_ENV === 'production' &&
+    existsSync(join(DIST_DIR, 'index.html')));
+
+if (serveFrontend) {
+  app.use(
+    express.static(DIST_DIR, {
+      index: false,
+      maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+      fallthrough: true,
+    }),
+  );
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api')) return next();
+    const indexPath = join(DIST_DIR, 'index.html');
+    if (!existsSync(indexPath)) return next();
+    return res.sendFile(indexPath);
+  });
+  console.log(`[ATLAS] Serving frontend from ${DIST_DIR}`);
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════
 
@@ -1331,6 +1363,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
     console.log(`  Model:  ${DEFAULT_MODEL}`);
     console.log(`  Assets: ${GENERATED_DIR}`);
+    console.log(`  Frontend: ${serveFrontend ? '✓ dist/ (same-origin)' : '✗ not served (API-only)'}`);
     console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
     console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');

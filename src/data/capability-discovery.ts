@@ -35,6 +35,8 @@ const HINTS: { id: CapabilityModuleId; patterns: RegExp[] }[] = [
       /örüntü|oruntu/i,
       /katman/i,
       /gökyüz|gokyuz/i,
+      /r[uü]ya|dream/i,
+      /tarot/i,
     ],
   },
   {

@@ -1,0 +1,26 @@
+# Atlas v0.8 — optional static hosting (public_html only)
+# Use when frontend is deployed separately from Node.
+# Prefer same-origin Node serving (ATLAS_SERVE_FRONTEND) when possible.
+
+Options -FollowSymLinks
+RewriteEngine On
+
+# Force HTTPS only AFTER AutoSSL is active and verified.
+# Uncomment these two lines then:
+# RewriteCond %{HTTPS} !=on
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Do not rewrite API if proxied under same vhost (rare on shared).
+RewriteRule ^api/ - [L]
+
+# HashRouter SPA shell
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
+
+# Security headers (mod_headers)
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

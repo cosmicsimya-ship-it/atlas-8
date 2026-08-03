@@ -53,6 +53,9 @@ export const META_SYNTHESIS_MODULE = 'atlas_meta_synthesis';
 /** Tarot spread action protocol — loaded only when tarot intent is active. */
 export const TAROT_SPREAD_MODULE = 'atlas_tarot_spread';
 
+/** Dream interpretation protocol — reference module for dream domain. */
+export const DREAM_INTERPRETATION_MODULE = 'atlas_dream_interpretation';
+
 /** Profile → module list. Empty arrays mean caller supplies the full prompt. */
 export const PROMPT_PROFILE_MODULES = {
   conversational: ATLAS_COMMON_MODULES,
