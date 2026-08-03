@@ -2,7 +2,7 @@
 
 | Document | Purpose |
 |----------|---------|
-| [current-state-audit.md](./current-state-audit.md) | FAZ 0 verified repository audit + baseline tests |
+| [current-state-audit.md](./current-state-audit.md) | FAZ 0 + **Phase 2 deep verification** (call chains, pipeline map, risks) |
 | [MASTER_ARCHITECTURE.md](./MASTER_ARCHITECTURE.md) | Product vision + layered target architecture |
 | [ENGINE_CONTRACT.md](./ENGINE_CONTRACT.md) | Universal engine + structured output contract |
 | [METHODOLOGY_REGISTRY.md](./METHODOLOGY_REGISTRY.md) | Methodology lifecycle and resolver rules |

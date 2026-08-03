@@ -170,11 +170,12 @@ CI recommendation: split `test:domain` (deterministic) vs `test:llm` (secret-gat
 
 ## 7. First implementation slice (immediate next coding FAZ)
 
-After founder ack of open decisions that block astrology defaults (house system can wait if natal engine not started):
+Refined by Phase 2 audit (`current-state-audit.md` §P2.8). After founder ack of open decisions that block astrology defaults (house system can wait if natal engine not started):
 
-1. Add `server/domain-core/` with registry + schema validation.  
+1. Add `server/domain-core/` with contract schemas + engine/methodology registry stubs.  
 2. Numerology adapter dual-run tests (calc equality).  
-3. Add `npm run test:domain-core`.  
+3. Add `npm run test:domain-core` and plan `test:domain` pack that includes `test:symbolic` + `test:classical-abjad` + `test:abjad-esma` (today omitted from `test:all`).  
 4. Keep `atlas-message-service.js` untouched.  
+5. Track **Critical** follow-ups (not in first slice, but do not forget): RAM-only engine sessions; natal ASC/houses gap.
 
-**Explicitly not in first slice:** new engines, dependency adds, Qur’an ingest, professional UI, rewriting symbolic-analysis orchestrator.
+**Explicitly not in first slice:** new engines, dependency adds, Qur’an ingest, professional UI, rewriting symbolic-analysis orchestrator, session persistence rewrite.
