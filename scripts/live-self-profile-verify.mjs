@@ -99,7 +99,7 @@ for (const [message, re] of matrix) {
   if (!ok) fail += 1;
 }
 
-// Missing-data rising honesty on disposable user (no ascendant engine)
+// Complete birth data → deterministic natal Ascendant (not invented)
 const NORISE = 'telegram:7142889999';
 await updateUserMemory(NORISE, {
   profile: {
@@ -131,9 +131,10 @@ await updateUserMemory(NORISE, {
   const reply = String(r.reply || '');
   const ok =
     /conversation-context/i.test(String(r.engine ?? r.data?.engine)) &&
-    /kayıtlı değil|yükselen hesabı/i.test(reply) &&
-    !/Doğum tarihini verirsen hesaplayabilirim/i.test(reply);
-  console.log(`${ok ? '✓' : '✗'} rising missing honest`);
+    /Doğum bilgilerine göre yükselenin/i.test(reply) &&
+    /\d°/.test(reply) &&
+    !/tahmini olarak yükselen/i.test(reply);
+  console.log(`${ok ? '✓' : '✗'} rising from natal engine`);
   console.log(`  reply=${reply.slice(0, 180)}`);
   if (!ok) fail += 1;
 }

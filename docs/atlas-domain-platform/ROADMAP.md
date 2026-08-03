@@ -86,7 +86,7 @@ Priority order: Numerology → Tarot → Astrology (ephemeris adapter + natal ga
 | Acceptance | Existing engine tests green; adapters emit StructuredAnalysisOutput; methodologyId on outputs |
 | Rollback | Flag; keep flow modules |
 
-**Astrology special:** Implement deterministic natal house/ASC engine before expanding LLM claims. Until then keep `ASCENDANT_CALC_AVAILABLE=false` behavior.
+**Astrology special:** Deterministic natal engine shipped (`server/natal-engine`, methodology `western-tropical-natal-v1`). `ASCENDANT_CALC_AVAILABLE=true` when date+time+place resolve. Keep LLM from inventing degrees; inject `formatNatalDataBlock` only.
 
 ### FAZ 4 — Dream on Domain Core
 

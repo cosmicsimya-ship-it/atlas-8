@@ -4,9 +4,10 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { getUserMemory, isValidUserId } from './user-memory.js';
+import { calculateNatalFromMemory, formatDegreeLabel } from './natal-engine/index.js';
 
-/** No natal ascendant engine is wired into chat self-profile — never invent rising. */
-export const ASCENDANT_CALC_AVAILABLE = false;
+/** Deterministic natal engine can compute Ascendant when date+time+place are known. */
+export const ASCENDANT_CALC_AVAILABLE = true;
 
 export const SELF_PROFILE_PROPERTY_ALIASES = {
   zodiac: ['burç', 'burc', 'zodiac', 'zodyak'],
@@ -361,7 +362,12 @@ export function buildSelfProfileReply(field, resolution) {
   if (field === 'birthDate') return `Belleğimde kayıtlı doğum tarihin ${v}.`;
   if (field === 'birthTime') return `Belleğimde kayıtlı doğum saatin ${v}.`;
   if (field === 'birthPlace') return `Belleğimde kayıtlı doğum yerin ${v}.`;
-  if (field === 'rising') return `Belleğimde kayıtlı yükselenin ${v}.`;
+  if (field === 'rising') {
+    if (resolution.source === 'derived') {
+      return `Doğum bilgilerine göre yükselenin ${v}.`;
+    }
+    return `Belleğimde kayıtlı yükselenin ${v}.`;
+  }
   if (field === 'numerology') {
     return resolution.source === 'derived'
       ? `Doğum tarihine göre yaşam yolu sayın ${v}.`
@@ -500,6 +506,42 @@ export function resolveSelfProfileValue(input) {
     }
   }
   if (field === 'rising') {
+    if (
+      ASCENDANT_CALC_AVAILABLE &&
+      normalized.birthDate &&
+      normalized.birthTime &&
+      normalized.birthPlace
+    ) {
+      const chart = calculateNatalFromMemory(userId, {
+        birthDate: normalized.birthDate,
+        birthTime: normalized.birthTime,
+        birthPlace: normalized.birthPlace,
+      });
+      if (chart?.ok && chart.angles?.ascendant) {
+        const asc = chart.angles.ascendant;
+        return {
+          value: formatDegreeLabel(asc),
+          source: 'derived',
+          missingHint: null,
+          lookupKeys,
+          matchedKey,
+          foundField: 'birth→natal-engine-ascendant',
+          fallbackReason: null,
+          natalAnalysisId: chart.analysisId,
+        };
+      }
+      if (chart && chart.ok === false) {
+        return {
+          value: null,
+          source: null,
+          missingHint: chart.message || missingHintForSelfField(field, normalized),
+          lookupKeys,
+          matchedKey,
+          foundField: null,
+          fallbackReason: chart.errorCode || 'ascendant_calc_failed',
+        };
+      }
+    }
     return {
       value: null,
       source: null,
@@ -507,9 +549,7 @@ export function resolveSelfProfileValue(input) {
       lookupKeys,
       matchedKey,
       foundField: null,
-      fallbackReason: ASCENDANT_CALC_AVAILABLE
-        ? 'ascendant_inputs_incomplete'
-        : 'no_ascendant_engine',
+      fallbackReason: 'ascendant_inputs_incomplete',
       normalizedSnapshot: {
         birthDate: normalized.birthDate,
         birthTime: normalized.birthTime,

@@ -1,0 +1,19 @@
+{
+  "input": {
+    "birthDate": "1879-03-14",
+    "birthTime": "11:30",
+    "birthPlace": "Ulm",
+    "houseSystem": "placidus",
+    "zodiacSystem": "tropical"
+  },
+  "expected": {
+    "timezone": "Europe/Berlin",
+    "sun": { "sign": "Pisces" },
+    "fullChartAvailable": true
+  },
+  "comparisonSource": "Historical northern-hemisphere chart (Ulm) — sign-level + full chart availability",
+  "tolerance": {
+    "planetLongitudeDeg": 0.08,
+    "angleLongitudeDeg": 0.25
+  }
+}

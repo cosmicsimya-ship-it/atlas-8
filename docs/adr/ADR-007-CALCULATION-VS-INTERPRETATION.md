@@ -6,18 +6,18 @@
 
 ## Context
 
-Some Atlas paths already separate calc from prose (daily-analysis, numerology, tarot selection). Astrology narrative still relies on LLM with injected ephemeris data, and natal Ascendant calculation is not implemented.
+Some Atlas paths already separate calc from prose (daily-analysis, numerology, tarot selection). Astrology narrative still relies on LLM with injected ephemeris/natal data; natal Ascendant is computed by `server/natal-engine` when inputs permit.
 
 ## Decision
 
 1. Deterministic calculation MUST NOT be performed by LLMs.  
 2. Interpretation MAY use templates and/or LLMs but MUST consume `CalculationResult` only.  
 3. `daily-analysis` remains `interpretation: null` at the computation boundary.  
-4. Natal Ascendant/houses MUST NOT be invented; `ASCENDANT_CALC_AVAILABLE` stays false until a real natal engine ships.
+4. Natal Ascendant/houses MUST NOT be invented; when birth time/place are incomplete the engine omits angles. `ASCENDANT_CALC_AVAILABLE` is true only because `server/natal-engine` can compute ASC from verified inputs.
 
 ## Consequences
 
-- Astrology narrative depth stays bounded until natal calc exists.  
+- Natal degrees/houses come from the calculation engine; LLM interprets verified blocks only.  
 - Engine adapters expose `calculate` and `interpret` as distinct steps.
 
 ## Alternatives rejected

@@ -30,9 +30,9 @@ knowledge/methodologies/
     abjad-kabir-classical-v1.json
   esma/
     esma-theme-intention-match-v1.json
-  astrology/
-    (future) tropical-placidus-v1.json
-  destiny-matrix/
+    astrology/
+      western-tropical-natal-v1.json
+    destiny-matrix/
     (future) <system>-v1.json
 
 server/domain-core/registries/methodology-registry.js

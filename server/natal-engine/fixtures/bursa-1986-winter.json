@@ -1,0 +1,24 @@
+{
+  "input": {
+    "birthDate": "1986-01-27",
+    "birthTime": "18:20",
+    "birthPlace": "Bursa",
+    "houseSystem": "placidus",
+    "zodiacSystem": "tropical"
+  },
+  "expected": {
+    "utcDateTime": "1986-01-27T16:20:00Z",
+    "utcOffset": "+02:00",
+    "timezone": "Europe/Istanbul",
+    "sun": { "sign": "Aquarius", "longitude": 307.44 },
+    "moon": { "sign": "Leo" },
+    "ascendant": { "sign": "Leo", "longitude": 140.95 },
+    "midheaven": { "sign": "Taurus", "longitude": 43.16 },
+    "fullChartAvailable": true
+  },
+  "comparisonSource": "astronomy-engine + Atlas natal-engine v1 (historical Europe/Istanbul offset via Intl)",
+  "tolerance": {
+    "planetLongitudeDeg": 0.05,
+    "angleLongitudeDeg": 0.15
+  }
+}

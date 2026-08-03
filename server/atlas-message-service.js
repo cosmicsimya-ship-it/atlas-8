@@ -1961,7 +1961,7 @@ export async function processAtlasMessage(input, options = {}) {
             status: 'complete',
             reply: astrologyFlowEarly.reply,
             intent: `astrology:${astrologyFlowEarly.intent}`,
-            engine: 'astrology-flow',
+            engine: astrologyFlowEarly.engine || 'astrology-flow',
             memoryUpdated: false,
             data: {
               mode,

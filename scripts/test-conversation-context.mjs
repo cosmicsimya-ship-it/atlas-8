@@ -201,7 +201,7 @@ console.log('\n--- Self-profile resolution ---');
     iso.reply,
   );
 
-  // Rising without record and without engine → honest missing (not birth-date-only ask)
+  // Rising with complete birth data → deterministic natal engine (not invented prose)
   const NORISE = { userId: 'telegram:900066', displayName: 'Rise' };
   await updateUserMemory(NORISE.userId, {
     profile: { birthDate: '1990-01-15', birthTime: '10:00', birthPlace: 'Ankara' },
@@ -214,9 +214,33 @@ console.log('\n--- Self-profile resolution ---');
     sender: NORISE,
   });
   assert(
-    'rising no fake calc',
-    nr.handled && /kayıtlı değil|yükselen hesabı/i.test(nr.reply) && !/Doğum tarihini verirsen hesaplayabilirim/i.test(nr.reply),
+    'rising from natal engine',
+    nr.handled &&
+      /Doğum bilgilerine göre yükselenin/i.test(nr.reply) &&
+      /\d°/.test(nr.reply) &&
+      !/tahmini olarak yükselen/i.test(nr.reply),
     nr.reply,
+  );
+
+  // Rising without birth time → honest ask (never invent)
+  const NOTIME = { userId: 'telegram:900067', displayName: 'NoTime' };
+  await updateUserMemory(NOTIME.userId, {
+    profile: { birthDate: '1990-01-15', birthPlace: 'Ankara' },
+    facts: {},
+  });
+  resetConversationState('self-notime-rise');
+  const nt = tryResolveConversationContext({
+    conversationId: 'self-notime-rise',
+    message: 'Yükselenim ne?',
+    sender: NOTIME,
+  });
+  assert(
+    'rising missing time honest',
+    nt.handled &&
+      /doğum saati/i.test(nt.reply) &&
+      !/tahmini olarak yükselen/i.test(nt.reply) &&
+      !/Doğum tarihini verirsen hesaplayabilirim/i.test(nt.reply),
+    nt.reply,
   );
 
   // Numerology derived from birthDate; ebced never from birthDate/name alone
