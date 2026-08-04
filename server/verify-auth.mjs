@@ -27,11 +27,19 @@ import {
   upsertAccount,
   verifyPassword,
   findAccountByUsername,
+  findAccountByEmail,
+  findAccountByGoogleSub,
   accountStoreHasPlaintextPasswordField,
   hashPassword,
+  registerAccount,
+  findOrProvisionGoogleAccount,
+  validatePasswordPolicy,
+  toSessionProfile,
 } from './auth/account-store.js';
 import {
   loginWithPassword,
+  registerWithEmail,
+  loginWithGoogleIdentity,
   logoutSession,
   createAnonymousSession,
   buildTelegramAuthIdentity,
@@ -41,6 +49,8 @@ import {
   checkRateLimit,
   getAllowedOrigins,
   isAllowedOrigin,
+  getGoogleOAuthPublicStatus,
+  beginGoogleOAuth,
 } from './auth/index.js';
 import {
   isVerifiedOwner as privacyIsVerifiedOwner,
@@ -291,6 +301,112 @@ console.log('\n=== Auth unit checks ===\n');
   assert('30i. wildcard string denied', !isAllowedOrigin('*'));
 }
 
+console.log('\n=== Registration / Google provisioning ===\n');
+
+{
+  assert('reg.policy weak short', !validatePasswordPolicy('ab12').ok);
+  assert('reg.policy weak letters only', !validatePasswordPolicy('abcdefgh').ok);
+  assert('reg.policy ok', validatePasswordPolicy('secret12').ok);
+
+  const created = await registerAccount({
+    email: '  New.User@Example.COM ',
+    password: 'secret12',
+    displayName: 'Yeni',
+  });
+  assert('reg.normalize email', created.email === 'new.user@example.com');
+  assert('reg.hashed', !('passwordHash' in created) || created.passwordHash === undefined);
+  const stored = findAccountByEmail('new.user@example.com');
+  assert('reg.store bcrypt', Boolean(stored?.passwordHash?.startsWith('$2')));
+  assert('reg.no plaintext field', !accountStoreHasPlaintextPasswordField());
+
+  let dup = false;
+  try {
+    await registerAccount({ email: 'new.user@example.com', password: 'secret12' });
+  } catch (e) {
+    dup = e?.code === 'duplicate_email';
+  }
+  assert('reg.duplicate rejected', dup);
+
+  const emailLogin = await loginWithPassword({
+    username: 'new.user@example.com',
+    password: 'secret12',
+  });
+  assert('reg.email login', emailLogin.ok === true && emailLogin.identity?.isAnonymous === false);
+  logoutSession(emailLogin.rawToken);
+
+  const badLogin = await loginWithPassword({
+    email: 'new.user@example.com',
+    password: 'wrong-pass-99',
+  });
+  assert('reg.bad password generic', badLogin.ok === false && badLogin.code === 'invalid_credentials');
+
+  const regHttp = await registerWithEmail({
+    email: 'second@example.com',
+    password: 'secret34',
+  });
+  assert('reg.session after register', regHttp.ok && regHttp.rawToken);
+  logoutSession(regHttp.rawToken);
+}
+
+{
+  const first = await findOrProvisionGoogleAccount({
+    googleSub: 'google-sub-1',
+    email: 'google.user@example.com',
+    emailVerified: true,
+    displayName: 'G User',
+    avatarUrl: 'https://example.com/a.png',
+  });
+  assert('google.provision new', first.email === 'google.user@example.com');
+  const bySub = findAccountByGoogleSub('google-sub-1');
+  assert('google.stored sub', bySub?.googleSub === 'google-sub-1');
+  assert('google.no password', bySub?.passwordHash == null);
+
+  const again = await findOrProvisionGoogleAccount({
+    googleSub: 'google-sub-1',
+    email: 'google.user@example.com',
+    emailVerified: true,
+    displayName: 'G User',
+  });
+  assert('google.returning same userId', again.userId === first.userId);
+
+  // Link Google onto existing password account with same verified email
+  await registerAccount({ email: 'linkme@example.com', password: 'secret56' });
+  const before = findAccountByEmail('linkme@example.com');
+  const linked = await findOrProvisionGoogleAccount({
+    googleSub: 'google-sub-link',
+    email: 'linkme@example.com',
+    emailVerified: true,
+  });
+  assert('google.link existing email', linked.userId === before.userId);
+  assert(
+    'google.no duplicate email accounts',
+    findAccountByEmail('linkme@example.com')?.googleSub === 'google-sub-link',
+  );
+
+  const gLogin = await loginWithGoogleIdentity({
+    googleSub: 'google-sub-1',
+    email: 'google.user@example.com',
+    emailVerified: true,
+    displayName: 'G User',
+  });
+  assert('google.session', gLogin.ok && gLogin.identity.authMethod === 'google');
+  const profile = toSessionProfile(gLogin.account);
+  assert('google.session profile safe', profile?.email === 'google.user@example.com' && !('id' in (profile || {})));
+  logoutSession(gLogin.rawToken);
+
+  const unverified = await loginWithGoogleIdentity({
+    googleSub: 'x',
+    email: 'x@example.com',
+    emailVerified: false,
+  });
+  assert('google.unverified denied', unverified.ok === false);
+
+  const status = getGoogleOAuthPublicStatus();
+  assert('google.status no secret', status.configured === false && !('clientSecret' in status));
+  const started = beginGoogleOAuth({});
+  assert('google.begin without env', started.ok === false && started.code === 'google_not_configured');
+}
+
 console.log('\n=== HTTP integration ===\n');
 
 await withServer(async (base) => {
@@ -390,8 +506,89 @@ await withServer(async (base) => {
   const jarF = login.jar;
   const csrfF = login.json.csrfToken;
 
-  const founderMem = await req(base, '/api/memory/web:founder-test', {
+  const sessionFounder = await req(base, '/api/auth/session', {
     jar: jarF,
+    origin: 'http://localhost:5173',
+  });
+  assert(
+    'session.authenticated profile',
+    sessionFounder.status === 200 &&
+      sessionFounder.json?.isAnonymous === false &&
+      sessionFounder.json?.isFounder === true,
+  );
+
+  const logout = await req(base, '/api/auth/logout', {
+    method: 'POST',
+    jar: jarF,
+    origin: 'http://localhost:5173',
+    headers: { 'X-Atlas-Csrf': csrfF },
+    body: {},
+  });
+  assert('logout.http', logout.status === 200 && logout.json?.ok === true);
+  const afterLogout = await req(base, '/api/auth/session', {
+    jar: logout.jar,
+    origin: 'http://localhost:5173',
+  });
+  assert(
+    'logout.session anonymous again',
+    afterLogout.status === 200 && afterLogout.json?.isAnonymous === true,
+  );
+
+  // Public registration HTTP
+  const sRegBoot = await req(base, '/api/auth/session', { origin: 'http://localhost:5173' });
+  const reg = await req(base, '/api/auth/register', {
+    method: 'POST',
+    jar: sRegBoot.jar,
+    origin: 'http://localhost:5173',
+    headers: { 'X-Atlas-Csrf': sRegBoot.json.csrfToken },
+    body: {
+      email: 'http-reg@example.com',
+      password: 'secret78',
+      passwordConfirm: 'secret78',
+    },
+  });
+  assert('register.http', reg.status === 201 && reg.json?.ok === true);
+  const regSession = await req(base, '/api/auth/session', {
+    jar: reg.jar,
+    origin: 'http://localhost:5173',
+  });
+  assert(
+    'register.session email',
+    regSession.json?.email === 'http-reg@example.com' && regSession.json?.isAnonymous === false,
+  );
+
+  const dupBoot = await req(base, '/api/auth/session', { origin: 'http://localhost:5173' });
+  const dupReg = await req(base, '/api/auth/register', {
+    method: 'POST',
+    jar: dupBoot.jar,
+    origin: 'http://localhost:5173',
+    headers: { 'X-Atlas-Csrf': dupBoot.json.csrfToken },
+    body: {
+      email: 'http-reg@example.com',
+      password: 'secret78',
+      passwordConfirm: 'secret78',
+    },
+  });
+  assert('register.duplicate http', dupReg.status === 409 && dupReg.json?.code === 'duplicate_email');
+
+  const gStatus = await req(base, '/api/auth/google/status', { origin: 'http://localhost:5173' });
+  assert('google.status http', gStatus.status === 200 && gStatus.json?.configured === false);
+
+  // Re-login founder for remaining tests
+  const sFounderBoot = await req(base, '/api/auth/session', { origin: 'http://localhost:5173' });
+  const loginAgain = await req(base, '/api/auth/login', {
+    method: 'POST',
+    jar: sFounderBoot.jar,
+    origin: 'http://localhost:5173',
+    headers: { 'X-Atlas-Csrf': sFounderBoot.json.csrfToken },
+    body: { username: 'founder_test', password: 'super-secret-pass-12' },
+  });
+  const jarF2 = loginAgain.jar;
+  const csrfF2 = loginAgain.json.csrfToken;
+  void csrfF2;
+
+  const founderMem = await req(base, '/api/memory/web:founder-test', {
+    jar: jarF2,
     origin: 'http://localhost:5173',
   });
   assert('23. memory uses session owner', founderMem.status === 200 && founderMem.json.userId === 'web:founder-test');
@@ -399,7 +596,7 @@ await withServer(async (base) => {
   // CSRF reject
   const csrfBad = await req(base, '/api/chat', {
     method: 'POST',
-    jar: jarF,
+    jar: jarF2,
     origin: 'http://localhost:5173',
     headers: { 'X-Atlas-Csrf': 'wrong' },
     body: { message: 'test' },
@@ -408,9 +605,9 @@ await withServer(async (base) => {
 
   const evilOrigin = await req(base, '/api/chat', {
     method: 'POST',
-    jar: jarF,
+    jar: jarF2,
     origin: 'https://evil.example',
-    headers: { 'X-Atlas-Csrf': csrfF },
+    headers: { 'X-Atlas-Csrf': csrfF2 },
     body: { message: 'test' },
   });
   assert('29b. evil origin rejected', evilOrigin.status === 403 || evilOrigin.status >= 400);
@@ -493,7 +690,10 @@ await withServer(async (base) => {
   // Even founder raw complete runs privacy short-circuit for unauthorized dump styles
   // when request is classified as injection against policy — owner may proceed,
   // but credentials in output are still guarded (covered by response-guard unit tests).
-  assert('26c. founder role required for ai/complete', login.json?.isFounder === true);
+  assert(
+    '26c. founder role required for ai/complete',
+    loginAgain.json?.isFounder === true,
+  );
 
   // Logging failure non-fatal — already exercised by pipeline
   assert('39. logging non-fatal placeholder', true);
@@ -520,11 +720,18 @@ await withServer(async (base) => {
     join(__dirname, '..', 'src', 'services', 'api-client.ts'),
     join(__dirname, '..', 'src', 'utils', 'atlas-session.ts'),
     join(__dirname, '..', 'src', 'services', 'atlas-chat.ts'),
+    join(__dirname, '..', 'src', 'components', 'cosmic', 'AuthSessionControl.tsx'),
   ];
   let leaked = false;
   for (const f of frontendFiles) {
     const t = readFileSync(f, 'utf8');
-    if (/ATLAS_FOUNDER_PASSWORD|ATLAS_INTERNAL_BOT_SECRET|passwordHash|sk-/.test(t)) leaked = true;
+    if (
+      /ATLAS_FOUNDER_PASSWORD|ATLAS_INTERNAL_BOT_SECRET|GOOGLE_CLIENT_SECRET|passwordHash|sk-[a-zA-Z0-9]{10,}/.test(
+        t,
+      )
+    ) {
+      leaked = true;
+    }
   }
   assert('40. no auth secrets in frontend sources', !leaked);
 }

@@ -33,12 +33,17 @@ export {
   findAccountByEmail,
   findAccountByUserId,
   findAccountByTelegramBinding,
+  findAccountByGoogleSub,
   getAccountById,
   upsertAccount,
+  registerAccount,
+  findOrProvisionGoogleAccount,
   grantAccountRole,
   toPublicAccount,
+  toSessionProfile,
   normalizeEmail,
   isValidEmailShape,
+  validatePasswordPolicy,
   configureAccountStore,
   resetAccountStoreForTests,
   accountStoreHasPlaintextPasswordField,
@@ -51,10 +56,24 @@ export {
   createAnonymousSession,
   resolveSessionIdentity,
   loginWithPassword,
+  registerWithEmail,
+  loginWithGoogleIdentity,
   logoutSession,
   buildTelegramAuthIdentity,
   authToRequesterContext,
 } from './session-service.js';
+
+export {
+  getGoogleOAuthConfig,
+  getGoogleOAuthPublicStatus,
+  beginGoogleOAuth,
+  completeGoogleOAuth,
+  buildOAuthReturnUrl,
+  setOAuthStateCookie,
+  clearOAuthStateCookie,
+  OAUTH_STATE_COOKIE,
+  resolveFrontendReturnOrigin,
+} from './google-oauth.js';
 
 export {
   attachAuthFromSession,

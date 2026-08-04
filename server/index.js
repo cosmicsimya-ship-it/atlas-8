@@ -58,11 +58,22 @@ import {
   ensureCsrfCookie,
   requesterContextFromRequest,
   loginWithPassword,
+  registerWithEmail,
+  loginWithGoogleIdentity,
   logoutSession,
   rateLimitMiddleware,
   findAccountByUserId,
   toPublicAccount,
+  toSessionProfile,
   logAdminAudit,
+  getGoogleOAuthPublicStatus,
+  beginGoogleOAuth,
+  completeGoogleOAuth,
+  buildOAuthReturnUrl,
+  resolveFrontendReturnOrigin,
+  setOAuthStateCookie,
+  clearOAuthStateCookie,
+  OAUTH_STATE_COOKIE,
 } from './auth/index.js';
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 import { createAudioStudioRouter } from './audio-studio-routes.js';
@@ -191,6 +202,22 @@ const loginRateLimit = rateLimitMiddleware({
   keyFn: (req) => `login:${req.ip || 'unknown'}`,
 });
 
+const registerRateLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  failClosed: true,
+  message: 'Too many registration attempts',
+  keyFn: (req) => `register:${req.ip || 'unknown'}`,
+});
+
+const googleOAuthRateLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  failClosed: true,
+  message: 'Too many Google authentication attempts',
+  keyFn: (req) => `google-oauth:${req.ip || 'unknown'}`,
+});
+
 const memoryRateLimit = rateLimitMiddleware({
   windowMs: 60 * 1000,
   max: 60,
@@ -238,16 +265,166 @@ app.use(
 
 app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (req, res) => {
   const csrf = ensureCsrfCookie(res, req);
+  const isAnon = Boolean(req.auth?.isAnonymous);
+  const account =
+    req.auth?.authenticated && !isAnon && req.auth?.userId
+      ? findAccountByUserId(req.auth.userId)
+      : null;
+  const profile = toSessionProfile(account);
   return res.json({
     authenticated: Boolean(req.auth?.authenticated),
     userId: req.auth?.userId ?? null,
     roles: req.auth?.roles ?? [],
     isFounder: Boolean(req.auth?.isFounder),
-    isAnonymous: Boolean(req.auth?.isAnonymous),
+    isAnonymous: isAnon,
     authMethod: req.auth?.authMethod ?? null,
+    email: profile?.email ?? null,
+    displayName: profile?.displayName ?? null,
+    avatarUrl: profile?.avatarUrl ?? null,
     csrfToken: csrf,
   });
 });
+
+app.get('/api/auth/google/status', (_req, res) => {
+  return res.json(getGoogleOAuthPublicStatus());
+});
+
+app.get('/api/auth/google', googleOAuthRateLimit, (req, res) => {
+  try {
+    const returnOrigin =
+      typeof req.query.returnOrigin === 'string' ? req.query.returnOrigin : req.get('origin');
+    const started = beginGoogleOAuth({ returnOrigin });
+    if (!started.ok) {
+      if (req.accepts(['html', 'json']) === 'json') {
+        return res.status(503).json({
+          error: 'Google authentication is not configured',
+          code: 'google_not_configured',
+        });
+      }
+      return res.redirect(
+        302,
+        buildOAuthReturnUrl(resolveFrontendReturnOrigin(returnOrigin), {
+          ok: false,
+          code: started.code || 'google_not_configured',
+        }),
+      );
+    }
+    setOAuthStateCookie(res, started.sealedState);
+    return res.redirect(302, started.authUrl);
+  } catch (err) {
+    console.error('[ATLAS] google oauth start error:', err.message);
+    return res.status(503).json({ error: 'Authentication service unavailable' });
+  }
+});
+
+app.get('/api/auth/google/callback', googleOAuthRateLimit, async (req, res) => {
+  const sealedCookie = req.cookies?.[OAUTH_STATE_COOKIE];
+  try {
+    const completed = await completeGoogleOAuth({
+      code: typeof req.query.code === 'string' ? req.query.code : null,
+      state: typeof req.query.state === 'string' ? req.query.state : null,
+      error: typeof req.query.error === 'string' ? req.query.error : null,
+      sealedCookie,
+    });
+    clearOAuthStateCookie(res);
+
+    if (!completed.ok) {
+      return res.redirect(
+        302,
+        buildOAuthReturnUrl(completed.returnOrigin, {
+          ok: false,
+          code: completed.code || 'oauth_failed',
+        }),
+      );
+    }
+
+    const previous = readSessionToken(req);
+    const result = await loginWithGoogleIdentity({
+      ...completed.google,
+      previousRawToken: previous,
+    });
+
+    if (!result.ok) {
+      return res.redirect(
+        302,
+        buildOAuthReturnUrl(completed.returnOrigin, {
+          ok: false,
+          code: result.code || 'google_auth_failed',
+        }),
+      );
+    }
+
+    setSessionCookie(res, result.rawToken);
+    ensureCsrfCookie(res, req);
+    return res.redirect(302, buildOAuthReturnUrl(completed.returnOrigin, { ok: true }));
+  } catch (err) {
+    console.error('[ATLAS] google oauth callback error:', err.message);
+    clearOAuthStateCookie(res);
+    return res.redirect(
+      302,
+      buildOAuthReturnUrl(process.env.FRONTEND_ORIGIN || 'https://cosmicsimya.com', {
+        ok: false,
+        code: 'oauth_failed',
+      }),
+    );
+  }
+});
+
+app.post(
+  '/api/auth/register',
+  registerRateLimit,
+  attachAuthFromSession({ createAnonymous: false }),
+  requireCsrfProtection,
+  async (req, res) => {
+    const email = String(req.body?.email ?? '');
+    const password = String(req.body?.password ?? '');
+    const passwordConfirm =
+      req.body?.passwordConfirm !== undefined ? String(req.body.passwordConfirm) : undefined;
+    const displayName =
+      req.body?.displayName != null ? String(req.body.displayName).trim().slice(0, 120) : null;
+
+    if (passwordConfirm !== undefined && passwordConfirm !== password) {
+      return res.status(400).json({
+        error: 'Passwords do not match',
+        code: 'password_mismatch',
+      });
+    }
+
+    try {
+      const previous = readSessionToken(req);
+      const result = await registerWithEmail({
+        email,
+        password,
+        displayName,
+        previousRawToken: previous,
+      });
+      if (!result.ok) {
+        const status =
+          result.code === 'duplicate_email'
+            ? 409
+            : result.code === 'weak_password' || result.code === 'invalid_email'
+              ? 400
+              : 400;
+        return res.status(status).json({ error: result.error, code: result.code });
+      }
+      setSessionCookie(res, result.rawToken);
+      const csrf = ensureCsrfCookie(res, req);
+      const profile = toSessionProfile(result.account);
+      return res.status(201).json({
+        ok: true,
+        roles: result.identity.roles,
+        isFounder: result.identity.isFounder,
+        email: profile?.email ?? null,
+        displayName: profile?.displayName ?? null,
+        avatarUrl: profile?.avatarUrl ?? null,
+        csrfToken: csrf,
+      });
+    } catch (err) {
+      console.error('[ATLAS] register error:', err.message);
+      return res.status(503).json({ error: 'Authentication service unavailable' });
+    }
+  },
+);
 
 app.post(
   '/api/auth/login',
@@ -255,10 +432,13 @@ app.post(
   attachAuthFromSession({ createAnonymous: false }),
   requireCsrfProtection,
   async (req, res) => {
-    const username = String(req.body?.username ?? '');
+    const username = String(req.body?.username ?? req.body?.email ?? '');
     const password = String(req.body?.password ?? '');
     if (!username || !password) {
-      return res.status(400).json({ error: 'Invalid username or password' });
+      return res.status(400).json({
+        error: 'Invalid username or password',
+        code: 'invalid_credentials',
+      });
     }
 
     try {
@@ -269,15 +449,18 @@ app.post(
         previousRawToken: previous,
       });
       if (!result.ok) {
-        return res.status(401).json({ error: result.error });
+        return res.status(401).json({ error: result.error, code: result.code });
       }
       setSessionCookie(res, result.rawToken);
       const csrf = ensureCsrfCookie(res, req);
+      const profile = toSessionProfile(result.account);
       return res.json({
         ok: true,
-        userId: result.identity.userId,
         roles: result.identity.roles,
         isFounder: result.identity.isFounder,
+        email: profile?.email ?? null,
+        displayName: profile?.displayName ?? null,
+        avatarUrl: profile?.avatarUrl ?? null,
         csrfToken: csrf,
       });
     } catch (err) {
@@ -1369,7 +1552,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  Model:  ${DEFAULT_MODEL}`);
     console.log(`  Assets: ${GENERATED_DIR}`);
     console.log(`  Frontend: ${serveFrontend ? '✓ dist/ (same-origin)' : '✗ not served (API-only)'}`);
-    console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
+    console.log('  Auth:   GET/POST /api/auth/session|login|logout|register, Google OAuth /api/auth/google');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
     console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
     console.log('  Memory: ✓ JSON persistence initialized');

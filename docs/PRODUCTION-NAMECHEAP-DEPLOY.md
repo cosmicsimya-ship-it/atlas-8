@@ -231,6 +231,30 @@ cPanel “Setup Node.js App” yalnızca **bir** startup file kabul ediyorsa Tel
 Same-origin Mod A’da CORS daha az kritik; yine de `ATLAS_CORS_ORIGINS` gerçek `https://` origin’leri içermeli.  
 `ATLAS_SECURE_COOKIES=true` + HTTPS olmadan oturum cookie’si tarayıcıda tutmaz.
 
+### Adım 9b — Google OAuth (isteğe bağlı üye ol / giriş)
+
+ATLAS özel cookie oturumu kullanır; Google yalnızca kimlik doğrular. Client secret yalnızca sunucu `.env` içindedir.
+
+cPanel `.env` içine (gerçek değerleri Google Cloud Console’dan alın):
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=https://cosmicsimya.com/api/auth/google/callback
+FRONTEND_ORIGIN=https://cosmicsimya.com
+```
+
+Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client:
+
+| Alan | Değer |
+|------|--------|
+| Authorized JavaScript origins | `https://cosmicsimya.com`, `https://www.cosmicsimya.com` |
+| Authorized redirect URIs | `https://cosmicsimya.com/api/auth/google/callback` |
+
+Yerel geliştirme ek URI: `http://localhost:3001/api/auth/google/callback`  
+Doğrulama: `GET /api/auth/google/status` → `{ "configured": true }`  
+E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, `POST /api/auth/login`).
+
 ### Adım 10 — Smoke test
 
 | Test | Beklenen |
@@ -238,9 +262,13 @@ Same-origin Mod A’da CORS daha az kritik; yine de `ATLAS_CORS_ORIGINS` gerçek
 | `GET /` | SPA HTML |
 | `GET /api/ai/health` | `{ status: "ok", ... }` |
 | Web chat kısa mesaj | Yanıt |
+| `GET /api/auth/session` | anonymous veya hesap oturumu + csrf |
+| Nav: Giriş Yap / Üye Ol | Modal açılır |
+| E-posta üye ol + çıkış + giriş | Oturum kalır / düşer |
+| Google (yapılandırıldıysa) | callback → `/#/?auth=ok` |
 | `GET /robots.txt` | Allow |
 | Telegram DM | Yanıt (bot process ayaktaysa) |
-| Mobil genişlik | Landing / chat okunur |
+| Mobil genişlik | Landing / chat / auth modal okunur |
 | `data/logs` / stderr | Stack trace / secret yok |
 
 ---

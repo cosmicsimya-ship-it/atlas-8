@@ -12,9 +12,12 @@ import {
 } from './session-store.js';
 import {
   findAccountByUsername,
+  findAccountByEmail,
   findAccountByTelegramBinding,
   verifyPassword,
   toPublicAccount,
+  registerAccount,
+  findOrProvisionGoogleAccount,
 } from './account-store.js';
 import { logPrivacyEvent } from '../privacy/privacy-logger.js';
 
@@ -133,16 +136,74 @@ export function resolveSessionIdentity(rawToken) {
 }
 
 /**
- * Login with username/password. Regenerates session (new token).
- * @param {{ username: string, password: string, previousRawToken?: string|null }} input
+ * @param {{
+ *   account: object,
+ *   authMethod: string,
+ *   previousRawToken?: string|null,
+ *   privacyReason?: string,
+ * }} input
+ */
+function establishAccountSession(input) {
+  if (input.previousRawToken) {
+    try {
+      revokeSession(input.previousRawToken);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const created = createSession({
+    userId: input.account.userId,
+    roles: input.account.roles,
+    authMethod: input.authMethod,
+  });
+
+  try {
+    logPrivacyEvent({
+      channel: 'auth',
+      requesterId: input.account.userId,
+      eventType: 'login_success',
+      action: 'allowed',
+      reason: input.privacyReason ?? input.authMethod,
+    });
+  } catch {
+    /* non-fatal */
+  }
+
+  return {
+    ok: true,
+    rawToken: created.rawToken,
+    expiresAt: created.expiresAt,
+    identity: buildAuthIdentity({
+      userId: input.account.userId,
+      roles: input.account.roles,
+      authMethod: input.authMethod,
+      sessionId: created.tokenHash,
+    }),
+    account: toPublicAccount(input.account),
+  };
+}
+
+/**
+ * Login with username or email + password. Regenerates session (new token).
+ * @param {{ username?: string, email?: string, password: string, previousRawToken?: string|null }} input
  */
 export async function loginWithPassword(input) {
-  const account = findAccountByUsername(input.username);
-  // Generic failure — do not reveal account existence
+  const identifier = String(input.username ?? input.email ?? '').trim();
   const fail = () => ({
     ok: false,
     error: 'Invalid username or password',
+    code: 'invalid_credentials',
   });
+
+  if (!identifier || !input.password) {
+    return fail();
+  }
+
+  let account = findAccountByUsername(identifier);
+  if (!account) {
+    account = findAccountByEmail(identifier);
+  }
 
   if (!account || account.disabled) {
     try {
@@ -152,6 +213,21 @@ export async function loginWithPassword(input) {
         eventType: 'login_failure',
         action: 'denied',
         reason: 'invalid_credentials',
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return fail();
+  }
+
+  if (!account.passwordHash) {
+    try {
+      logPrivacyEvent({
+        channel: 'auth',
+        requesterId: account.userId,
+        eventType: 'login_failure',
+        action: 'denied',
+        reason: 'password_not_set',
       });
     } catch {
       /* non-fatal */
@@ -175,45 +251,107 @@ export async function loginWithPassword(input) {
     return fail();
   }
 
-  // Invalidate previous session (regenerate)
-  if (input.previousRawToken) {
-    try {
-      revokeSession(input.previousRawToken);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  const created = createSession({
-    userId: account.userId,
-    roles: account.roles,
+  return establishAccountSession({
+    account,
     authMethod: 'password',
+    previousRawToken: input.previousRawToken,
+    privacyReason: 'password_login',
   });
+}
 
+/**
+ * Public email registration + immediate authenticated session.
+ * Does not merge prior anonymous conversational memory.
+ * @param {{
+ *   email: string,
+ *   password: string,
+ *   displayName?: string|null,
+ *   previousRawToken?: string|null,
+ * }} input
+ */
+export async function registerWithEmail(input) {
   try {
-    logPrivacyEvent({
-      channel: 'auth',
-      requesterId: account.userId,
-      eventType: 'login_success',
-      action: 'allowed',
-      reason: 'password_login',
+    const account = await registerAccount({
+      email: input.email,
+      password: input.password,
+      displayName: input.displayName,
     });
-  } catch {
-    /* non-fatal */
-  }
-
-  return {
-    ok: true,
-    rawToken: created.rawToken,
-    expiresAt: created.expiresAt,
-    identity: buildAuthIdentity({
-      userId: account.userId,
-      roles: account.roles,
+    // reload full account for passwordHash presence in store
+    const full = findAccountByEmail(input.email) ?? findAccountByUsername(account.username);
+    return establishAccountSession({
+      account: full ?? account,
       authMethod: 'password',
-      sessionId: created.tokenHash,
-    }),
-    account: toPublicAccount(account),
-  };
+      previousRawToken: input.previousRawToken,
+      privacyReason: 'email_register',
+    });
+  } catch (err) {
+    const code = err?.code || 'register_failed';
+    try {
+      logPrivacyEvent({
+        channel: 'auth',
+        requesterId: null,
+        eventType: 'register_failure',
+        action: 'denied',
+        reason: String(code).slice(0, 64),
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return {
+      ok: false,
+      code,
+      error:
+        code === 'duplicate_email'
+          ? 'An account with this email already exists'
+          : code === 'invalid_email'
+            ? 'Invalid email address'
+            : code === 'weak_password'
+              ? err.message || 'Password does not meet requirements'
+              : 'Registration failed',
+    };
+  }
+}
+
+/**
+ * Complete Google OAuth after verified Google userinfo.
+ * @param {{
+ *   googleSub: string,
+ *   email: string,
+ *   emailVerified: boolean,
+ *   displayName?: string|null,
+ *   avatarUrl?: string|null,
+ *   previousRawToken?: string|null,
+ * }} input
+ */
+export async function loginWithGoogleIdentity(input) {
+  try {
+    const account = await findOrProvisionGoogleAccount(input);
+    const full = findAccountByEmail(input.email) ?? findAccountByUsername(account.username);
+    return establishAccountSession({
+      account: full ?? account,
+      authMethod: 'google',
+      previousRawToken: input.previousRawToken,
+      privacyReason: 'google_oauth',
+    });
+  } catch (err) {
+    const code = err?.code || 'google_auth_failed';
+    try {
+      logPrivacyEvent({
+        channel: 'auth',
+        requesterId: null,
+        eventType: 'login_failure',
+        action: 'denied',
+        reason: String(code).slice(0, 64),
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return {
+      ok: false,
+      code,
+      error: 'Google authentication failed',
+    };
+  }
 }
 
 /**

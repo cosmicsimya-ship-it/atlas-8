@@ -167,16 +167,56 @@ export function findAccountByTelegramBinding(telegramUserId) {
 }
 
 /**
+ * Password policy for public registration / password login accounts.
+ * @param {string} password
+ * @returns {{ ok: true } | { ok: false, code: string, error: string }}
+ */
+export function validatePasswordPolicy(password) {
+  const pw = String(password ?? '');
+  if (pw.length < 8) {
+    return { ok: false, code: 'weak_password', error: 'Password must be at least 8 characters' };
+  }
+  if (pw.length > 128) {
+    return { ok: false, code: 'weak_password', error: 'Password is too long' };
+  }
+  if (!/[A-Za-zÀ-ÿ]/.test(pw) || !/[0-9]/.test(pw)) {
+    return {
+      ok: false,
+      code: 'weak_password',
+      error: 'Password must include at least one letter and one number',
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * @param {string} googleSub
+ */
+export function findAccountByGoogleSub(googleSub) {
+  const sub = String(googleSub ?? '').trim();
+  if (!sub) return null;
+  const store = loadStore();
+  return (
+    Object.values(store.accounts).find((a) => String(a.googleSub ?? '').trim() === sub) ?? null
+  );
+}
+
+/**
  * Create or update an account (provisioning).
  * @param {{
  *   id?: string,
  *   username: string,
- *   password: string,
+ *   password?: string|null,
+ *   passwordHash?: string|null,
  *   email?: string|null,
  *   roles?: string[],
  *   userId: string,
  *   telegramBindings?: string[],
  *   disabled?: boolean,
+ *   displayName?: string|null,
+ *   avatarUrl?: string|null,
+ *   googleSub?: string|null,
+ *   authProviders?: string[],
  * }} input
  */
 export async function upsertAccount(input) {
@@ -184,21 +224,53 @@ export async function upsertAccount(input) {
   const id = input.id || `acc_${randomBytes(8).toString('hex')}`;
   const existing = store.accounts[id] ?? findAccountByUsername(input.username);
   const accountId = existing?.id ?? id;
-  const passwordHash = await hashPassword(input.password);
+  let passwordHash = existing?.passwordHash ?? null;
+  if (input.passwordHash !== undefined) {
+    passwordHash = input.passwordHash;
+  } else if (input.password != null && String(input.password).length > 0) {
+    passwordHash = await hashPassword(input.password);
+  }
   const emailInput =
     input.email !== undefined ? normalizeEmail(input.email) : normalizeEmail(existing?.email);
+
+  const providers = Array.isArray(input.authProviders)
+    ? [...new Set(input.authProviders.map(String))]
+    : existing?.authProviders
+      ? [...existing.authProviders]
+      : passwordHash
+        ? ['password']
+        : [];
 
   store.accounts[accountId] = {
     id: accountId,
     username: String(input.username).trim(),
     email: emailInput,
     passwordHash,
-    roles: Array.isArray(input.roles) ? [...input.roles] : ['user'],
+    roles: Array.isArray(input.roles) ? [...input.roles] : existing?.roles ?? ['user'],
     userId: input.userId,
     telegramBindings: Array.isArray(input.telegramBindings)
       ? input.telegramBindings.map(String)
       : existing?.telegramBindings ?? [],
-    disabled: Boolean(input.disabled),
+    disabled: input.disabled !== undefined ? Boolean(input.disabled) : Boolean(existing?.disabled),
+    displayName:
+      input.displayName !== undefined
+        ? input.displayName
+          ? String(input.displayName).trim().slice(0, 120)
+          : null
+        : existing?.displayName ?? null,
+    avatarUrl:
+      input.avatarUrl !== undefined
+        ? input.avatarUrl
+          ? String(input.avatarUrl).trim().slice(0, 500)
+          : null
+        : existing?.avatarUrl ?? null,
+    googleSub:
+      input.googleSub !== undefined
+        ? input.googleSub
+          ? String(input.googleSub).trim()
+          : null
+        : existing?.googleSub ?? null,
+    authProviders: providers,
     updatedAt: new Date().toISOString(),
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
@@ -207,6 +279,154 @@ export async function upsertAccount(input) {
   const { passwordHash: _ph, ...safe } = store.accounts[accountId];
   void _ph;
   return safe;
+}
+
+/**
+ * Public email/password registration. Does not merge anonymous chat memory.
+ * @param {{
+ *   email: string,
+ *   password: string,
+ *   displayName?: string|null,
+ * }} input
+ */
+export async function registerAccount(input) {
+  const email = normalizeEmail(input.email);
+  if (!email || !isValidEmailShape(email)) {
+    const err = new Error('invalid_email');
+    err.code = 'invalid_email';
+    throw err;
+  }
+  const policy = validatePasswordPolicy(input.password);
+  if (!policy.ok) {
+    const err = new Error(policy.error);
+    err.code = policy.code;
+    throw err;
+  }
+  if (findAccountByEmail(email) || findAccountByUsername(email)) {
+    const err = new Error('duplicate_email');
+    err.code = 'duplicate_email';
+    throw err;
+  }
+
+  const passwordHash = await hashPassword(input.password);
+  const userId = `web:${randomBytes(12).toString('hex')}`;
+  const displayName = input.displayName
+    ? String(input.displayName).trim().slice(0, 120)
+    : email.split('@')[0];
+
+  return upsertAccount({
+    username: email,
+    email,
+    passwordHash,
+    password: null,
+    roles: ['user'],
+    userId,
+    displayName,
+    authProviders: ['password'],
+  });
+}
+
+/**
+ * Find or create an account for a verified Google identity.
+ * Reuses an existing account with the same verified email (no duplicate).
+ * @param {{
+ *   googleSub: string,
+ *   email: string,
+ *   emailVerified: boolean,
+ *   displayName?: string|null,
+ *   avatarUrl?: string|null,
+ * }} input
+ */
+export async function findOrProvisionGoogleAccount(input) {
+  const googleSub = String(input.googleSub ?? '').trim();
+  const email = normalizeEmail(input.email);
+  if (!googleSub) {
+    const err = new Error('google_identity_missing');
+    err.code = 'google_identity_missing';
+    throw err;
+  }
+  if (!input.emailVerified) {
+    const err = new Error('google_email_unverified');
+    err.code = 'google_email_unverified';
+    throw err;
+  }
+  if (!email || !isValidEmailShape(email)) {
+    const err = new Error('invalid_email');
+    err.code = 'invalid_email';
+    throw err;
+  }
+
+  const bySub = findAccountByGoogleSub(googleSub);
+  if (bySub) {
+    if (bySub.disabled) {
+      const err = new Error('account_disabled');
+      err.code = 'account_disabled';
+      throw err;
+    }
+    const providers = [...new Set([...(bySub.authProviders ?? []), 'google'])];
+    return upsertAccount({
+      id: bySub.id,
+      username: bySub.username,
+      password: null,
+      passwordHash: bySub.passwordHash ?? null,
+      email: bySub.email || email,
+      roles: bySub.roles,
+      userId: bySub.userId,
+      telegramBindings: bySub.telegramBindings,
+      disabled: bySub.disabled,
+      displayName: input.displayName || bySub.displayName,
+      avatarUrl: input.avatarUrl || bySub.avatarUrl,
+      googleSub,
+      authProviders: providers,
+    });
+  }
+
+  const byEmail = findAccountByEmail(email);
+  if (byEmail) {
+    if (byEmail.disabled) {
+      const err = new Error('account_disabled');
+      err.code = 'account_disabled';
+      throw err;
+    }
+    if (byEmail.googleSub && byEmail.googleSub !== googleSub) {
+      const err = new Error('google_email_conflict');
+      err.code = 'google_email_conflict';
+      throw err;
+    }
+    const providers = [...new Set([...(byEmail.authProviders ?? []), 'google'])];
+    if (byEmail.passwordHash && !providers.includes('password')) providers.push('password');
+    return upsertAccount({
+      id: byEmail.id,
+      username: byEmail.username,
+      password: null,
+      passwordHash: byEmail.passwordHash ?? null,
+      email,
+      roles: byEmail.roles,
+      userId: byEmail.userId,
+      telegramBindings: byEmail.telegramBindings,
+      disabled: byEmail.disabled,
+      displayName: input.displayName || byEmail.displayName,
+      avatarUrl: input.avatarUrl || byEmail.avatarUrl,
+      googleSub,
+      authProviders: providers,
+    });
+  }
+
+  const userId = `web:${randomBytes(12).toString('hex')}`;
+  return upsertAccount({
+    username: email,
+    email,
+    password: null,
+    passwordHash: null,
+    roles: ['user'],
+    userId,
+    displayName: input.displayName
+      ? String(input.displayName).trim().slice(0, 120)
+      : email.split('@')[0],
+    avatarUrl: input.avatarUrl ? String(input.avatarUrl).trim().slice(0, 500) : null,
+    googleSub,
+    authProviders: ['google'],
+  });
 }
 
 /**
@@ -273,7 +493,7 @@ export function grantAccountRole(input) {
 }
 
 /**
- * Public-safe account view (no password hash).
+ * Public-safe account view (no password hash / provider secrets).
  * @param {object} account
  */
 export function toPublicAccount(account) {
@@ -282,9 +502,25 @@ export function toPublicAccount(account) {
     id: account.id,
     username: account.username,
     email: account.email ?? null,
+    displayName: account.displayName ?? null,
+    avatarUrl: account.avatarUrl ?? null,
     roles: [...(account.roles ?? [])],
     userId: account.userId,
+    authProviders: Array.isArray(account.authProviders) ? [...account.authProviders] : [],
     disabled: Boolean(account.disabled),
+  };
+}
+
+/**
+ * UI-safe session profile (no internal account id / google sub).
+ * @param {object|null|undefined} account
+ */
+export function toSessionProfile(account) {
+  if (!account) return null;
+  return {
+    email: account.email ?? null,
+    displayName: account.displayName ?? account.username ?? null,
+    avatarUrl: account.avatarUrl ?? null,
   };
 }
 
