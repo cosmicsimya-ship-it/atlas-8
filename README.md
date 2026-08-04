@@ -1,5 +1,15 @@
 # ATLAS v7.1 — Persistent Asset Storage
 
+## Architecture (canonical)
+
+Platform architecture is defined by:
+
+- [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md) — Master Spec v1.0
+- [`docs/architecture/COMPLIANCE_MATRIX.md`](docs/architecture/COMPLIANCE_MATRIX.md) — compliance vs Master Spec
+- [`docs/architecture/TRANSFORMATION_ROADMAP.md`](docs/architecture/TRANSFORMATION_ROADMAP.md) — transformation phases (P0 complete; P2 requires approval)
+
+See [`docs/architecture/README.md`](docs/architecture/README.md) for the full documentation hub.
+
 ## Setup
 
 ```bash

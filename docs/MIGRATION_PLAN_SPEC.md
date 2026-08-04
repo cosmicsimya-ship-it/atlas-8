@@ -1,6 +1,13 @@
 # MIGRATION_PLAN_SPEC
 
-**Status:** Normative migration plan (design only)  
+> **MERGED UNDER TRANSFORMATION ROADMAP (2026-08-04)**  
+> Platform transformation planning authority:  
+> [`docs/architecture/TRANSFORMATION_ROADMAP.md`](./architecture/TRANSFORMATION_ROADMAP.md)  
+> Disposition: **Merge** — this document remains the **abjad/esma domain migration appendix** (phases, flags, Pre-Faz gate).  
+> Platform architecture: [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](./architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md).  
+> Spec only — **no migration execution authorized by the consolidation**.
+
+**Status:** Domain appendix (abjad/esma) — design only  
 **Document id:** `atlas-abjad-esma-migration-plan-v1`  
 **Last updated:** 2026-08-01  
 **Depends on:** Architecture, ADRs 001–005, Operational Appendix, RFC-009/010  

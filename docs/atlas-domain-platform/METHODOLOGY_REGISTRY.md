@@ -3,7 +3,7 @@
 **Status:** Normative design  
 **Document id:** `atlas-domain-platform-methodology-registry-v1`  
 **Date:** 2026-08-03  
-**Parent:** `MASTER_ARCHITECTURE.md`  
+**Parent:** [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](../architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md) (canonical). Prior parent `MASTER_ARCHITECTURE.md` is archived.  
 **Aligns with:** `docs/rfc/RFC-002-METHODOLOGY-REGISTRY.md`, ADR-001…005  
 
 ---

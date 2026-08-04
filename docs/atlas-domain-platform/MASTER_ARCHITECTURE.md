@@ -1,6 +1,13 @@
 # ATLAS Domain Intelligence Platform — Master Architecture
 
-**Status:** Normative platform architecture (design)  
+> **ARCHIVED / SUPERSEDED (2026-08-04)**  
+> Platform architecture authority has moved to the canonical Master Spec:  
+> [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](../architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md)  
+> Disposition: **Merge → Archive** (see [`DOC_CONSOLIDATION.md`](../architecture/DOC_CONSOLIDATION.md)).  
+> Unique historical notes below (depth L0–L4, engine catalog, professional JSON) are retained for reference only.  
+> This file does **not** authorize implementation changes.
+
+**Status:** Archived (historical) — previously normative platform architecture (design)  
 **Document id:** `atlas-domain-platform-master-v1`  
 **Date:** 2026-08-03  
 **Depends on:** `current-state-audit.md`  

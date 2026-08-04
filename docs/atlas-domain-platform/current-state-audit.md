@@ -1,6 +1,14 @@
 # ATLAS Domain Intelligence Platform — Current State Audit
 
-**Status:** Verified audit — Phase 1 inventory + **Phase 2 deep architecture verification**  
+> **OBSOLETE FOR GAP STATUS (2026-08-04) — refresh deferred**  
+> For current architecture compliance and gaps, use:  
+> [`docs/architecture/COMPLIANCE_MATRIX.md`](../architecture/COMPLIANCE_MATRIX.md)  
+> Canonical architecture: [`ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](../architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md)  
+> Known stale claim: natal ASC “unavailable” — runtime now exposes `ASCENDANT_CALC_AVAILABLE = true` when inputs resolve.  
+> This historical audit is retained for call-chain proofs; disposition **Obsolete (refresh later)**.  
+> Audit only — no production refactor authorized.
+
+**Status:** Historical audit (gap status superseded by Compliance Matrix)  
 **Document id:** `atlas-domain-platform-current-state-audit-v1`  
 **Audit date:** 2026-08-03 (Phase 2 deep-verify same day)  
 **Repo:** `ATLAS-v0.8-asset-persistence`  

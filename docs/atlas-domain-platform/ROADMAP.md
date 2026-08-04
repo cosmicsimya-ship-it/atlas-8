@@ -1,9 +1,16 @@
 # ATLAS Domain Intelligence Platform — Roadmap, Migration & Test Strategy
 
-**Status:** Normative phased plan  
+> **SUPERSEDED FOR PLANNING AUTHORITY (2026-08-04)**  
+> Use the Master-aligned roadmap:  
+> [`docs/architecture/TRANSFORMATION_ROADMAP.md`](../architecture/TRANSFORMATION_ROADMAP.md)  
+> Disposition: **Merge** — FAZ detail below is retained as historical appendix (see Transformation Roadmap §7 FAZ map).  
+> Canonical architecture: [`ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](../architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md).  
+> This file does **not** authorize implementation / Phase P2.
+
+**Status:** Historical FAZ plan (planning superseded)  
 **Document id:** `atlas-domain-platform-roadmap-v1`  
 **Date:** 2026-08-03  
-**Parent:** `MASTER_ARCHITECTURE.md`  
+**Parent:** `MASTER_ARCHITECTURE.md` (archived) → Master Spec v1  
 **Baseline audit:** `current-state-audit.md`  
 
 ---

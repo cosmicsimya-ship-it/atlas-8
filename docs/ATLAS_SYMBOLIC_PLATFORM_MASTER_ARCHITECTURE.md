@@ -1,6 +1,13 @@
 # ATLAS SYMBOLIC PLATFORM — MASTER ARCHITECTURE RFC
 
-**Status:** Normative platform architecture (design only)  
+> **ARCHIVED (2026-08-04)**  
+> Platform-wide architecture authority is now:  
+> [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](./architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md)  
+> Disposition: **Archive** (symbolic lineage overview).  
+> **Child RFCs (RFC-001…010) remain binding** for ebced/esma contracts under the Master Spec.  
+> This file does **not** authorize production code changes.
+
+**Status:** Archived (historical) — previously normative symbolic platform architecture (design only)  
 **Document id:** `atlas-symbolic-platform-master-v1`  
 **Last updated:** 2026-07-31  
 **Implementation status:** Spec only — **no production code change authorized by this document**  
