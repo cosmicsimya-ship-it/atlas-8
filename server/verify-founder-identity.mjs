@@ -2,7 +2,16 @@
  * Founder Identity consistency verification.
  * Run: node server/verify-founder-identity.mjs
  */
+import 'dotenv/config';
+import { join } from 'path';
+import { tmpdir } from 'os';
+
 process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
+process.env.ATLAS_MEMORY_FILE = join(
+  tmpdir(),
+  `atlas-user-memory-founder-identity-test-${process.pid}.json`,
+);
+
 import { buildAtlasPromptBundle } from './atlas-message-service.js';
 import { processAtlasMessage } from './atlas-message-service.js';
 import { initializeFounderKnowledge } from './founder-knowledge.js';

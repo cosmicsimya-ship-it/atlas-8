@@ -2,7 +2,15 @@
  * Identity claim verification — ambiguous naming must never become founder biography.
  * Run: node server/verify-identity-claims.mjs
  */
+import 'dotenv/config';
+import { join } from 'path';
+import { tmpdir } from 'os';
+
 process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
+process.env.ATLAS_MEMORY_FILE = join(
+  tmpdir(),
+  `atlas-user-memory-identity-test-${process.pid}.json`,
+);
 
 import {
   analyzeIdentityClaim,
