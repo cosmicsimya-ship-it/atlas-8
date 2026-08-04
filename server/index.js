@@ -151,11 +151,16 @@ const allowedOrigins = getAllowedOrigins();
 app.use(
   cors({
     origin(origin, callback) {
+      // No Origin: allow the request through without reflecting ACAO (non-browser /
+      // health / CLI). Browser unsafe routes still require Origin via CSRF middleware.
       if (!origin) return callback(null, true);
       if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(null, false);
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'X-Atlas-Csrf', 'X-CSRF-Token'],
+    optionsSuccessStatus: 204,
   }),
 );
 app.use(

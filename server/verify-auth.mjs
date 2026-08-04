@@ -283,6 +283,12 @@ console.log('\n=== Auth unit checks ===\n');
   assert('30. CORS allowlist no wildcard', !getAllowedOrigins().includes('*'));
   assert('30b. localhost allowed', isAllowedOrigin('http://localhost:5173'));
   assert('30c. evil denied', !isAllowedOrigin('https://evil.example'));
+  assert('30d. production root allowed', isAllowedOrigin('https://cosmicsimya.com'));
+  assert('30e. production www allowed', isAllowedOrigin('https://www.cosmicsimya.com'));
+  assert('30f. trailing slash normalized', isAllowedOrigin('https://cosmicsimya.com/'));
+  assert('30g. suffix spoof denied', !isAllowedOrigin('https://cosmicsimya.com.evil.example'));
+  assert('30h. missing origin denied by helper', !isAllowedOrigin(undefined) && !isAllowedOrigin(''));
+  assert('30i. wildcard string denied', !isAllowedOrigin('*'));
 }
 
 console.log('\n=== HTTP integration ===\n');

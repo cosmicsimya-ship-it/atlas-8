@@ -7,6 +7,7 @@ export {
   CSRF_COOKIE_NAME,
   getSessionCookieOptions,
   getCsrfCookieOptions,
+  normalizeOrigin,
   getAllowedOrigins,
   isAllowedOrigin,
 } from './cookie-config.js';
