@@ -2,9 +2,9 @@ import { cn } from '../../utils/cn';
 
 export function StatusDot({ status, size = 'sm' }: { status: string; size?: 'xs' | 'sm' | 'md' }) {
   const colorMap: Record<string, string> = {
-    online: 'bg-emerald-400', idle: 'bg-slate-400', processing: 'bg-blue-400',
+    online: 'bg-emerald-400', idle: 'bg-slate-400', processing: 'bg-[#c9b37a]',
     error: 'bg-red-400', paused: 'bg-amber-400', offline: 'bg-gray-600',
-    success: 'bg-emerald-400', warning: 'bg-amber-400', info: 'bg-blue-400',
+    success: 'bg-emerald-400', warning: 'bg-amber-400', info: 'bg-[#c9b37a]',
     active: 'bg-emerald-400', setup: 'bg-amber-400',
   };
   const sizeMap = { xs: 'w-1.5 h-1.5', sm: 'w-2 h-2', md: 'w-2.5 h-2.5' };
@@ -28,7 +28,7 @@ export function Badge({ children, color = '#94a3b8', className }: { children: Re
   );
 }
 
-export function MetricCard({ label, value, sub, color = '#3b82f6', trend }: { label: string; value: string; sub?: string; color?: string; trend?: 'up' | 'down' | 'neutral' }) {
+export function MetricCard({ label, value, sub, color = '#c9b37a', trend }: { label: string; value: string; sub?: string; color?: string; trend?: 'up' | 'down' | 'neutral' }) {
   return (
     <div className="bg-atlas-surface border border-atlas-border rounded-lg p-4 hover:border-atlas-border-glow/30 transition-colors">
       <div className="text-xs text-atlas-text-dim font-medium mb-1">{label}</div>
@@ -45,7 +45,7 @@ export function MetricCard({ label, value, sub, color = '#3b82f6', trend }: { la
   );
 }
 
-export function ProgressBar({ value, color = '#3b82f6', height = 'h-1.5', showLabel = false }: { value: number; color?: string; height?: string; showLabel?: boolean }) {
+export function ProgressBar({ value, color = '#c9b37a', height = 'h-1.5', showLabel = false }: { value: number; color?: string; height?: string; showLabel?: boolean }) {
   return (
     <div className="flex items-center gap-2 w-full">
       <div className={cn('flex-1 bg-atlas-surface2 rounded-full overflow-hidden', height)}>
@@ -78,7 +78,7 @@ export function EmptyState({ icon: Icon, title, sub }: { icon: React.ElementType
   );
 }
 
-export function MiniBar({ data, color = '#3b82f6', height = 32 }: { data: number[]; color?: string; height?: number }) {
+export function MiniBar({ data, color = '#c9b37a', height = 32 }: { data: number[]; color?: string; height?: number }) {
   const max = Math.max(...data, 1);
   return (
     <div className="flex items-end gap-[2px]" style={{ height }}>

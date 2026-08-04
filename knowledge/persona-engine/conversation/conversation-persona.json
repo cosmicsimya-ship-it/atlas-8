@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "moduleId": "conversation-v1",
+  "status": "seed",
+  "description": "Persona-side conversation expectations. Runtime context remains in conversation-context-engine.js.",
+  "preserve": [
+    "aktif konu",
+    "önceki soru",
+    "devam sorusu",
+    "amaç",
+    "duygusal ton",
+    "konuşma yönü"
+  ],
+  "rule": "Mesajı izole okuma; konuşmanın tamamını değerlendir."
+}

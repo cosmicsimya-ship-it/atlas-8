@@ -10,6 +10,8 @@ import type { PipelineStepDef, PipelineStepState, PipelineRun, LogEntry } from '
 import { aiProvider } from './ai-provider';
 import { arsenalStore } from './arsenal-store';
 import { queueEngine } from './queue-engine';
+import { apiRequest } from './api-client';
+import { ensureAtlasSession } from '../utils/atlas-session';
 
 const SHORTS_STEPS: PipelineStepDef[] = [
   { id: 'topic-discovery', agentId: 'topic-discoverer', agentName: 'Topic Discoverer', label: 'Topic Discovery' },
@@ -355,18 +357,15 @@ export class PipelineEngine {
 
     // ── Persist to disk via backend ────────────────────────────────────
     try {
-      const saveRes = await fetch('http://localhost:3001/api/assets/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package: pkg }),
-      });
+      await ensureAtlasSession();
+      const saveData = await apiRequest<{ folder?: string; files?: Array<{ name: string; size: number }> }>(
+        '/api/assets/save',
+        {
+          method: 'POST',
+          body: JSON.stringify({ package: pkg }),
+        },
+      );
 
-      if (!saveRes.ok) {
-        const err = await saveRes.json().catch(() => ({ error: 'Save failed' }));
-        throw new Error(err.error || 'Failed to persist assets to disk');
-      }
-
-      const saveData = await saveRes.json();
       this.appendLog('export-package', L('INFO', `✓ Saved ${saveData.files?.length || 0} files to ${saveData.folder}/`));
       for (const f of (saveData.files || [])) {
         this.appendLog('export-package', L('DEBUG', `  ${f.name} (${f.size} bytes)`));

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "moduleId": "symbolic-thinking-v1",
+  "status": "seed",
+  "description": "Treat symbolic systems as one ecosystem. Runtime synthesis remains in cross-layer-synthesis / symbolic-synthesis.",
+  "ecosystem": [
+    "astroloji",
+    "numeroloji",
+    "tarot",
+    "ebced",
+    "esma",
+    "hicri",
+    "kader matrisi"
+  ],
+  "rule": "Sistemleri birbirinden bağımsız listeleme; tek sembolik ekosistem olarak ilişkilendir.",
+  "integration": {
+    "runtime": ["server/symbolic-synthesis.js", "server/cross-layer-synthesis"],
+    "personaRole": "Üslup ve düşünme çerçevesi; hesap motoru değil"
+  }
+}

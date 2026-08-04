@@ -1,0 +1,11 @@
+{
+  "id": "telegram",
+  "version": "voice-v1",
+  "displayName": "Telegram",
+  "domains": ["telegram"],
+  "channels": ["telegram"],
+  "tone": "Konuşkan ama yoğun; gereksiz giriş yok.",
+  "register": "Girişsiz başlar; kısa paragraflar; emoji yalnızca anlamlıysa.",
+  "prefer": ["doğrudan", "yoğun", "net"],
+  "avoid": ["uzun giriş", "prosedür cümlesi", "fazla emoji"]
+}

@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileText, Download, FolderOpen, RefreshCw, Loader2, ExternalLink } from 'lucide-react';
 import { Badge, EmptyState } from '../components/ui';
 import { cn } from '../utils/cn';
-
-const BACKEND = 'http://localhost:3001';
+import { apiRequest } from '../services/api-client';
+import { BACKEND_URL } from '../config';
+import { ensureAtlasSession } from '../utils/atlas-session';
 
 interface AssetFile {
   name: string;
@@ -40,14 +41,22 @@ const FILE_TYPE_MAP: Record<string, { label: string; color: string }> = {
   'final-package.json': { label: 'Package',   color: '#3b82f6' },
 };
 
-function downloadFile(path: string) {
-  // Open in new tab — the backend sets Content-Disposition: attachment
-  window.open(`${BACKEND}/api/assets/${path}/download`, '_blank');
+async function downloadFile(path: string) {
+  await ensureAtlasSession();
+  const [folder, ...rest] = path.split('/');
+  const file = rest.join('/');
+  window.open(
+    `${BACKEND_URL}/api/assets/${encodeURIComponent(folder)}/${encodeURIComponent(file)}/download`,
+    '_blank',
+  );
 }
 
-function downloadFullPackage(folder: string) {
-  // Hits the ZIP endpoint — backend sets Content-Type: application/zip
-  window.open(`${BACKEND}/api/assets/${folder}/download-zip`, '_blank');
+async function downloadFullPackage(folder: string) {
+  await ensureAtlasSession();
+  window.open(
+    `${BACKEND_URL}/api/assets/${encodeURIComponent(folder)}/download-zip`,
+    '_blank',
+  );
 }
 
 export default function AssetLibrary() {
@@ -60,9 +69,8 @@ export default function AssetLibrary() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${BACKEND}/api/assets`);
-      if (!res.ok) throw new Error(`Failed to load assets (${res.status})`);
-      const data = await res.json();
+      await ensureAtlasSession();
+      const data = await apiRequest<{ productions?: Production[] }>('/api/assets');
       setProductions(data.productions || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load assets');

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "description": "Founder Profile & Biography — resmi kimlik kaynağı. Founder Knowledge Layer (founders.json) ile id üzerinden eşleşir.",
+  "profiles": [
+    {
+      "id": "founder-primary",
+      "fullName": "Lara",
+      "preferredName": "Lara",
+      "role": "Kurucu",
+      "title": "Cosmicsimya.com! Kurucusu · Atlas Sistem Mimarı",
+      "mission": "Sembolik analiz, kişisel örüntü ve çoklu sistem sentezini tek bir güvenilir zekâ katmanında birleştirmek; kullanıcıya fal değil görünür örüntü sunmak.",
+      "vision": "Atlas'ın Web, Telegram ve gelecek kanallarda aynı zekâ boru hattıyla çalışan; hafızalı, modüler ve dürüst sınırları olan bir sembolik zekâ sistemi olması.",
+      "responsibilities": [
+        "Atlas mimarisinin ve motor yönlendirmesinin stratejik sahipliği",
+        "Cosmicsimya.com! marka deneyimi ile Atlas zekâ katmanının uyumu",
+        "Hafıza, arşiv ve knowledge layer ayrımının korunması",
+        "Ürün yönü ve teknik borç kararlarında nihai sorumluluk"
+      ],
+      "communicationPreferences": {
+        "tone": "Doğrudan, net, eleştirel düşünceye açık",
+        "avoid": ["Boş motivasyon", "Gereksiz onay", "Aşırı mistik dil", "Tek seçenek dayatma"],
+        "prefer": ["Alternatifler", "Mimari gerekçe", "Doğrulanabilir bilgi ayrımı", "Kısa ama yoğun yanıtlar"]
+      },
+      "decisionAuthority": "Sistem mimarisi, motor seçimi, hafıza politikası, kanal entegrasyonu ve ürün yönü üzerinde nihai kurucu otoritesi.",
+      "designPrinciples": [
+        "Tek paylaşımlı processAtlasMessage boru hattı",
+        "Kalıcı hafıza gerçek backend'de — prompt simülasyonu değil",
+        "Founder Profile, Founder Knowledge ve user_memory katmanları ayrı",
+        "Meta sentez, tarot, kişisel analiz bağlamları karışmaz",
+        "Yetersiz veride uydurma yerine insufficient_data"
+      ],
+      "workingStyle": "Önce mimari ve veri akışını netleştirir; sonra uygular. Hızlı prototip yerine sürdürülebilir modüler yapıyı tercih eder. Teknik gerçekler ile sembolik katmanı asla birbirine karıştırmaz.",
+      "values": [
+        "Dürüstlük — bilinmeyeni bilinmeyen olarak söylemek",
+        "Örüntü berraklığı — görünmeyeni görünür kılmak",
+        "Modülerlik — gelecekte SQLite/PostgreSQL geçişine hazır API",
+        "Kullanıcı ayrımı — kanallar arası tutarlı kimlik",
+        "Eleştirel düşünce — zayıf fikirlere nazik ama net geri bildirim"
+      ],
+      "goals": [
+        "Cosmicsimya.com! premium web deneyimini Atlas zekâsıyla tam entegre etmek",
+        "Web ve Telegram'da aynı kimlik, hafıza ve motor davranışını sürdürmek",
+        "Kişisel analiz, meta sentez ve tarot motorlarını bozmadan genişletmek",
+        "Founder Profile sistemini genişletilebilir çok kurucu desteğine hazır tutmak"
+      ],
+      "biography": "Cosmicsimya.com! ve Atlas'ın kurucusu. Atlas'ı yalnızca bir sohbet botu değil; astroloji, numeroloji ve kişisel örüntüleri tek analiz katmanında birleştiren sembolik bir zekâ sistemi olarak tasarladı.\n\nTeknik mimari odağı: paylaşımlı backend boru hattı, gerçek kalıcı hafıza, kanal-bağımsız kimlik ve modüler knowledge layer'lar. Sembolik yorumu kehanet veya kesin iddia olarak sunmaktan kaçınır; örüntüyü olasılık ve farkındalık diliyle ele alır.\n\nAtlas ile iletişimde mimari kararları, önceki repo gerçeklerini ve sistem sınırlarını dikkate almasını bekler. Onay arayan değil; düşünen, alternatif sunan ve gerektiğinde eleştirel geri bildirim veren bir zekâ ortağı ister.",
+      "founderNotes": "Founder Profile bu dosyada düzenlenir; user_memory.json'a yazılmaz. Kimlik eşlemesi founders.json ve .env ATLAS_FOUNDER_* değişkenleri ile yapılır."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "moduleId": "preferences-v1",
+  "status": "seed",
+  "description": "Editorial preferences — separate from personal facts in user_memory.",
+  "editorial": {
+    "roboticLanguage": false,
+    "excessEmoji": false,
+    "unnecessaryExplanation": false,
+    "shortTitles": true,
+    "highAesthetic": true,
+    "minimalApproach": true,
+    "premiumDesignBias": true
+  },
+  "separation": {
+    "personalFacts": "user_memory / facts",
+    "editorialStyle": "persona-engine / preferences + author-profile",
+    "learning": "persona-engine / learning + feedback"
+  }
+}

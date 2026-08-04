@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "moduleId": "feedback-revision-v1",
+  "status": "seed",
+  "description": "Revision history log (editorial). Append-only growth in later phases.",
+  "revisions": []
+}

@@ -1,0 +1,20 @@
+{
+  "input": {
+    "birthDate": "1990-07-15",
+    "birthTime": "14:30",
+    "birthPlace": "İstanbul",
+    "houseSystem": "placidus",
+    "zodiacSystem": "tropical"
+  },
+  "expected": {
+    "timezone": "Europe/Istanbul",
+    "sun": { "sign": "Cancer" },
+    "fullChartAvailable": true,
+    "notes": "Summer period — exercise historical DST via Intl for Europe/Istanbul"
+  },
+  "comparisonSource": "Atlas natal-engine sign-level golden + timezone resolution",
+  "tolerance": {
+    "planetLongitudeDeg": 0.05,
+    "angleLongitudeDeg": 0.2
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "cosmic-simya",
+  "version": "voice-v1",
+  "displayName": "Cosmic Simya",
+  "domains": ["alchemy", "simya", "symbolic", "blog"],
+  "tone": "Daha uzun nefes; sembolik dil ile sade netlik nöbetleşir.",
+  "register": "Başlık ritmi ve paragraf akışı korunur; süs için metafor yığılmaz.",
+  "prefer": ["eşik", "dönüşüm örüntüsü", "görünen/görünmeyen", "birlikte okuma"],
+  "avoid": ["kurumsal manifesto", "boş motivasyon", "klinik soğukluk"]
+}

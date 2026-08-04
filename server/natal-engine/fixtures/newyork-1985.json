@@ -1,0 +1,20 @@
+{
+  "input": {
+    "birthDate": "1985-06-15",
+    "birthTime": "12:00",
+    "birthPlace": "New York",
+    "houseSystem": "whole-sign",
+    "zodiacSystem": "tropical"
+  },
+  "expected": {
+    "timezone": "America/New_York",
+    "sun": { "sign": "Gemini" },
+    "fullChartAvailable": true,
+    "hemisphere": "west"
+  },
+  "comparisonSource": "Western longitude + whole-sign house system smoke fixture",
+  "tolerance": {
+    "planetLongitudeDeg": 0.05,
+    "angleLongitudeDeg": 0.2
+  }
+}

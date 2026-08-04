@@ -1,0 +1,44 @@
+{
+  "methodologyId": "western-tropical-natal-v1",
+  "domain": "astrology",
+  "displayName": "Western Tropical Natal Astrology v1",
+  "version": "1.0.0",
+  "rulesetVersion": "western-tropical-natal-rules-1.0.0",
+  "status": "active",
+  "origin": "traditional_adapted",
+  "description": "Tropikal zodyak natal hesaplama: astronomy-engine gezegen boylamları, Placidus/Whole Sign/Equal evler, majör açılar ve orb tablosu.",
+  "supportedCalculations": [
+    "planetaryPositions",
+    "ascendant",
+    "midheaven",
+    "houseCusps",
+    "housePlacements",
+    "majorAspects",
+    "elementModalityDistribution",
+    "meanLunarNodes"
+  ],
+  "requiredInputs": ["birthDate"],
+  "optionalInputs": ["birthTime", "birthPlace", "latitude", "longitude", "timezone", "houseSystem"],
+  "defaultFor": ["astrology.natal_chart"],
+  "zodiacSystem": "tropical",
+  "defaultHouseSystem": "placidus",
+  "supportedHouseSystems": ["placidus", "whole-sign", "equal"],
+  "aspectOrbs": {
+    "conjunction": 8,
+    "opposition": 8,
+    "trine": 7,
+    "square": 7,
+    "sextile": 5
+  },
+  "luminaryBonus": 2,
+  "ephemerisProvider": "astronomy-engine",
+  "isClassicalClaim": false,
+  "isAtlasSynthesis": true,
+  "limitations": [
+    "Chiron not calculated in v1",
+    "Lunar nodes are mean nodes",
+    "Sidereal zodiac not active in v1"
+  ],
+  "createdAt": "2026-08-03",
+  "updatedAt": "2026-08-03"
+}

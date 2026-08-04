@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { SectionLabel, Badge, ProgressBar } from '../components/ui';
 import { cn } from '../utils/cn';
 import { aiProvider } from '../services/ai-provider';
+import { BACKEND_URL } from '../config';
+
+const API_BASE = BACKEND_URL.replace(/\/$/, '') || window.location.origin;
 
 // ── Static data (unchanged from original) ─────────────────────────────
 const modelRouting = [
@@ -38,8 +41,9 @@ function BackendStatus() {
     aiProvider.resetDetection();
 
     try {
-      const res = await fetch('http://localhost:3001/api/ai/health', {
+      const res = await fetch(`${API_BASE}/api/ai/health`, {
         signal: AbortSignal.timeout(3000),
+        credentials: 'include',
       });
       if (!res.ok) { setStatus('offline'); setChecking(false); return; }
       const data = await res.json();
@@ -88,7 +92,7 @@ function BackendStatus() {
               <Badge color={statusColor}>{statusLabel}</Badge>
             </div>
             <span className="text-[10px] font-mono text-atlas-text-dim">
-              {status === 'connected' && `Model: ${model} · http://localhost:3001`}
+              {status === 'connected' && `Model: ${model} · ${API_BASE}/api`}
               {status === 'no-key' && 'Server running but OPENAI_API_KEY not set in .env'}
               {status === 'offline' && 'Backend server not running'}
               {status === 'checking' && 'Detecting backend server…'}

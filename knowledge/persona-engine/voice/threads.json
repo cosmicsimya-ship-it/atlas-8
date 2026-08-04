@@ -1,0 +1,10 @@
+{
+  "id": "threads",
+  "version": "voice-v1",
+  "displayName": "Threads",
+  "domains": ["threads", "threads_instagram"],
+  "tone": "Kancalı ilk cümle; yoğun ama paylaşılabilir uzunluk.",
+  "register": "Clickbait yok; kişisel gözlem → ortak insan hali.",
+  "prefer": ["kanca", "gözlem", "kısa ritim"],
+  "avoid": ["liste yığını", "kurumsal slogan", "aşırı ünlem"]
+}

@@ -1,0 +1,1190 @@
+{
+  "schemaVersion": "atlas-classical-abjad-fixtures-v1",
+  "methodologyId": "abjad-kabir-classical-v1",
+  "rulesetPolicyRef": "ADR-005",
+  "rulesetVersion": "classical-kabir-rules-1.0.0",
+  "generatedAt": "2026-08-01",
+  "notes": [
+    "expectedTotal MUST equal sum(letters[].value) when expectedTotal is a number and parts are absent.",
+    "When parts[] present: sum(part.letters.value) === part.subtotal; combinedTotal === sum(parts.subtotal) only if includeMotherName===true.",
+    "Primary classical result is letter sum only; digit reduction is optional and separate (disabled for classical primary).",
+    "Classical path: آ → ا+ا (ruleset classical-kabir-rules-1.0.0). Production ARABIC_ABJAD آ=1 is NOT this classical ruleset.",
+    "Standalone ء: zero-value-but-traced; not removed from letter trace; hemze=1 UI option NOT offered in v1 (Atlas product decision).",
+    "Proposal ranking bands are not ADR-003 user-facing percentages; transliterationCertainty numeric MUST NOT be shown in UI until calibration verified.",
+    "Bu hesapta maddeli elif (آ), Atlas klasik ruleset’inde iki elif (ا+ا) olarak sayılır. Bazı tablolar آ’yı tek birim (1) sayar; bu sürüm onlardan farklılaşabilir. Bu bir Atlas ruleset seçimidir; tek evrensel klasik kural iddiası taşımaz. Toplam, onayladığınız Arapça yazıma göredir."
+  ],
+  "optionalDigitReductionPolicy": {
+    "enabledForClassicalPrimary": false,
+    "description": "Digit reduction is optional numerology only; not classical Ebced-i Kebîr."
+  },
+  "fixtures": [
+    {
+      "id": "FAB-001",
+      "category": "pure_arabic_name",
+      "inputLatin": "",
+      "inputArabic": "محمد",
+      "normalizationRules": [
+        "nfc"
+      ],
+      "letters": [
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "د",
+          "value": 4
+        }
+      ],
+      "expectedTotal": 92,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": false,
+      "notes": "Saf Arapça isim; doğrudan classical path. 40+8+40+4=92.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-002",
+      "category": "turkish_name",
+      "inputLatin": "Şule",
+      "inputArabic": "شوله",
+      "normalizationRules": [
+        "nfc",
+        "latin-tr-lower",
+        "tr-mat-s-ced",
+        "tr-mat-u",
+        "tr-mat-l",
+        "tr-mat-e"
+      ],
+      "letters": [
+        {
+          "letter": "ش",
+          "value": 300
+        },
+        {
+          "letter": "و",
+          "value": 6
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ه",
+          "value": 5
+        }
+      ],
+      "expectedTotal": 341,
+      "alternativeSpellings": [
+        "شولى",
+        "شوله"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Türkçe isim; ünlü yazımı yaklaşık. Onay sonrası classical. 300+6+30+5=341.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "turkish_phonetic_transliteration",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-003",
+      "category": "long_vowel",
+      "inputLatin": "Âdem",
+      "inputArabic": "آدم",
+      "normalizationRules": [
+        "nfc",
+        "hamza-carrier-madd-alif",
+        "tr-mat-a-circ"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "م",
+          "value": 40
+        }
+      ],
+      "expectedTotal": 46,
+      "alternativeSpellings": [
+        "ادم",
+        "آدم"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "â asla sessiz drop değil. آ→ا+ا (ADR-005). 1+1+4+40=46. Alternatif ادم=45. | Bu hesapta maddeli elif (آ), Atlas klasik ruleset’inde iki elif (ا+ا) olarak sayılır. Bazı tablolar آ’yı tek birim (1) sayar; bu sürüm onlardan farklılaşabilir. Bu bir Atlas ruleset seçimidir; tek evrensel klasik kural iddiası taşımaz. Toplam, onayladığınız Arapça yazıma göredir.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "atlas_product_decision",
+        "modern_arabic_orthography"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-ADEM",
+      "alifMaddaExpand": true,
+      "productionTableConflictNote": "Legacy production ARABIC_ABJAD maps آ→1; classical-kabir-rules-1.0.0 maps آ→ا+ا."
+    },
+    {
+      "id": "FAB-004",
+      "category": "turkish_special_letters",
+      "inputLatin": "Çağrı",
+      "inputArabic": "چاغري",
+      "normalizationRules": [
+        "nfc",
+        "latin-tr-lower",
+        "tr-mat-c-ced",
+        "tr-mat-g-breve",
+        "tr-mat-i-dotless",
+        "persian-fold-che"
+      ],
+      "letters": [
+        {
+          "letter": "ج",
+          "value": 3
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "غ",
+          "value": 1000
+        },
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        }
+      ],
+      "expectedTotal": 1214,
+      "alternativeSpellings": [
+        "جاغري",
+        "چاغري",
+        "ياغري"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "ç→چ→ج fold; ğ→غ; ı belirsiz. Proposal چاغري; classical countable جاغري. 3+1+1000+200+10=1214.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "ottoman_persian_variant",
+        "turkish_phonetic_transliteration",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-005",
+      "category": "shadda",
+      "inputLatin": "",
+      "inputArabic": "اللّه",
+      "normalizationRules": [
+        "nfc",
+        "shadda-expand-and-count"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ه",
+          "value": 5
+        }
+      ],
+      "expectedTotal": 96,
+      "alternativeSpellings": [
+        "الله"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Şedde expand-and-count. Without shadda الله=66. Şedde toplamı değiştirir → onay. 1+30+30+30+5=96.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "atlas_product_decision",
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-006",
+      "category": "standalone_hamza",
+      "inputLatin": "",
+      "inputArabic": "ء",
+      "normalizationRules": [
+        "nfc",
+        "hamza-standalone-zero-value-but-traced"
+      ],
+      "letters": [
+        {
+          "letter": "ء",
+          "value": 0
+        }
+      ],
+      "expectedTotal": 0,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": true,
+      "notes": "Bağımsız hemze value 0; izde kalır; sessiz drop yok. v1 UI’da hemze=1 seçeneği sunulmaz. Atlas ürün kararı — klasik konsensüs değil.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable",
+      "hamzaPolicy": "zero-value-but-traced",
+      "uiOfferHemzaAsOneInV1": false
+    },
+    {
+      "id": "FAB-007",
+      "category": "ta_marbuta",
+      "inputLatin": "Fatıma",
+      "inputArabic": "فاطمة",
+      "normalizationRules": [
+        "nfc",
+        "ta-marbuta-to-ha"
+      ],
+      "letters": [
+        {
+          "letter": "ف",
+          "value": 80
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ط",
+          "value": 9
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ه",
+          "value": 5
+        }
+      ],
+      "expectedTotal": 135,
+      "alternativeSpellings": [
+        "فاطمه",
+        "فاطمة"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "ة→ه (ADR-005). Variant ة→ت(400) disputed, not default. 80+1+9+40+5=135.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-008",
+      "category": "alif_maqsura",
+      "inputLatin": "Musa",
+      "inputArabic": "موسى",
+      "normalizationRules": [
+        "nfc",
+        "alif-maqsura-to-ya"
+      ],
+      "letters": [
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "و",
+          "value": 6
+        },
+        {
+          "letter": "س",
+          "value": 60
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        }
+      ],
+      "expectedTotal": 116,
+      "alternativeSpellings": [
+        "موسي",
+        "موسى"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "ى→ي (ADR-005). 40+6+60+10=116.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-009",
+      "category": "lam_alif",
+      "inputLatin": "",
+      "inputArabic": "لا",
+      "normalizationRules": [
+        "nfc",
+        "lam-alif-decompose"
+      ],
+      "letters": [
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        }
+      ],
+      "expectedTotal": 31,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": false,
+      "notes": "Lam-elif → ل+ا. 30+1=31.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-010a",
+      "category": "mother_name",
+      "inputLatin": "Muhammed",
+      "inputArabic": "محمد",
+      "normalizationRules": [
+        "nfc"
+      ],
+      "includeMotherName": false,
+      "parts": [
+        {
+          "type": "primary",
+          "selectedSpelling": "محمد",
+          "letters": [
+            {
+              "letter": "م",
+              "value": 40
+            },
+            {
+              "letter": "ح",
+              "value": 8
+            },
+            {
+              "letter": "م",
+              "value": 40
+            },
+            {
+              "letter": "د",
+              "value": 4
+            }
+          ],
+          "subtotal": 92
+        }
+      ],
+      "letters": [],
+      "expectedTotal": 92,
+      "combinedTotal": null,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": false,
+      "motherNameArabic": null,
+      "notes": "Anne adı hariç (default includeMotherName=false). primary.subtotal=92. combinedTotal=null. Ana isimle anne adı tek belirsiz stringde birleştirilmez.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-MOTHER-001"
+    },
+    {
+      "id": "FAB-010b",
+      "category": "mother_name",
+      "inputLatin": "Muhammed + Fatıma",
+      "inputArabic": null,
+      "normalizationRules": [
+        "nfc",
+        "ta-marbuta-to-ha",
+        "mother-name-parts"
+      ],
+      "includeMotherName": true,
+      "parts": [
+        {
+          "type": "primary",
+          "selectedSpelling": "محمد",
+          "letters": [
+            {
+              "letter": "م",
+              "value": 40
+            },
+            {
+              "letter": "ح",
+              "value": 8
+            },
+            {
+              "letter": "م",
+              "value": 40
+            },
+            {
+              "letter": "د",
+              "value": 4
+            }
+          ],
+          "subtotal": 92
+        },
+        {
+          "type": "motherName",
+          "selectedSpelling": "فاطمة",
+          "letters": [
+            {
+              "letter": "ف",
+              "value": 80
+            },
+            {
+              "letter": "ا",
+              "value": 1
+            },
+            {
+              "letter": "ط",
+              "value": 9
+            },
+            {
+              "letter": "م",
+              "value": 40
+            },
+            {
+              "letter": "ه",
+              "value": 5
+            }
+          ],
+          "subtotal": 135
+        }
+      ],
+      "letters": [],
+      "expectedTotal": 227,
+      "combinedTotal": 227,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": true,
+      "motherNameArabic": "فاطمة",
+      "notes": "Anne adı ayrı part: primary.subtotal=92 + motherName.subtotal=135 → combinedTotal=227 yalnızca her iki yazım onaylı ve includeMotherName=true iken. inputArabic tek birleşik string olarak kullanılmaz (null).",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "classical_abjad_table",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-MOTHER-001"
+    },
+    {
+      "id": "FAB-011",
+      "category": "alternate_spellings",
+      "inputLatin": "er-Rahman",
+      "inputArabic": "رحمن",
+      "normalizationRules": [
+        "nfc",
+        "ns-el-article-fork"
+      ],
+      "letters": [
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ن",
+          "value": 50
+        }
+      ],
+      "expectedTotal": 298,
+      "alternativeSpellings": [
+        "رحمن",
+        "الرحمن"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "İki alternatif Arapça yazım; ال asla auto-strip. Bu kayıt without-article=298; with=329 (FAB-011b).",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "atlas_product_decision",
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-RAHMAN"
+    },
+    {
+      "id": "FAB-011b",
+      "category": "alternate_spellings",
+      "inputLatin": "er-Rahman",
+      "inputArabic": "الرحمن",
+      "normalizationRules": [
+        "nfc",
+        "ns-el-article-fork"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ن",
+          "value": 50
+        }
+      ],
+      "expectedTotal": 329,
+      "alternativeSpellings": [
+        "رحمن",
+        "الرحمن"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Article-inclusive sibling. 1+30+200+8+40+50=329.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "atlas_product_decision",
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-RAHMAN"
+    },
+    {
+      "id": "FAB-012a",
+      "category": "divergent_totals",
+      "inputLatin": "Âdem",
+      "inputArabic": "آدم",
+      "normalizationRules": [
+        "nfc",
+        "hamza-carrier-madd-alif"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "م",
+          "value": 40
+        }
+      ],
+      "expectedTotal": 46,
+      "alternativeSpellings": [
+        "ادم"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Aynı Latin isimden geçerli yazım A: آدم→46. Kardeş FAB-012b=45. | Bu hesapta maddeli elif (آ), Atlas klasik ruleset’inde iki elif (ا+ا) olarak sayılır. Bazı tablolar آ’yı tek birim (1) sayar; bu sürüm onlardan farklılaşabilir. Bu bir Atlas ruleset seçimidir; tek evrensel klasik kural iddiası taşımaz. Toplam, onayladığınız Arapça yazıma göredir.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "atlas_product_decision",
+        "modern_arabic_orthography"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-ADEM-DIVERGE",
+      "alifMaddaExpand": true,
+      "productionTableConflictNote": "Legacy production ARABIC_ABJAD maps آ→1; classical-kabir-rules-1.0.0 maps آ→ا+ا."
+    },
+    {
+      "id": "FAB-012b",
+      "category": "divergent_totals",
+      "inputLatin": "Âdem",
+      "inputArabic": "ادم",
+      "normalizationRules": [
+        "nfc"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "م",
+          "value": 40
+        }
+      ],
+      "expectedTotal": 45,
+      "alternativeSpellings": [
+        "آدم"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Aynı Latin isimden geçerli yazım B: ادم→45 (FAB-012b). Kardeş FAB-012a آدم→46. Not: tekil FAB-012 id’si yok; yalnızca FAB-012a/FAB-012b. Uzun ünlü yazımı toplamı değiştirir → auto-select yok.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "turkish_phonetic_transliteration",
+        "modern_arabic_orthography"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-ADEM-DIVERGE"
+    },
+    {
+      "id": "FAB-013",
+      "category": "unsupported_character",
+      "inputLatin": "Ali★",
+      "inputArabic": "",
+      "normalizationRules": [
+        "nfc",
+        "reject-unsupported"
+      ],
+      "letters": [],
+      "expectedTotal": null,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": true,
+      "unsupportedCharacters": [
+        "★"
+      ],
+      "expectError": "TRANSLITERATION_UNSUPPORTED_CHAR",
+      "notes": "Desteklenmeyen karakter sessizce atılmamalı; classical total üretilmez.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-014",
+      "category": "compound_name",
+      "inputLatin": "Nureddin",
+      "inputArabic": "نورالدين",
+      "normalizationRules": [
+        "nfc",
+        "ns-compound",
+        "ns-el-article-fork"
+      ],
+      "letters": [
+        {
+          "letter": "ن",
+          "value": 50
+        },
+        {
+          "letter": "و",
+          "value": 6
+        },
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        },
+        {
+          "letter": "ن",
+          "value": 50
+        }
+      ],
+      "expectedTotal": 351,
+      "alternativeSpellings": [
+        "نور الدين",
+        "نورالدين",
+        "نوردين"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Birleşik isim; ال bağlacı yazımı toplamı etkiler. 50+6+200+1+30+4+10+50=351.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "modern_arabic_orthography",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-015",
+      "category": "abd_structure",
+      "inputLatin": "Abdülmecid",
+      "inputArabic": "عبدالمجيد",
+      "normalizationRules": [
+        "nfc",
+        "ns-abd",
+        "latin-tr-lower"
+      ],
+      "letters": [
+        {
+          "letter": "ع",
+          "value": 70
+        },
+        {
+          "letter": "ب",
+          "value": 2
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ج",
+          "value": 3
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        },
+        {
+          "letter": "د",
+          "value": 4
+        }
+      ],
+      "expectedTotal": 164,
+      "alternativeSpellings": [
+        "عبد المجيد",
+        "عبدالمجيد",
+        "عبدالمجيد"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Abdül- yapısı: عبد + ال + مجيد. 70+2+4+1+30+40+3+10+4=164.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "modern_arabic_orthography",
+        "ottoman_persian_variant"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-016",
+      "category": "abd_structure",
+      "inputLatin": "Abdurrahman",
+      "inputArabic": "عبدالرحمن",
+      "normalizationRules": [
+        "nfc",
+        "ns-abd"
+      ],
+      "letters": [
+        {
+          "letter": "ع",
+          "value": 70
+        },
+        {
+          "letter": "ب",
+          "value": 2
+        },
+        {
+          "letter": "د",
+          "value": 4
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ن",
+          "value": 50
+        }
+      ],
+      "expectedTotal": 405,
+      "alternativeSpellings": [
+        "عبد الرحمن",
+        "عبدالرحمن"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Abdur- yapısı. 70+2+4+1+30+200+8+40+50=405.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "modern_arabic_orthography",
+        "ottoman_persian_variant"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-017",
+      "category": "pure_arabic_name",
+      "inputLatin": "",
+      "inputArabic": "أحمد",
+      "normalizationRules": [
+        "nfc",
+        "hamza-carrier-alif"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "د",
+          "value": 4
+        }
+      ],
+      "expectedTotal": 53,
+      "alternativeSpellings": [
+        "احمد",
+        "أحمد"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Carrier أ→ا. Hemze yazımı toplamı değiştirebilir → onay. 1+8+40+4=53.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-018",
+      "category": "ta_marbuta",
+      "inputLatin": "Ayşe",
+      "inputArabic": "عائشة",
+      "normalizationRules": [
+        "nfc",
+        "hamza-carrier-ya",
+        "ta-marbuta-to-ha"
+      ],
+      "letters": [
+        {
+          "letter": "ع",
+          "value": 70
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        },
+        {
+          "letter": "ش",
+          "value": 300
+        },
+        {
+          "letter": "ه",
+          "value": 5
+        }
+      ],
+      "expectedTotal": 386,
+      "alternativeSpellings": [
+        "عايشه",
+        "عائشة",
+        "ايشه"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "ئ→ي, ة→ه. Alternatif ايشه=316 farklı toplam → divergent risk. 70+1+10+300+5=386.",
+      "sourceType": "documented_variant",
+      "sourceClassification": [
+        "modern_arabic_orthography",
+        "turkish_phonetic_transliteration"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-019",
+      "category": "long_vowel",
+      "inputLatin": "",
+      "inputArabic": "رَحْمَن",
+      "normalizationRules": [
+        "nfc",
+        "harakat-ignore"
+      ],
+      "letters": [
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ح",
+          "value": 8
+        },
+        {
+          "letter": "م",
+          "value": 40
+        },
+        {
+          "letter": "ن",
+          "value": 50
+        }
+      ],
+      "expectedTotal": 298,
+      "alternativeSpellings": [
+        "رحمن"
+      ],
+      "requiresUserConfirmation": false,
+      "notes": "Hareke yok sayılır; bare رحمن ile aynı toplam.",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-020",
+      "category": "turkish_special_letters",
+      "inputLatin": "Poyraz",
+      "inputArabic": "پويراز",
+      "normalizationRules": [
+        "nfc",
+        "tr-mat-p",
+        "persian-fold-pe"
+      ],
+      "letters": [
+        {
+          "letter": "ب",
+          "value": 2
+        },
+        {
+          "letter": "و",
+          "value": 6
+        },
+        {
+          "letter": "ي",
+          "value": 10
+        },
+        {
+          "letter": "ر",
+          "value": 200
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ز",
+          "value": 7
+        }
+      ],
+      "expectedTotal": 226,
+      "alternativeSpellings": [
+        "بويراز",
+        "پويراز"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "p→پ proposal; classical fold پ→ب. 2+6+10+200+1+7=226.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "ottoman_persian_variant",
+        "atlas_product_decision"
+      ],
+      "status": "draft_verifiable"
+    },
+    {
+      "id": "FAB-021",
+      "category": "unsupported_character",
+      "inputLatin": "Jean-Luc",
+      "inputArabic": "",
+      "normalizationRules": [
+        "nfc",
+        "ns-foreign",
+        "reject-or-confirm"
+      ],
+      "letters": [],
+      "expectedTotal": null,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": true,
+      "unsupportedCharacters": [],
+      "expectError": "TRANSLITERATION_CONFIRMATION_REQUIRED",
+      "notes": "Yabancı kökenli isim: otomatik seçim yok; düşük certainty; expert override teşvik.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "source_unclear",
+        "atlas_product_decision"
+      ],
+      "status": "blocked_pending_ruleset_approval"
+    },
+    {
+      "id": "FAB-022",
+      "category": "shadda",
+      "inputLatin": "",
+      "inputArabic": "الله",
+      "normalizationRules": [
+        "nfc"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ل",
+          "value": 30
+        },
+        {
+          "letter": "ه",
+          "value": 5
+        }
+      ],
+      "expectedTotal": 66,
+      "alternativeSpellings": [
+        "اللّه"
+      ],
+      "requiresUserConfirmation": true,
+      "notes": "Şeddesiz kontrol: 66. FAB-005 ile karşılaştır (96).",
+      "sourceType": "canonical",
+      "sourceClassification": [
+        "classical_abjad_table"
+      ],
+      "status": "draft_verifiable",
+      "variantGroupId": "VG-ALLAH-SHADDA"
+    },
+    {
+      "id": "FAB-CONFLICT-AA",
+      "category": "long_vowel",
+      "inputLatin": "",
+      "inputArabic": "آ",
+      "normalizationRules": [
+        "nfc",
+        "hamza-carrier-madd-alif"
+      ],
+      "letters": [
+        {
+          "letter": "ا",
+          "value": 1
+        },
+        {
+          "letter": "ا",
+          "value": 1
+        }
+      ],
+      "expectedTotal": 2,
+      "alternativeSpellings": [],
+      "requiresUserConfirmation": false,
+      "notes": "Policy conflict doc: production ebced-table.js آ=1; ADR-005 fixtures =2. Classical engine MUST follow ADR-005. | Bu hesapta maddeli elif (آ), Atlas klasik ruleset’inde iki elif (ا+ا) olarak sayılır. Bazı tablolar آ’yı tek birim (1) sayar; bu sürüm onlardan farklılaşabilir. Bu bir Atlas ruleset seçimidir; tek evrensel klasik kural iddiası taşımaz. Toplam, onayladığınız Arapça yazıma göredir.",
+      "sourceType": "internal_test",
+      "sourceClassification": [
+        "atlas_product_decision"
+      ],
+      "status": "informational",
+      "alifMaddaExpand": true,
+      "productionTableConflictNote": "Legacy production ARABIC_ABJAD maps آ→1; classical-kabir-rules-1.0.0 maps آ→ا+ا."
+    }
+  ],
+  "methodologyVersion": "1.0.0",
+  "deprecatedMethodologyAliases": [
+    "classical-arabic-abjad-kabir-v1"
+  ],
+  "relatedIds": {
+    "transliterationLayerId": "transliteration-tr-ar-v1",
+    "latinMotifMethodologyId": "atlas-letter-number-v2",
+    "latinRulesetVersion": "atlas-latin-rules-2.0.0"
+  },
+  "alifMaddaPolicy": {
+    "classicalPath": "آ→ا+ا",
+    "productionTableBehavior": "آ=1 (legacy ARABIC_ABJAD; not classical ruleset)",
+    "atlasProductDecision": true,
+    "notUniversalClassicalConsensus": true,
+    "userMessage": "Bu hesapta maddeli elif (آ), Atlas klasik ruleset’inde iki elif (ا+ا) olarak sayılır. Bazı tablolar آ’yı tek birim (1) sayar; bu sürüm onlardan farklılaşabilir. Bu bir Atlas ruleset seçimidir; tek evrensel klasik kural iddiası taşımaz. Toplam, onayladığınız Arapça yazıma göredir."
+  },
+  "standaloneHamzaPolicy": {
+    "policy": "zero-value-but-traced",
+    "value": 0,
+    "keepInTrace": true,
+    "uiOfferCountAsOneInV1": false,
+    "atlasProductDecision": true
+  },
+  "motherNamePolicy": {
+    "defaultIncludeMotherName": false,
+    "model": "parts-with-subtotals",
+    "combinedTotalRequiresConfirmedParts": true,
+    "forbidAmbiguousSingleStringMerge": true
+  }
+}

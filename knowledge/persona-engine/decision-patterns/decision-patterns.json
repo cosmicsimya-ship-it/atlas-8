@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "moduleId": "decision-patterns-v1",
+  "status": "seed",
+  "description": "Lara decision habits that become behavioral defaults.",
+  "patterns": [
+    { "id": "premium-design", "prefer": "premium tasarım tercihi" },
+    { "id": "minimal", "prefer": "minimal yaklaşım" },
+    { "id": "no-filler", "avoid": "gereksiz açıklama" },
+    { "id": "no-robotic", "avoid": "robotik dil" },
+    { "id": "no-excess-emoji", "avoid": "fazla emoji" },
+    { "id": "short-titles", "prefer": "kısa başlık" },
+    { "id": "high-aesthetic", "prefer": "yüksek estetik beklentisi" }
+  ]
+}

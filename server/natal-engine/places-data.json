@@ -1,0 +1,299 @@
+[
+  {
+    "id": "bursa-tr",
+    "displayName": "Bursa, Türkiye",
+    "aliases": ["bursa", "bursa turkiye", "bursa turkey", "bursa, turkiye", "bursa, turkey"],
+    "latitude": 40.195,
+    "longitude": 29.06,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "istanbul-tr",
+    "displayName": "İstanbul, Türkiye",
+    "aliases": ["istanbul", "istanbul turkiye", "istanbul turkey", "constantinople"],
+    "latitude": 41.0082,
+    "longitude": 28.9784,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "ankara-tr",
+    "displayName": "Ankara, Türkiye",
+    "aliases": ["ankara", "ankara turkiye", "ankara turkey"],
+    "latitude": 39.9334,
+    "longitude": 32.8597,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "izmir-tr",
+    "displayName": "İzmir, Türkiye",
+    "aliases": ["izmir", "izmir turkiye", "smyrna"],
+    "latitude": 38.4237,
+    "longitude": 27.1428,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "antalya-tr",
+    "displayName": "Antalya, Türkiye",
+    "aliases": ["antalya"],
+    "latitude": 36.8969,
+    "longitude": 30.7133,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "adana-tr",
+    "displayName": "Adana, Türkiye",
+    "aliases": ["adana"],
+    "latitude": 37.0,
+    "longitude": 35.3213,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "gaziantep-tr",
+    "displayName": "Gaziantep, Türkiye",
+    "aliases": ["gaziantep", "antep"],
+    "latitude": 37.0662,
+    "longitude": 37.3833,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "konya-tr",
+    "displayName": "Konya, Türkiye",
+    "aliases": ["konya"],
+    "latitude": 37.8746,
+    "longitude": 32.4932,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "trabzon-tr",
+    "displayName": "Trabzon, Türkiye",
+    "aliases": ["trabzon"],
+    "latitude": 41.0027,
+    "longitude": 39.7168,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "diyarbakir-tr",
+    "displayName": "Diyarbakır, Türkiye",
+    "aliases": ["diyarbakir", "diyarbakır"],
+    "latitude": 37.9144,
+    "longitude": 40.2306,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "eskişehir-tr",
+    "displayName": "Eskişehir, Türkiye",
+    "aliases": ["eskisehir", "eskişehir"],
+    "latitude": 39.7767,
+    "longitude": 30.5206,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "samsun-tr",
+    "displayName": "Samsun, Türkiye",
+    "aliases": ["samsun"],
+    "latitude": 41.2867,
+    "longitude": 36.33,
+    "countryCode": "TR",
+    "timezone": "Europe/Istanbul"
+  },
+  {
+    "id": "london-gb",
+    "displayName": "London, United Kingdom",
+    "aliases": ["london", "london uk", "london, united kingdom", "london england"],
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "countryCode": "GB",
+    "timezone": "Europe/London"
+  },
+  {
+    "id": "newyork-us",
+    "displayName": "New York, United States",
+    "aliases": ["new york", "new york city", "nyc", "new york, us", "new york, usa"],
+    "latitude": 40.7128,
+    "longitude": -74.006,
+    "countryCode": "US",
+    "timezone": "America/New_York"
+  },
+  {
+    "id": "losangeles-us",
+    "displayName": "Los Angeles, United States",
+    "aliases": ["los angeles", "la", "los angeles, us", "los angeles, usa"],
+    "latitude": 34.0522,
+    "longitude": -118.2437,
+    "countryCode": "US",
+    "timezone": "America/Los_Angeles"
+  },
+  {
+    "id": "springfield-il-us",
+    "displayName": "Springfield, Illinois, United States",
+    "aliases": ["springfield il", "springfield, illinois", "springfield illinois"],
+    "latitude": 39.7817,
+    "longitude": -89.6501,
+    "countryCode": "US",
+    "timezone": "America/Chicago"
+  },
+  {
+    "id": "springfield-ma-us",
+    "displayName": "Springfield, Massachusetts, United States",
+    "aliases": ["springfield ma", "springfield, massachusetts", "springfield massachusetts"],
+    "latitude": 42.1015,
+    "longitude": -72.5898,
+    "countryCode": "US",
+    "timezone": "America/New_York"
+  },
+  {
+    "id": "springfield-mo-us",
+    "displayName": "Springfield, Missouri, United States",
+    "aliases": ["springfield mo", "springfield, missouri", "springfield missouri"],
+    "latitude": 37.209,
+    "longitude": -93.2923,
+    "countryCode": "US",
+    "timezone": "America/Chicago"
+  },
+  {
+    "id": "victoria-bc-ca",
+    "displayName": "Victoria, British Columbia, Canada",
+    "aliases": ["victoria bc", "victoria, british columbia", "victoria canada"],
+    "latitude": 48.4284,
+    "longitude": -123.3656,
+    "countryCode": "CA",
+    "timezone": "America/Vancouver"
+  },
+  {
+    "id": "victoria-au",
+    "displayName": "Victoria, Australia (state)",
+    "aliases": ["victoria australia", "victoria, australia", "state of victoria"],
+    "latitude": -37.4713,
+    "longitude": 144.7852,
+    "countryCode": "AU",
+    "timezone": "Australia/Melbourne"
+  },
+  {
+    "id": "cambridge-uk",
+    "displayName": "Cambridge, United Kingdom",
+    "aliases": ["cambridge uk", "cambridge, united kingdom", "cambridge england"],
+    "latitude": 52.2053,
+    "longitude": 0.1218,
+    "countryCode": "GB",
+    "timezone": "Europe/London"
+  },
+  {
+    "id": "cambridge-ma-us",
+    "displayName": "Cambridge, Massachusetts, United States",
+    "aliases": ["cambridge ma", "cambridge, massachusetts", "cambridge massachusetts"],
+    "latitude": 42.3736,
+    "longitude": -71.1097,
+    "countryCode": "US",
+    "timezone": "America/New_York"
+  },
+  {
+    "id": "sydney-au",
+    "displayName": "Sydney, Australia",
+    "aliases": ["sydney", "sydney australia"],
+    "latitude": -33.8688,
+    "longitude": 151.2093,
+    "countryCode": "AU",
+    "timezone": "Australia/Sydney"
+  },
+  {
+    "id": "melbourne-au",
+    "displayName": "Melbourne, Australia",
+    "aliases": ["melbourne", "melbourne australia"],
+    "latitude": -37.8136,
+    "longitude": 144.9631,
+    "countryCode": "AU",
+    "timezone": "Australia/Melbourne"
+  },
+  {
+    "id": "cape-town-za",
+    "displayName": "Cape Town, South Africa",
+    "aliases": ["cape town", "capetown", "cape town south africa"],
+    "latitude": -33.9249,
+    "longitude": 18.4241,
+    "countryCode": "ZA",
+    "timezone": "Africa/Johannesburg"
+  },
+  {
+    "id": "sao-paulo-br",
+    "displayName": "São Paulo, Brazil",
+    "aliases": ["sao paulo", "são paulo", "sao paulo brazil"],
+    "latitude": -23.5505,
+    "longitude": -46.6333,
+    "countryCode": "BR",
+    "timezone": "America/Sao_Paulo"
+  },
+  {
+    "id": "tokyo-jp",
+    "displayName": "Tokyo, Japan",
+    "aliases": ["tokyo", "tokyo japan"],
+    "latitude": 35.6762,
+    "longitude": 139.6503,
+    "countryCode": "JP",
+    "timezone": "Asia/Tokyo"
+  },
+  {
+    "id": "berlin-de",
+    "displayName": "Berlin, Germany",
+    "aliases": ["berlin", "berlin germany"],
+    "latitude": 52.52,
+    "longitude": 13.405,
+    "countryCode": "DE",
+    "timezone": "Europe/Berlin"
+  },
+  {
+    "id": "ulm-de",
+    "displayName": "Ulm, Germany",
+    "aliases": ["ulm", "ulm germany"],
+    "latitude": 48.4011,
+    "longitude": 9.9876,
+    "countryCode": "DE",
+    "timezone": "Europe/Berlin"
+  },
+  {
+    "id": "paris-fr",
+    "displayName": "Paris, France",
+    "aliases": ["paris", "paris france"],
+    "latitude": 48.8566,
+    "longitude": 2.3522,
+    "countryCode": "FR",
+    "timezone": "Europe/Paris"
+  },
+  {
+    "id": "moscow-ru",
+    "displayName": "Moscow, Russia",
+    "aliases": ["moscow", "moskova", "moscow russia"],
+    "latitude": 55.7558,
+    "longitude": 37.6173,
+    "countryCode": "RU",
+    "timezone": "Europe/Moscow"
+  },
+  {
+    "id": "cairo-eg",
+    "displayName": "Cairo, Egypt",
+    "aliases": ["cairo", "kahire", "cairo egypt"],
+    "latitude": 30.0444,
+    "longitude": 31.2357,
+    "countryCode": "EG",
+    "timezone": "Africa/Cairo"
+  },
+  {
+    "id": "dubai-ae",
+    "displayName": "Dubai, United Arab Emirates",
+    "aliases": ["dubai", "dubai uae"],
+    "latitude": 25.2048,
+    "longitude": 55.2708,
+    "countryCode": "AE",
+    "timezone": "Asia/Dubai"
+  }
+]

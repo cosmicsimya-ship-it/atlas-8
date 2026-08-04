@@ -1,13 +1,77 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { mkdirSync, writeFileSync, existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { createZip } from './zip-utils.js';
+import { callOpenAI } from './openai-client.js';
+import { processAtlasMessage } from './atlas-message-service.js';
+import { normalizeAtlasMessageRequest, toWebChatResponse } from './channel-adapters.js';
+import { initializeFounderKnowledge, getFounderKnowledgeStatus } from './founder-knowledge.js';
+import { initializeFounderProfiles, getFounderProfileStatus } from './founder-profile.js';
+import { initializeAuthorProfile } from './author-profile.js';
+import { initializePersonaEngine } from './persona-engine.js';
+import { logFounderPipelineDebug } from './founder-identity.js';
+import {
+  deleteMemoryField,
+  deleteUserMemory,
+  getMemoryField,
+  getUserMemory,
+  isValidUserId,
+  setMemoryField,
+  setUserMemory,
+  updateUserMemory,
+} from './user-memory.js';
+import {
+  deleteAnalysisRecord,
+  getAnalysisRecord,
+  listUserAnalyses,
+  saveAnalysisRecord,
+} from './analysis-archive.js';
 import { Runner } from '../runner/runner.js';
 import { routeTask } from '../runner/task-router.js';
+import { buildSymbolicAnalysis } from './symbolic-analysis/index.js';
+import {
+  canAccessUserMemory,
+  evaluatePrivacyRequest,
+  shouldShortCircuitPrivacy,
+  sanitizeFounderResponse,
+  logPrivacyEvent,
+  SAFE_RESPONSES,
+} from './privacy/index.js';
+import {
+  getAllowedOrigins,
+  isAllowedOrigin,
+  attachAuthFromSession,
+  requireTelegramBotSecret,
+  requireCsrfProtection,
+  requireAuthenticated,
+  requireAuth,
+  requireRole,
+  readSessionToken,
+  setSessionCookie,
+  clearSessionCookie,
+  ensureCsrfCookie,
+  requesterContextFromRequest,
+  loginWithPassword,
+  logoutSession,
+  rateLimitMiddleware,
+  findAccountByUserId,
+  toPublicAccount,
+  logAdminAudit,
+} from './auth/index.js';
+import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
+import { createAudioStudioRouter } from './audio-studio-routes.js';
+import {
+  getCapabilityRegistry,
+  audioHealthSnapshot,
+  getJobStats,
+} from './audio-studio/index.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -18,18 +82,64 @@ const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 const GENERATED_DIR = join(__dirname, 'generated');
 const runner = new Runner();
 
+const founderInit = initializeFounderKnowledge();
+const founderProfileInit = initializeFounderProfiles();
+const authorProfileInit = initializeAuthorProfile();
+if (!authorProfileInit.ok) {
+  console.warn('[AuthorProfile] init warning:', authorProfileInit.error);
+}
+const personaEngineInit = initializePersonaEngine();
+if (!personaEngineInit.ok) {
+  console.warn('[PersonaEngine] init warning:', personaEngineInit.error);
+}
+
+/**
+ * Memory ACL — uses server auth only. Path userId must match req.auth.userId.
+ * @param {import('express').Request} req
+ * @param {string} targetUserId
+ */
+function assertMemoryRouteAccess(req, targetUserId) {
+  const auth = req.auth;
+  if (!auth?.authenticated || !auth.userId) {
+    try {
+      logPrivacyEvent({
+        channel: 'api',
+        eventType: 'unauthorized_route_access',
+        action: 'blocked',
+        requestType: 'memory_access',
+        reason: 'not_authenticated',
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return { ok: false, status: 401, error: 'Authentication required' };
+  }
+
+  const ctx = requesterContextFromRequest(req);
+  if (!canAccessUserMemory(ctx, targetUserId)) {
+    try {
+      logPrivacyEvent({
+        channel: 'api',
+        requesterId: auth.userId,
+        eventType: 'cross_user_memory_attempt',
+        action: 'blocked',
+        requestType: 'memory_access',
+        reason: 'owner_mismatch',
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return { ok: false, status: 403, error: 'Cross-user memory access denied.' };
+  }
+
+  return { ok: true };
+}
+
 // Ensure generated/ exists on startup
 if (!existsSync(GENERATED_DIR)) {
   mkdirSync(GENERATED_DIR, { recursive: true });
   console.log(`[ATLAS] Created ${GENERATED_DIR}`);
 }
-
-const COST_PER_1K = {
-  'gpt-4.1-mini': 0.0004,
-  'gpt-4.1': 0.002,
-  'gpt-4o': 0.0075,
-  'gpt-4o-mini': 0.0003,
-};
 
 const MIME_TYPES = {
   '.md': 'text/markdown',
@@ -37,103 +147,838 @@ const MIME_TYPES = {
   '.txt': 'text/plain',
 };
 
-app.use(cors({ origin: true }));
+const allowedOrigins = getAllowedOrigins();
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Vite/dev UI served separately
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }),
+);
+app.use((req, res, next) => {
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (process.env.NODE_ENV === 'production' || process.env.ATLAS_SECURE_COOKIES === 'true') {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+const loginRateLimit = rateLimitMiddleware({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  failClosed: true,
+  message: 'Too many login attempts',
+  keyFn: (req) => `login:${req.ip || 'unknown'}`,
+});
+
+const memoryRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 60,
+  keyFn: (req) => `memory:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const founderSensitiveRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyFn: (req) => `founder-sensitive:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const atlasLiveRateLimit = rateLimitMiddleware({
+  windowMs: 60 * 1000,
+  max: 120,
+  keyFn: (req) => `atlas-live:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+mountAtlasLiveRoutes(app, {
+  attachAuth: attachAuthFromSession({ createAnonymous: true }),
+  requireAuth: requireAuthenticated,
+  requireCsrf: requireCsrfProtection,
+  rateLimit: atlasLiveRateLimit,
+});
+
+const audioStudioRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 30,
+  keyFn: (req) => `audio-studio:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.use(
+  '/api/audio',
+  attachAuthFromSession({ createAnonymous: true }),
+  createAudioStudioRouter({
+    requireAuth: requireAuthenticated,
+    requireCsrf: requireCsrfProtection,
+    rateLimit: audioStudioRateLimit,
+  }),
+);
 
 // ══════════════════════════════════════════════════════════════════════
-// AI ENDPOINTS (unchanged)
+// AUTH ENDPOINTS
 // ══════════════════════════════════════════════════════════════════════
 
-app.get('/api/ai/health', (_req, res) => {
+app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (req, res) => {
+  const csrf = ensureCsrfCookie(res, req);
+  return res.json({
+    authenticated: Boolean(req.auth?.authenticated),
+    userId: req.auth?.userId ?? null,
+    roles: req.auth?.roles ?? [],
+    isFounder: Boolean(req.auth?.isFounder),
+    isAnonymous: Boolean(req.auth?.isAnonymous),
+    authMethod: req.auth?.authMethod ?? null,
+    csrfToken: csrf,
+  });
+});
+
+app.post(
+  '/api/auth/login',
+  loginRateLimit,
+  attachAuthFromSession({ createAnonymous: false }),
+  requireCsrfProtection,
+  async (req, res) => {
+    const username = String(req.body?.username ?? '');
+    const password = String(req.body?.password ?? '');
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Invalid username or password' });
+    }
+
+    try {
+      const previous = readSessionToken(req);
+      const result = await loginWithPassword({
+        username,
+        password,
+        previousRawToken: previous,
+      });
+      if (!result.ok) {
+        return res.status(401).json({ error: result.error });
+      }
+      setSessionCookie(res, result.rawToken);
+      const csrf = ensureCsrfCookie(res, req);
+      return res.json({
+        ok: true,
+        userId: result.identity.userId,
+        roles: result.identity.roles,
+        isFounder: result.identity.isFounder,
+        csrfToken: csrf,
+      });
+    } catch (err) {
+      console.error('[ATLAS] login error:', err.message);
+      return res.status(503).json({ error: 'Authentication service unavailable' });
+    }
+  },
+);
+
+app.post(
+  '/api/auth/logout',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireCsrfProtection,
+  (req, res) => {
+    try {
+      logoutSession(readSessionToken(req));
+    } catch {
+      /* ignore */
+    }
+    clearSessionCookie(res);
+    return res.json({ ok: true });
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// ADMIN ENDPOINTS — backend role checks are authoritative
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Safe admin profile. No password hash or private user content.
+ */
+app.get(
+  '/api/admin/me',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  (req, res) => {
+    try {
+      const account = findAccountByUserId(req.auth.userId);
+      const publicAccount = toPublicAccount(account);
+      try {
+        logAdminAudit({
+          action: 'admin.me',
+          actor: req.auth.userId,
+          targetUserId: req.auth.userId,
+          targetUsername: publicAccount?.username ?? null,
+          targetEmail: publicAccount?.email ?? null,
+          result: 'ok',
+        });
+      } catch {
+        /* non-fatal */
+      }
+      return res.json({
+        ok: true,
+        userId: req.auth.userId,
+        username: publicAccount?.username ?? null,
+        email: publicAccount?.email ?? null,
+        roles: [...(req.auth.roles ?? [])],
+        isAdmin: true,
+        isFounder: Boolean(req.auth.isFounder),
+        authMethod: req.auth.authMethod ?? null,
+      });
+    } catch (err) {
+      console.error('[ATLAS] admin/me error:', err.message);
+      return res.status(503).json({ error: 'Admin service unavailable' });
+    }
+  },
+);
+
+/** Explicitly reject self-service role mutation — roles are CLI / server-side only. */
+app.all('/api/admin/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+app.all('/api/me/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+app.all('/api/auth/roles', (_req, res) => {
+  return res.status(405).json({ error: 'Role changes are not available via API' });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// AI ENDPOINTS
+// ══════════════════════════════════════════════════════════════════════
+
+app.get('/api/ai/health', async (_req, res) => {
+  const founderStatus = getFounderKnowledgeStatus();
+  const founderProfileStatus = getFounderProfileStatus();
+  let audio = null;
+  try {
+    const registry = await getCapabilityRegistry();
+    audio = audioHealthSnapshot(registry, getJobStats());
+  } catch (err) {
+    audio = { error: 'audio_health_unavailable' };
+  }
   res.json({
     status: 'ok',
     configured: OPENAI_API_KEY.length > 0,
     model: DEFAULT_MODEL,
+    webChat: true,
+    telegramConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+    memory: true,
+    auth: true,
+    founderKnowledge: founderStatus.loaded && founderStatus.profileCount > 0,
+    founderProfiles: founderStatus.profileCount,
+    founderBiography: founderProfileStatus.loaded && founderProfileStatus.profileCount > 0,
+    founderBiographyProfiles: founderProfileStatus.profileCount,
+    modelProvider: OPENAI_API_KEY.length > 0,
+    audio,
   });
 });
 
-app.post('/api/ai/complete', async (req, res) => {
-  const { systemPrompt, userPrompt, model, temperature, maxTokens } = req.body;
+/**
+ * /api/ai/complete — no longer a public raw-model bypass.
+ * Option B: founder/admin session required + privacy evaluation on prompts.
+ */
+app.post(
+  '/api/ai/complete',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  founderSensitiveRateLimit,
+  async (req, res) => {
+    if (!req.auth?.roles?.includes('founder') && !req.auth?.roles?.includes('admin')) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth?.userId ?? null,
+          eventType: 'ai_complete_blocked',
+          action: 'blocked',
+          reason: 'admin_or_founder_required',
+        });
+      } catch {
+        /* ignore */
+      }
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
-  if (!userPrompt) {
-    return res.status(400).json({ error: 'userPrompt is required' });
-  }
-  if (!OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
-  }
+    const { systemPrompt, userPrompt, model, temperature, maxTokens } = req.body ?? {};
+    if (!userPrompt) {
+      return res.status(400).json({ error: 'userPrompt is required' });
+    }
+    if (!OPENAI_API_KEY) {
+      return res.status(503).json({ error: 'OPENAI_API_KEY not set in .env' });
+    }
 
-  const selectedModel = model || DEFAULT_MODEL;
-  const start = performance.now();
-
-  try {
-    const response = await fetch('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: selectedModel,
-        instructions: systemPrompt || undefined,
-        input: userPrompt,
-        temperature: temperature ?? 0.7,
-        max_output_tokens: maxTokens ?? 2048,
-      }),
+    const combined = `${systemPrompt ?? ''}\n${userPrompt}`;
+    const privacyEval = evaluatePrivacyRequest({
+      message: combined,
+      requesterContext: requesterContextFromRequest(req),
     });
 
-    const latencyMs = performance.now() - start;
-
-    if (!response.ok) {
-      const errText = await response.text();
-      let msg = `OpenAI error (${response.status})`;
-      try { msg = JSON.parse(errText).error?.message || msg; } catch {}
-      console.error(`[ATLAS] ${msg}`);
-      return res.status(response.status).json({ error: msg });
-    }
-
-    const data = await response.json();
-
-    let content = '';
-    if (data.output) {
-      for (const block of data.output) {
-        if (block.type === 'message' && block.content) {
-          for (const part of block.content) {
-            if (part.type === 'output_text') content += part.text;
-          }
-        }
+    if (shouldShortCircuitPrivacy(privacyEval) && !privacyEval.authorized) {
+      try {
+        logPrivacyEvent({
+          channel: 'api',
+          requesterId: req.auth.userId,
+          eventType: 'ai_complete_privacy_blocked',
+          action: 'blocked',
+          requestType: privacyEval.requestType,
+          reason: privacyEval.reason,
+        });
+      } catch {
+        /* ignore */
       }
+      return res.status(403).json({
+        error: 'Privacy policy blocked this request',
+        reply: privacyEval.safeReply ?? SAFE_RESPONSES.PRIVACY,
+      });
     }
-    if (!content) {
-      return res.status(502).json({ error: 'OpenAI returned empty output' });
+
+    try {
+      const result = await callOpenAI({
+        systemPrompt,
+        userPrompt,
+        model: model || DEFAULT_MODEL,
+        temperature,
+        maxTokens,
+        apiKey: OPENAI_API_KEY,
+      });
+
+      const text = typeof result?.content === 'string' ? result.content : '';
+
+      const guarded = sanitizeFounderResponse(text, {
+        requesterContext: requesterContextFromRequest(req),
+        evaluation: privacyEval,
+        channel: 'api',
+      });
+
+      if (guarded.blocked) {
+        return res.status(403).json({
+          error: 'Privacy policy blocked model output',
+          reply: guarded.reply,
+        });
+      }
+
+      console.log(
+        `[ATLAS] ✓ ai/complete ${result.model} | ${result.tokensUsed} tok | $${result.costUsd.toFixed(4)}`,
+      );
+      return res.json({ ...result, content: guarded.reply, text: guarded.reply });
+    } catch (err) {
+      console.error(`[ATLAS] ${err.message}`);
+      const status = err.status ?? 500;
+      return res.status(status).json({ error: err.message });
     }
+  },
+);
 
-    const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
-    const costRate = COST_PER_1K[selectedModel] ?? 0.001;
-
-    const result = {
-      content,
-      model: data.model || selectedModel,
-      provider: 'openai',
-      tokensUsed: totalTokens || Math.ceil(content.length / 4),
-      costUsd: ((totalTokens || Math.ceil(content.length / 4)) / 1000) * costRate,
-      latencyMs: Math.round(latencyMs),
-    };
-
-    console.log(`[ATLAS] ✓ ${result.model} | ${result.tokensUsed} tok | $${result.costUsd.toFixed(4)} | ${result.latencyMs}ms`);
-    return res.json(result);
-
-  } catch (err) {
-    console.error(`[ATLAS] ${err.message}`);
-    return res.status(500).json({ error: err.message });
-  }
+const chatRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 45,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `chat:${req.auth?.userId || req.ip || 'unknown'}`,
 });
+
+const atlasMessageRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) =>
+    `atlas-message:${req.auth?.userId || req.body?.userId || req.ip || 'unknown'}`,
+});
+
+const analysisRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Çok fazla analiz isteği. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `analysis:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+// ── Atlas Chat — server-resolved identity only ──
+app.post(
+  '/api/chat',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  chatRateLimit,
+  async (req, res) => {
+    try {
+      const body = {
+        ...(req.body ?? {}),
+        channel: 'web',
+        // Ignore client userId — session identity wins
+        userId: req.auth.userId,
+      };
+      const normalized = normalizeAtlasMessageRequest(body);
+      normalized.userId = req.auth.userId;
+
+      const result = await processAtlasMessage(normalized, {
+        mode: req.body?.mode,
+        model: req.body?.model || DEFAULT_MODEL,
+        temperature: req.body?.temperature,
+        maxTokens: req.body?.maxTokens,
+        runner,
+        auth: req.auth,
+        requesterContext: requesterContextFromRequest(req),
+      });
+
+      const response = toWebChatResponse(result);
+      const httpStatus =
+        result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
+
+      console.log(
+        `[ATLAS] ✓ chat/${normalized.channel} (${response.profile}/${response.mode})` +
+          `${response.memoryHandled ? ' [memory]' : ''} | ${response.engine ?? response.model} | ${response.tokensUsed} tok`,
+      );
+      return res.status(httpStatus).json(response);
+    } catch (err) {
+      if (err.message?.includes('userId must be') || err.message?.includes('message is required')) {
+        return res.status(400).json({ error: err.message });
+      }
+      if (err.message === 'CORS origin denied') {
+        return res.status(403).json({ error: 'Origin not allowed' });
+      }
+      console.error(`[ATLAS] chat error: ${err.message}`);
+      const status = err.status ?? 500;
+      return res.status(status).json({ error: err.message });
+    }
+  },
+);
+
+// ── Telegram bot → backend (shared secret) OR authenticated web ──
+app.post(
+  '/api/atlas/message',
+  requireTelegramBotSecret,
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return attachAuthFromSession({ createAnonymous: true })(req, res, next);
+  },
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return requireAuthenticated(req, res, next);
+  },
+  (req, res, next) => {
+    if (req.atlasBotVerified) return next();
+    return requireCsrfProtection(req, res, next);
+  },
+  atlasMessageRateLimit,
+  async (req, res) => {
+    try {
+      const body = {
+        ...(req.body ?? {}),
+        userId: req.auth.userId,
+        channel: req.atlasBotVerified ? 'telegram' : req.body?.channel || 'web',
+      };
+      const normalized = normalizeAtlasMessageRequest(body);
+      normalized.userId = req.auth.userId;
+      if (req.atlasBotVerified) {
+        normalized.channel = 'telegram';
+        // Trust only bot-built speakerAttribution; drop spoofed body context otherwise.
+        if (
+          body?.context?.speakerAttribution &&
+          typeof body.context.speakerAttribution === 'object' &&
+          body.context.speakerAttribution.trusted === true
+        ) {
+          normalized.context = {
+            ...(normalized.context && typeof normalized.context === 'object'
+              ? normalized.context
+              : {}),
+            speakerAttribution: body.context.speakerAttribution,
+          };
+        } else {
+          normalized.context = {
+            ...(normalized.context && typeof normalized.context === 'object'
+              ? normalized.context
+              : {}),
+            speakerAttribution: undefined,
+          };
+        }
+      } else if (normalized.context?.speakerAttribution) {
+        // Public/session HTTP must never trust client speakerAttribution.
+        delete normalized.context.speakerAttribution;
+      }
+
+      const result = await processAtlasMessage(normalized, {
+        model: req.body?.model || DEFAULT_MODEL,
+        temperature: req.body?.temperature,
+        maxTokens: req.body?.maxTokens,
+        runner,
+        auth: req.auth,
+        requesterContext: requesterContextFromRequest(req),
+        atlasBotVerified: Boolean(req.atlasBotVerified),
+      });
+
+      if (result.data?.pipelineDebug) {
+        logFounderPipelineDebug(result.data.pipelineDebug, `Backend/${normalized.channel}`);
+      }
+
+      return res.json(result);
+    } catch (err) {
+      console.error(`[ATLAS] atlas/message error: ${err.message}`);
+      return res.status(400).json({
+        status: 'error',
+        reply: err.message,
+        errorCode: 'INVALID_INPUT',
+      });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// USER MEMORY ENDPOINTS — owner = req.auth.userId only
+// ══════════════════════════════════════════════════════════════════════
+
+app.get(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  memoryRateLimit,
+  (req, res) => {
+    const { userId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    try {
+      const memory = getUserMemory(req.auth.userId);
+      return res.json({ userId: req.auth.userId, memory });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
+
+app.put(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const { memory } = req.body ?? {};
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    if (!memory || typeof memory !== 'object') {
+      return res.status(400).json({ error: 'memory object is required' });
+    }
+
+    const result = await setUserMemory(req.auth.userId, memory);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, memory: result.memory, saved: true });
+  },
+);
+
+app.patch(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const partial = req.body ?? {};
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const result = await updateUserMemory(req.auth.userId, partial);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, memory: result.memory, saved: true });
+  },
+);
+
+app.delete(
+  '/api/memory/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+
+    const result = await deleteUserMemory(req.auth.userId);
+    if (!result.ok) {
+      const status = result.error === 'User memory not found' ? 404 : 500;
+      return res.status(status).json({ error: result.error });
+    }
+    return res.json({ userId: req.auth.userId, deleted: true });
+  },
+);
+
+app.get(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  memoryRateLimit,
+  (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path;
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path query parameter is required' });
+    }
+
+    try {
+      const value = getMemoryField(req.auth.userId, path);
+      if (value === undefined) {
+        return res.status(404).json({ error: 'Field not found' });
+      }
+      return res.json({ userId: req.auth.userId, path, value });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  },
+);
+
+app.put(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path ?? req.body?.path;
+    const { value } = req.body ?? {};
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path is required' });
+    }
+
+    const result = await setMemoryField(req.auth.userId, path, value);
+    if (!result.ok) {
+      return res.status(500).json({ error: result.error });
+    }
+    return res.json({
+      userId: req.auth.userId,
+      path,
+      value,
+      saved: true,
+      memory: result.memory,
+    });
+  },
+);
+
+app.delete(
+  '/api/memory/:userId/field',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  memoryRateLimit,
+  async (req, res) => {
+    const { userId } = req.params;
+    const path = req.query.path;
+
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    if (typeof path !== 'string' || !path.trim()) {
+      return res.status(400).json({ error: 'path query parameter is required' });
+    }
+
+    const result = await deleteMemoryField(req.auth.userId, path);
+    if (!result.ok) {
+      const status = result.error === 'Field not found' ? 404 : 500;
+      return res.status(status).json({ error: result.error });
+    }
+    return res.json({
+      userId: req.auth.userId,
+      path,
+      deleted: true,
+      memory: result.memory,
+    });
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// ANALYSIS ARCHIVE ENDPOINTS (separate from profile memory)
+// ══════════════════════════════════════════════════════════════════════
+
+app.get(
+  '/api/archive/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  (req, res) => {
+    const { userId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    try {
+      const analyses = listUserAnalyses(req.auth.userId);
+      return res.json({ userId: req.auth.userId, analyses });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
+
+app.get(
+  '/api/archive/:userId/:analysisId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  (req, res) => {
+    const { userId, analysisId } = req.params;
+    if (!isValidUserId(userId)) {
+      return res.status(400).json({ error: 'Invalid userId' });
+    }
+    const access = assertMemoryRouteAccess(req, userId);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
+    }
+    const record = getAnalysisRecord(req.auth.userId, analysisId);
+    if (!record) {
+      return res.status(404).json({ error: 'Analysis not found' });
+    }
+    return res.json({ userId: req.auth.userId, analysis: record });
+  },
+);
+
+app.post(
+  '/api/archive/:userId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
+  const { userId } = req.params;
+  const { record } = req.body ?? {};
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+  const access = assertMemoryRouteAccess(req, userId);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
+  if (!record || typeof record !== 'object') {
+    return res.status(400).json({ error: 'record object is required' });
+  }
+
+  const result = await saveAnalysisRecord(req.auth.userId, record);
+  if (!result.ok) {
+    return res.status(500).json({ error: result.error });
+  }
+  return res.json({ userId: req.auth.userId, record: result.record, saved: true });
+  },
+);
+
+app.delete(
+  '/api/archive/:userId/:analysisId',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  async (req, res) => {
+  const { userId, analysisId } = req.params;
+
+  if (!isValidUserId(userId)) {
+    return res.status(400).json({ error: 'Invalid userId' });
+  }
+
+  const access = assertMemoryRouteAccess(req, userId);
+  if (!access.ok) {
+    return res.status(access.status).json({ error: access.error });
+  }
+
+  const result = await deleteAnalysisRecord(req.auth.userId, analysisId);
+  if (!result.ok) {
+    const status = result.error === 'Analysis not found' ? 404 : 500;
+    return res.status(status).json({ error: result.error });
+  }
+  return res.json({ userId: req.auth.userId, analysisId, deleted: true });
+  },
+);
 
 // ══════════════════════════════════════════════════════════════════════
 // ASSET PERSISTENCE ENDPOINTS
+// Internal OS production packages — require non-anonymous auth.
 // ══════════════════════════════════════════════════════════════════════
 
+function isSafeAssetPathSegment(value) {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 200 &&
+    !value.includes('..') &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    !value.includes('\0')
+  );
+}
+
+const assetReadAuth = [
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+];
+const assetWriteAuth = [
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+];
+
 // ── Save a completed pipeline package to disk ─────────────────────────
-app.post('/api/assets/save', (req, res) => {
+app.post('/api/assets/save', ...assetWriteAuth, (req, res) => {
   const { package: pkg } = req.body;
 
   if (!pkg || !pkg.topic || !pkg.script) {
@@ -213,7 +1058,7 @@ app.post('/api/assets/save', (req, res) => {
 });
 
 // ── List all generated assets ─────────────────────────────────────────
-app.get('/api/assets', (_req, res) => {
+app.get('/api/assets', ...assetReadAuth, (_req, res) => {
   try {
     if (!existsSync(GENERATED_DIR)) {
       return res.json({ productions: [] });
@@ -268,11 +1113,11 @@ app.get('/api/assets', (_req, res) => {
 });
 
 // ── Download a specific generated file ────────────────────────────────
-app.get('/api/assets/:folder/:file/download', (req, res) => {
+app.get('/api/assets/:folder/:file/download', ...assetReadAuth, (req, res) => {
   const { folder, file } = req.params;
 
   // Prevent path traversal
-  if (folder.includes('..') || file.includes('..')) {
+  if (!isSafeAssetPathSegment(folder) || !isSafeAssetPathSegment(file)) {
     return res.status(400).json({ error: 'Invalid path' });
   }
 
@@ -301,11 +1146,11 @@ const PACKAGE_FILES = [
   'final-package.json',
 ];
 
-app.get('/api/assets/:folder/download-zip', (req, res) => {
+app.get('/api/assets/:folder/download-zip', ...assetReadAuth, (req, res) => {
   const { folder } = req.params;
 
   // Prevent path traversal
-  if (folder.includes('..')) {
+  if (!isSafeAssetPathSegment(folder)) {
     return res.status(400).json({ error: 'Invalid path' });
   }
 
@@ -348,20 +1193,25 @@ app.get('/api/assets/:folder/download-zip', (req, res) => {
 // is never read from the request body — this route exists for exactly
 // one purpose, and this guarantees it can never fall through to the
 // Content Pipeline regardless of what a caller sends.
-app.post('/api/personal-analysis', async (req, res) => {
+app.post(
+  '/api/personal-analysis',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  analysisRateLimit,
+  async (req, res) => {
   const body = req.body;
 
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return res.status(400).json({ error: 'Request body must be a JSON object' });
   }
 
-  const { task_id, subject_id, subject_profile, analysis_inputs, constraints } = body;
+  const { task_id, subject_profile, analysis_inputs, constraints } = body;
+  // subject_id is always the authenticated user — never client-supplied
+  const subject_id = req.auth.userId;
 
   if (typeof task_id !== 'string' || task_id.trim().length === 0) {
     return res.status(400).json({ error: 'task_id is required and must be a non-empty string' });
-  }
-  if (typeof subject_id !== 'string' || subject_id.trim().length === 0) {
-    return res.status(400).json({ error: 'subject_id is required and must be a non-empty string' });
   }
   if (typeof subject_profile !== 'object' || subject_profile === null || Array.isArray(subject_profile)) {
     return res.status(400).json({ error: 'subject_profile is required and must be an object' });
@@ -410,25 +1260,124 @@ app.post('/api/personal-analysis', async (req, res) => {
     console.error(`[ATLAS] ${err.message}`);
     return res.status(500).json({ error: err.message });
   }
-});
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// SYMBOLIC ANALYSIS — unified experience (Ebced/Cifir/… stay internal)
+// ══════════════════════════════════════════════════════════════════════
+
+app.post(
+  '/api/symbolic-analysis',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  analysisRateLimit,
+  (req, res) => {
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ error: 'Request body must be a JSON object' });
+    }
+
+    const input =
+      body.input && typeof body.input === 'object' && !Array.isArray(body.input)
+        ? body.input
+        : body;
+
+    try {
+      const report = buildSymbolicAnalysis({
+        input,
+        layers: Array.isArray(body.layers) ? body.layers : undefined,
+      });
+
+      // insufficient_data is a business outcome (200). Internal `trace`
+      // stays off the default client payload unless explicitly requested.
+      const includeTrace = body.include_trace === true;
+      const payload = includeTrace
+        ? report
+        : {
+            version: report.version,
+            ok: report.ok,
+            error: report.error,
+            missingRequired: report.missingRequired,
+            userResult: report.userResult,
+            metadata: {
+              llmUsed: report.metadata?.llmUsed ?? false,
+              fabricated: report.metadata?.fabricated ?? false,
+              photoUpload: report.metadata?.photoUpload ?? false,
+              inputContract: report.metadata?.inputContract,
+            },
+          };
+
+      return res.status(200).json(payload);
+    } catch (err) {
+      console.error(`[ATLAS] symbolic-analysis failed: ${err.message}`);
+      return res.status(500).json({ error: err.message });
+    }
+  },
+);
+
+// ══════════════════════════════════════════════════════════════════════
+// PRODUCTION FRONTEND (optional) — serve Vite `dist/` from same origin
+// Enable: NODE_ENV=production (and dist present) or ATLAS_SERVE_FRONTEND=1
+// Disable: ATLAS_SERVE_FRONTEND=0
+// ══════════════════════════════════════════════════════════════════════
+
+const DIST_DIR = join(__dirname, '..', 'dist');
+const serveFrontendExplicit = process.env.ATLAS_SERVE_FRONTEND;
+const serveFrontend =
+  serveFrontendExplicit === '1' ||
+  (serveFrontendExplicit !== '0' &&
+    process.env.NODE_ENV === 'production' &&
+    existsSync(join(DIST_DIR, 'index.html')));
+
+if (serveFrontend) {
+  app.use(
+    express.static(DIST_DIR, {
+      index: false,
+      maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+      fallthrough: true,
+    }),
+  );
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path.startsWith('/api')) return next();
+    const indexPath = join(DIST_DIR, 'index.html');
+    if (!existsSync(indexPath)) return next();
+    return res.sendFile(indexPath);
+  });
+  console.log(`[ATLAS] Serving frontend from ${DIST_DIR}`);
+}
 
 // ══════════════════════════════════════════════════════════════════════
 // START
 // ══════════════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════
-// START
-// ══════════════════════════════════════════════════════════════════════
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('  ATLAS Backend');
-  console.log(`  http://localhost:${PORT}`);
-  console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
-  console.log(`  Model:  ${DEFAULT_MODEL}`);
-  console.log(`  Assets: ${GENERATED_DIR}`);
-  console.log('');
-});
+export { app };
 
-setInterval(() => {
-  console.log("Backend alive...");
-}, 5000);
+if (process.env.ATLAS_NO_LISTEN !== '1') {
+  app.listen(PORT, () => {
+    console.log('');
+    console.log('  ATLAS Backend');
+    console.log(`  http://localhost:${PORT}`);
+    console.log(`  OpenAI: ${OPENAI_API_KEY ? '✓ Key configured' : '✗ No key — add OPENAI_API_KEY to .env'}`);
+    console.log(`  Model:  ${DEFAULT_MODEL}`);
+    console.log(`  Assets: ${GENERATED_DIR}`);
+    console.log(`  Frontend: ${serveFrontend ? '✓ dist/ (same-origin)' : '✗ not served (API-only)'}`);
+    console.log('  Auth:   POST /api/auth/login, GET /api/auth/session, POST /api/auth/logout');
+    console.log('  Admin:  GET /api/admin/me (admin role required)');
+    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
+    console.log('  Memory: ✓ JSON persistence initialized');
+    console.log(
+      `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,
+    );
+    console.log(
+      `  Founder Profile:   ${founderProfileInit.ok ? '✓' : '✗'} ${founderProfileInit.profileCount} biography profile(s)`,
+    );
+    console.log(`  Web Chat: ✓ shared pipeline active`);
+    console.log(`  Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? 'configured (start server/telegram.js separately)' : 'not configured'}`);
+    console.log(`  CORS origins: ${allowedOrigins.join(', ')}`);
+    console.log('');
+  });
+}
+ 

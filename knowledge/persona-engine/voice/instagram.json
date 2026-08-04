@@ -1,0 +1,10 @@
+{
+  "id": "instagram",
+  "version": "voice-v1",
+  "displayName": "Instagram",
+  "domains": ["instagram", "threads_instagram"],
+  "tone": "Görsel-dostu yoğunluk; kancalı açılış, yumuşak netlik.",
+  "register": "Kısa paragraf ritmi; paylaşılabilir kapanış.",
+  "prefer": ["imge", "gözlem", "evrensel kapanış"],
+  "avoid": ["akademik dil", "prosedür", "fazla hashtag dili"]
+}

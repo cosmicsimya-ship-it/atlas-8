@@ -19,7 +19,7 @@ interface NavItem {
 const sections: { title?: string; items: NavItem[] }[] = [
   {
     items: [
-      { path: '/', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
     ],
   },
   {

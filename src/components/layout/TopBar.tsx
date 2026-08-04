@@ -5,7 +5,7 @@ import { mockNotifications } from '../../data/mockData';
 import { Kbd } from '../ui';
 
 const pathTitles: Record<string, string> = {
-  '/': 'Dashboard',
+  '/dashboard': 'Dashboard',
   '/agents': 'Agent Center',
   '/workflows': 'Workflow Builder',
   '/produce': 'Production Pipeline',

@@ -1,5 +1,15 @@
 # ATLAS v7.1 — Persistent Asset Storage
 
+## Architecture (canonical)
+
+Platform architecture is defined by:
+
+- [`docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md`](docs/architecture/ATLAS_MASTER_ARCHITECTURE_SPECIFICATION_v1.md) — Master Spec v1.0
+- [`docs/architecture/COMPLIANCE_MATRIX.md`](docs/architecture/COMPLIANCE_MATRIX.md) — compliance vs Master Spec
+- [`docs/architecture/TRANSFORMATION_ROADMAP.md`](docs/architecture/TRANSFORMATION_ROADMAP.md) — transformation phases (P0 complete; P2 requires approval)
+
+See [`docs/architecture/README.md`](docs/architecture/README.md) for the full documentation hub.
+
 ## Setup
 
 ```bash
@@ -8,6 +18,37 @@ cp .env.example .env        # add OPENAI_API_KEY=sk-...
 node server/index.js         # Terminal 1 — backend :3001
 npm run dev                  # Terminal 2 — frontend :5173
 ```
+
+## Atlas Startup Manager (Windows)
+
+Manage Frontend, Backend, and Telegram bot together:
+
+```bash
+npm run atlas:start          # start missing services only
+npm run atlas:status         # show service states
+npm run atlas:stop           # stop Atlas-owned services
+npm run atlas:restart        # restart via startup manager
+```
+
+### Windows autostart (Task Scheduler)
+
+Install once — runs `npm run atlas:start` when you log in to Windows (no extra terminal window):
+
+```bash
+npm run atlas:autostart:install
+npm run atlas:autostart:status
+npm run atlas:autostart:remove
+```
+
+Manual start anytime:
+
+```bash
+npm run atlas:start
+```
+
+**After reboot / logon:** the `AtlasStartupManager` scheduled task calls `npm run atlas:start`. The startup manager reuses existing PID/port checks and does not start duplicate services or a second Telegram poller.
+
+Logs: `data/logs/atlas-startup/atlas-startup.log` (rotated, secrets redacted).
 
 ## What's new in v7.1
 

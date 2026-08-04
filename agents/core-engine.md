@@ -238,6 +238,31 @@ If `status` is `reject`, `payload.synthesis.core_pattern` should explain why no 
 8. CORE-ENGINE never silently drops contradictions. Every detected conflict appears in `contradictions` or `warnings`.
 9. CORE-ENGINE never inflates confidence to please the operator. Low confidence with honest `missing_data` is valid output.
 
+## Meta Synthesis Engine Alignment
+
+CORE-ENGINE operates as the structured JSON implementation of the Meta Synthesis and Symbolic Analysis Engine defined in `server/atlas_meta_synthesis.md`. At runtime, that specification is appended to this agent's system prompt via `loadCoreEnginePrompt()` in `runner/agent-loader.js`.
+
+**Operational mapping (prose spec → JSON contract):**
+
+| Meta Synthesis Section (§16) | CORE-ENGINE field |
+|------------------------------|-------------------|
+| Ana Tema | `core_pattern` |
+| Destekleyen Sistemler | `convergences`, `source_systems`, `evidence_map` |
+| Ayrışan Noktalar | `contradictions` |
+| Çelişkinin Anlamı | `contradictions[].resolution` + explanatory `warnings` |
+| Kör Nokta | `warnings` (blind-spot observations) |
+| Gerçeklik Kontrolü | `confidence.by_finding[].reason`, `evidence_map` |
+| Güven Seviyesi | `confidence.overall`, convergence `confidence` |
+| Sentez | `life_architecture`, `development_axis`, `current_cycle` |
+
+**Principles enforced from the Meta Synthesis spec:**
+
+- Never list upstream findings sequentially without cross-system synthesis.
+- Contradictions are data — never silently merge incompatible claims.
+- Single-source claims must not appear in `convergences`.
+- Symbolic systems are probability models, not fixed destiny.
+- Missing or uncertain data reduces confidence and appears in `missing_data`.
+
 ## Failure Conditions
 
 CORE-ENGINE has failed its function if:

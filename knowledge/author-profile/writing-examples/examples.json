@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "profileId": "lara-author",
+  "description": "İzinli örneklerden çıkarılmış stil özeti. Örnekler karakteristik üslubu öğretir; metin kopyalanmaz.",
+  "examples": [
+    {
+      "id": "ex-astro-theme",
+      "sourceType": "Astrolojik Akıl / Cosmic Simya (stil özü)",
+      "domain": "astroloji",
+      "styleNotes": [
+        "İlk cümlede temayı kurar",
+        "Gezegen/burç adını süslemeden bağlar",
+        "Gerilimi görünür kılar",
+        "Kapanışta tek net sentez bırakır"
+      ],
+      "syntheticSketch": "Bugünün gökyüzünde asıl hareket acele etmekte değil; neyin gerçekten önemsendiğini ayırt etmekte. Ay'ın dokunuşu duyguları büyütüyor olabilir ama vurgu abartıda değil, seçimde.",
+      "doNotCopyLiterally": true
+    },
+    {
+      "id": "ex-social-hook",
+      "sourceType": "Instagram / Threads (stil özü)",
+      "domain": "threads_instagram",
+      "styleNotes": [
+        "Kancalı ama clickbait olmayan açılış",
+        "Kısa paragraf ritmi",
+        "Kişisel gözlem → ortak insan hali"
+      ],
+      "syntheticSketch": "Bazen sorun 'ne istediğini bilmemek' değil. İstediğini taşıyacak alanı henüz kurmamış olmaktır.",
+      "doNotCopyLiterally": true
+    },
+    {
+      "id": "ex-tarot-natural",
+      "sourceType": "yorum stili (sentetik)",
+      "domain": "tarot",
+      "styleNotes": [
+        "Prosedür yok",
+        "Doğrudan enerjiye girer",
+        "Kart adını doğal cümleye gömer",
+        "Örüntüyü bir arada okur"
+      ],
+      "syntheticSketch": "Bu dinamikte ilk dikkat çeken enerji Kupa Şövalyesi'nde: yaklaşma isteği var ama tempo henüz oturmamış. İki Kılıç ise kararı erteleyen ikinci katmanı gösteriyor. Bana göre burada asıl vurgu, duygunun yokluğu değil; duygunun içeride tutulması.",
+      "doNotCopyLiterally": true
+    },
+    {
+      "id": "ex-telegram-dense",
+      "sourceType": "Telegram (stil özü)",
+      "domain": "telegram",
+      "styleNotes": [
+        "Girişsiz başlar",
+        "Yoğun ama okunabilir",
+        "Gereksiz emoji yok"
+      ],
+      "syntheticSketch": "Bugün alan biraz daha seçici. Her davete açılmak zorunda değilsin; frekansını koruyan tercihler asıl güç gibi duruyor.",
+      "doNotCopyLiterally": true
+    },
+    {
+      "id": "ex-blog-flow",
+      "sourceType": "blog / uzun form (stil özü)",
+      "domain": "blog",
+      "styleNotes": [
+        "Daha uzun nefes",
+        "Paragraflar arasında ritim",
+        "Sembolik dil ile sade netlik nöbetleşir"
+      ],
+      "syntheticSketch": "Bir harita yalnızca 'ne olacağını' söylemez. Daha çok şunu sorar: şu anda hangi örüntü kendini tekrar ediyor ve sen buna nereden bakıyorsun? Bu soru cevaplandığında semboller susar; görünür olan konuşmaya başlar.",
+      "doNotCopyLiterally": true
+    }
+  ],
+  "ingestionNote": "Kullanıcının izin verdiği yeni yazılar eklendiğinde bu dosyaya stil notu + kısa sentetik sketch eklenir; orijinal metin bütünüyle yapıştırılmaz."
+}

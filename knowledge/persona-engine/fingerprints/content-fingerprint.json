@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "moduleId": "fingerprints-v1",
+  "status": "seed",
+  "description": "Statistical writing fingerprint. Filled as examples accumulate; used for production guidance, not copy-paste.",
+  "metrics": {
+    "avgSentenceLengthWords": null,
+    "avgParagraphLengthSentences": null,
+    "questionRate": null,
+    "metaphorDensity": null,
+    "recurringWords": [],
+    "emphasisFrequency": null,
+    "rhythmNotes": "Kısa vurgu + nefes alan cümle; sohbette ölçülü, içerikte daha akıcı.",
+    "titleCharacteristic": "Kısa, tok, clickbait değil"
+  },
+  "source": "author-profile style-rules + writing-examples (synthetic)"
+}

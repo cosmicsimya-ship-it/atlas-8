@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "feedback-v1",
+  "description": "Persona Engine Phase 2 feedback record schema. Style/editorial only — never personal facts.",
+  "record": {
+    "id": "feedback_<stable-id>",
+    "category": ["tone"],
+    "signal": "daha tok olsun",
+    "normalizedPreference": "Prefer concise, assertive and high-impact phrasing.",
+    "scope": { "type": "brand", "target": "cosmic-simya" },
+    "polarity": "prefer|avoid|ban|continue",
+    "strength": 0.9,
+    "confidence": 0.95,
+    "persistence": "session|candidate|persistent",
+    "source": {
+      "type": "explicit_user_feedback|editing_delta",
+      "conversationId": null,
+      "messageId": null
+    },
+    "examples": { "rejected": [], "preferred": [] },
+    "firstSeenAt": "ISO-8601",
+    "lastSeenAt": "ISO-8601",
+    "occurrenceCount": 1,
+    "status": "active|superseded|archived",
+    "supersedes": [],
+    "conflictsWith": []
+  },
+  "categories": [
+    "tone", "length", "formality", "word_choice", "sentence_structure", "formatting",
+    "brand_voice", "channel_voice", "content_depth", "repetition", "banned_expression",
+    "preferred_expression", "editing_pattern", "reasoning_presentation", "symbolic_language",
+    "factuality_boundary"
+  ],
+  "scopeTypes": [
+    "global", "brand", "voice", "channel", "content_type", "task_type",
+    "single_response", "temporary_session"
+  ]
+}

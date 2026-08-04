@@ -1,0 +1,20 @@
+{
+  "input": {
+    "birthDate": "2000-01-01",
+    "birthTime": "00:00",
+    "birthPlace": "Sydney",
+    "houseSystem": "equal",
+    "zodiacSystem": "tropical"
+  },
+  "expected": {
+    "timezone": "Australia/Sydney",
+    "sun": { "sign": "Capricorn" },
+    "fullChartAvailable": true,
+    "hemisphere": "south"
+  },
+  "comparisonSource": "Southern hemisphere + east longitude equal-house smoke fixture",
+  "tolerance": {
+    "planetLongitudeDeg": 0.05,
+    "angleLongitudeDeg": 0.2
+  }
+}

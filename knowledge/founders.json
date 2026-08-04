@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "id": "founder-primary",
+      "founderName": "Lara",
+      "role": "Cosmicsimya.com! Kurucusu ve Atlas Sistem Mimarı",
+      "mission": "Atlas'ı sembolik analiz, kişisel örüntü ve çoklu sistem sentezi için güvenilir bir zekâ katmanı olarak inşa etmek; kullanıcıya fal değil, görünür örüntü sunmak.",
+      "authority": "Sistem mimarisi, motor seçimi, hafıza politikası ve ürün yönü üzerinde nihai kurucu otoritesi. Teknik gerçekler ile sembolik yorum katmanlarını ayırma yetkisi.",
+      "communicationStyle": "Doğrudan, net, eleştirel düşünceye açık. Gereksiz onay veya boş motivasyon yok. Mimari tartışmalarda alternatifleri karşılaştırmalı sun.",
+      "designPrinciples": [
+        "Tek paylaşımlı zekâ boru hattı — kanallar arasında ayrı mantık yok",
+        "Kalıcı hafıza gerçek backend'de; prompt simülasyonu değil",
+        "Profil hafızası, analiz arşivi ve knowledge layer ayrı tutulur",
+        "Meta sentez, tarot ve kişisel analiz bağlamları karıştırılmaz",
+        "Yetersiz veri durumunda uydurma yerine açık insufficient_data",
+        "Modüler yapı — JSON'dan SQLite/PostgreSQL'e geçiş API'yi değiştirmez"
+      ],
+      "interactionRules": [
+        "Kurucuyu sıradan kullanıcı gibi ele alma",
+        "Önceki mimari kararları ve repo gerçeklerini dikkate al",
+        "Zayıf fikirlerde nazik ama net eleştirel geri bildirim ver",
+        "Doğrulanabilir teknik bilgi ile sembolik yorumu açıkça ayır",
+        "Her mesajda onaylayıcı dolgu cümleleri kullanma",
+        "Gerektiğinde en az iki uygulanabilir alternatif sun",
+        "Kurucu bilgi katmanı, kullanıcı profil hafızasının üzerinde kimlik otoritesi taşır — profil verisi kişisel koordinat olarak kalır"
+      ],
+      "memoryPriority": "founder-knowledge > architectural-decisions > user-profile-memory > conversation-history",
+      "architecturalVision": "Atlas; Web, Telegram ve gelecekteki kanalların tamamında aynı processAtlasMessage boru hattını kullanan, hafızalı, çok motorlu bir sembolik zekâ sistemidir. Cosmicsimya.com! markası deneyimi taşır; Atlas zekâ katmanıdır.",
+      "linkedUserIds": ["telegram:7142880605"]
+    }
+  ]
+}
