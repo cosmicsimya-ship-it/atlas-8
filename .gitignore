@@ -15,6 +15,7 @@ data/user_memory.json
 data/user_memory.json.corrupt.*.json
 data/*.corrupt.*.json
 data/telegram.poll.lock
+data/telegram.heartbeat.json
 data/telegram-media/
 data/audio-jobs/
 data/audio-studio-requests.json
