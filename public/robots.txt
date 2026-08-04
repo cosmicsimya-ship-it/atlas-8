@@ -1,5 +1,19 @@
 User-agent: *
 Allow: /
 
-# Hash-routed SPA — crawl the shell; deep paths are client-side.
-Sitemap:
+# API and internal app surfaces
+Disallow: /api/
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /agents
+Disallow: /workflows
+Disallow: /produce
+Disallow: /queue
+Disallow: /channels
+Disallow: /arsenal
+Disallow: /assets
+Disallow: /memory
+Disallow: /analytics
+Disallow: /settings
+
+Sitemap: https://cosmicsimya.com/sitemap.xml

@@ -70,10 +70,16 @@ console.log('[prepare-production] copying package manifests…');
 cpSync(join(ROOT, 'package.json'), join(OUT, 'package.json'));
 cpSync(join(ROOT, 'package-lock.json'), join(OUT, 'package-lock.json'));
 
+console.log('[prepare-production] generating SEO files…');
+run('node', ['scripts/generate-seo-files.mjs', '--out', 'public', '--out', 'dist']);
+
 console.log('[prepare-production] copying dist…');
 cpSync(join(ROOT, 'dist'), join(OUT, 'dist'), { recursive: true });
 if (existsSync(join(ROOT, 'public', 'robots.txt'))) {
   cpSync(join(ROOT, 'public', 'robots.txt'), join(OUT, 'dist', 'robots.txt'));
+}
+if (existsSync(join(ROOT, 'public', 'sitemap.xml'))) {
+  cpSync(join(ROOT, 'public', 'sitemap.xml'), join(OUT, 'dist', 'sitemap.xml'));
 }
 
 console.log('[prepare-production] copying server…');
@@ -110,6 +116,9 @@ if (existsSync(join(ROOT, 'deploy', 'public_html', '.htaccess'))) {
 cpSync(join(ROOT, 'dist', 'index.html'), join(OUT, 'deploy', 'public_html', 'index.html'));
 if (existsSync(join(OUT, 'dist', 'robots.txt'))) {
   cpSync(join(OUT, 'dist', 'robots.txt'), join(OUT, 'deploy', 'public_html', 'robots.txt'));
+}
+if (existsSync(join(OUT, 'dist', 'sitemap.xml'))) {
+  cpSync(join(OUT, 'dist', 'sitemap.xml'), join(OUT, 'deploy', 'public_html', 'sitemap.xml'));
 }
 
 const envExample = readFileSync(join(ROOT, '.env.example'), 'utf8');

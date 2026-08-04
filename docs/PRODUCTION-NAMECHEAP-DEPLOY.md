@@ -34,7 +34,7 @@ Repo mimari notu (`docs/atlas-product-membership-architecture.md` §21): **yaln�
 
 | Öğe | Neden |
 |-----|--------|
-| `dist/index.html` (+ `robots.txt`) | Frontend (single-file build) |
+| `dist/index.html` (+ `robots.txt`, `sitemap.xml`) | Frontend (single-file build) |
 | `server/` | Express API, Telegram, motorlar |
 | `knowledge/` | Persona / founder bilgisi |
 | `runner/` | Pipeline runner bağımlılığı |
@@ -81,6 +81,7 @@ Aşağıdakileri **yedek alıp** silin veya `old_YYYYMMDD/` altına taşıyın:
   dist/
     index.html
     robots.txt
+    sitemap.xml
   server/
   knowledge/
   runner/
@@ -130,6 +131,7 @@ Bu klasörü zip’leyip cPanel File Manager / FTP ile yükleyin.
 
 - [ ] `dist/index.html` var ve ~700KB+
 - [ ] `dist/robots.txt` var
+- [ ] `dist/sitemap.xml` var
 - [ ] `server/index.js` var
 - [ ] `.env` **yok** (yalnızca `.env.production.example`)
 - [ ] `node_modules` **yok**
@@ -267,6 +269,7 @@ E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, 
 | E-posta üye ol + çıkış + giriş | Oturum kalır / düşer |
 | Google (yapılandırıldıysa) | callback → `/#/?auth=ok` |
 | `GET /robots.txt` | Allow |
+| `GET /sitemap.xml` | Allow (urlset XML) |
 | Telegram DM | Yanıt (bot process ayaktaysa) |
 | Mobil genişlik | Landing / chat / auth modal okunur |
 | `data/logs` / stderr | Stack trace / secret yok |

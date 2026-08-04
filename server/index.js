@@ -82,6 +82,7 @@ import {
   audioHealthSnapshot,
   getJobStats,
 } from './audio-studio/index.js';
+import { mountSeoRoutes } from './seo/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -258,6 +259,12 @@ app.use(
     rateLimit: audioStudioRateLimit,
   }),
 );
+
+// ══════════════════════════════════════════════════════════════════════
+// SEO — /sitemap.xml + /robots.txt (before static SPA fallback)
+// ══════════════════════════════════════════════════════════════════════
+
+mountSeoRoutes(app);
 
 // ══════════════════════════════════════════════════════════════════════
 // AUTH ENDPOINTS
@@ -1530,6 +1537,7 @@ if (serveFrontend) {
   app.use((req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     if (req.path.startsWith('/api')) return next();
+    if (req.path === '/sitemap.xml' || req.path === '/robots.txt') return next();
     const indexPath = join(DIST_DIR, 'index.html');
     if (!existsSync(indexPath)) return next();
     return res.sendFile(indexPath);
@@ -1555,6 +1563,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log('  Auth:   GET/POST /api/auth/session|login|logout|register, Google OAuth /api/auth/google');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
     console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
+    console.log('  SEO:    GET /sitemap.xml, GET /robots.txt');
     console.log('  Memory: ✓ JSON persistence initialized');
     console.log(
       `  Founder Knowledge: ${founderInit.ok ? '✓' : '✗'} ${founderInit.profileCount} profile(s)`,

@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import AtlasCorePresence from '../components/cosmic/AtlasCorePresence';
-import CapabilityDiscovery from '../components/cosmic/CapabilityDiscovery';
+import CapabilityDiscovery, {
+  isCapabilityDiscoveryEnabled,
+} from '../components/cosmic/CapabilityDiscovery';
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
 import ChatInvitations, {
   type ChatInvitation,
@@ -14,6 +16,8 @@ import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
 import { ensureAtlasSession } from '../utils/atlas-session';
 import { prefersReducedMotion } from '../utils/scroll-section';
 import type { AtlasChatMessage } from '../types/atlas-chat';
+
+const CAPABILITY_DISCOVERY_ENABLED = isCapabilityDiscoveryEnabled();
 
 /** Composer grows with the message, then scrolls internally. */
 const COMPOSER_MAX_HEIGHT = 168;
@@ -83,6 +87,9 @@ export default function Chat() {
   }, [contextPrompt]);
 
   const { completedExchanges, userTexts } = useMemo(() => {
+    if (!CAPABILITY_DISCOVERY_ENABLED) {
+      return { completedExchanges: 0, userTexts: [] as string[] };
+    }
     const users = messages.filter((m) => m.role === 'user' && !m.pending && !m.error);
     let completed = 0;
     for (let i = 0; i < messages.length; i++) {
@@ -342,10 +349,12 @@ export default function Chat() {
                 </article>
               ))}
 
-              <CapabilityDiscovery
-                completedExchanges={completedExchanges}
-                userTexts={userTexts}
-              />
+              {CAPABILITY_DISCOVERY_ENABLED ? (
+                <CapabilityDiscovery
+                  completedExchanges={completedExchanges}
+                  userTexts={userTexts}
+                />
+              ) : null}
 
               <div ref={bottomRef} />
             </div>

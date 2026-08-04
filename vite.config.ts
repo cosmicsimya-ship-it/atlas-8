@@ -15,6 +15,14 @@ const apiProxy = {
     target: backendTarget,
     changeOrigin: true,
   },
+  '/sitemap.xml': {
+    target: backendTarget,
+    changeOrigin: true,
+  },
+  '/robots.txt': {
+    target: backendTarget,
+    changeOrigin: true,
+  },
 } as const;
 
 // https://vite.dev/config/

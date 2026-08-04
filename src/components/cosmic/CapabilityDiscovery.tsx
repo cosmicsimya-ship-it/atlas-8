@@ -17,16 +17,25 @@ type Props = {
 };
 
 /**
- * Progressive capability disclosure inside conversation.
+ * Progressive capability disclosure — incomplete ontology UI.
+ * Hidden in production unless `VITE_CAPABILITY_DISCOVERY=true`.
  * Renders nothing until the user has spoken and Atlas has answered.
  * Never shows the full feature map.
  */
+export function isCapabilityDiscoveryEnabled(): boolean {
+  const raw = String(import.meta.env.VITE_CAPABILITY_DISCOVERY ?? '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes';
+}
+
 export default function CapabilityDiscovery({ completedExchanges, userTexts }: Props) {
   const reduced = useReducedMotion();
   const location = useLocation();
   const [openId, setOpenId] = useState<CapabilityModuleId | null>(null);
 
   const discovered = useMemo(() => {
+    if (!isCapabilityDiscoveryEnabled()) return [];
     const modules = resolveDiscoveredModules(completedExchanges, userTexts);
     return modules.filter(
       (mod) =>
@@ -36,7 +45,7 @@ export default function CapabilityDiscovery({ completedExchanges, userTexts }: P
     );
   }, [completedExchanges, userTexts]);
 
-  if (discovered.length === 0) return null;
+  if (!isCapabilityDiscoveryEnabled() || discovered.length === 0) return null;
 
   const openModule: CapabilityModule | null =
     discovered.find((m) => m.id === openId) ?? null;
