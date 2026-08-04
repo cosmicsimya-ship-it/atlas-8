@@ -49,12 +49,12 @@ if (!existsSync(distIndex)) {
   process.exit(1);
 }
 
-/** Copy tree excluding junk */
+/** Copy tree excluding junk (do not skip nested source `data/` dirs under server/). */
 function copyFiltered(src, dest, { excludeNames = [] } = {}) {
   mkdirSync(dest, { recursive: true });
   for (const name of readdirSync(src)) {
     if (excludeNames.includes(name)) continue;
-    if (name === 'node_modules' || name === '.git' || name === 'data') continue;
+    if (name === 'node_modules' || name === '.git') continue;
     const from = join(src, name);
     const to = join(dest, name);
     const st = statSync(from);
