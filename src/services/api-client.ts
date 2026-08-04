@@ -17,12 +17,13 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit & { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
-  const { timeoutMs = REQUEST_TIMEOUT_MS, signal, ...init } = options;
+  const { timeoutMs = REQUEST_TIMEOUT_MS, signal: externalSignal, ...init } = options;
+  // Fresh controller per request — never reuse across turns.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   const onAbort = () => controller.abort();
-  signal?.addEventListener('abort', onAbort);
+  externalSignal?.addEventListener('abort', onAbort);
 
   const method = (init.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
@@ -87,11 +88,18 @@ export async function apiRequest<T>(
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new ApiError('Request timed out', 408, null);
+      const abortedByCaller = Boolean(externalSignal?.aborted);
+      throw new ApiError(
+        abortedByCaller ? 'Request aborted' : 'Request timed out',
+        abortedByCaller ? 499 : 408,
+        { errorCategory: abortedByCaller ? 'aborted_request' : 'request_timeout' },
+      );
     }
-    throw new ApiError(err instanceof Error ? err.message : 'Network error', 0, null);
+    throw new ApiError(err instanceof Error ? err.message : 'Network error', 0, {
+      errorCategory: 'network_error',
+    });
   } finally {
     clearTimeout(timeout);
-    signal?.removeEventListener('abort', onAbort);
+    externalSignal?.removeEventListener('abort', onAbort);
   }
 }

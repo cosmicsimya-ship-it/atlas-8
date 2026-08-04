@@ -909,7 +909,9 @@ export function resolveMaxTokensForResponseMode(mode) {
  */
 export function buildConversationContextPromptBlock(state, meta = {}) {
   const lines = [
-    '## CONVERSATION CONTEXT (authoritative for this turn)',
+    '## CONVERSATION CONTEXT (supporting only — current message wins)',
+    'Bu blok bağlam sağlar. Güncel kullanıcı mesajının açık niyetini ASLA geçersiz kılma.',
+    'Önceki görevlere yalnızca kullanıcı açıkça devam ederse devam et.',
     `- Response mode: ${meta.responseMode || 'other'} — keep length/tone accordingly.`,
     `- Reply to current sender${meta.senderDisplayName ? ` (${meta.senderDisplayName})` : ''}; subject of the question may be someone else.`,
     '- Do not invent Atlas birth date / zodiac / human biography.',

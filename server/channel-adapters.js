@@ -432,6 +432,13 @@ export function formatTelegramReply(reply) {
  */
 export function toWebChatResponse(result) {
   const data = result.data ?? {};
+  const errorCode = result.errorCode ?? null;
+  const retryable =
+    data.retryable === true ||
+    errorCode === 'TIMEOUT' ||
+    errorCode === 'RATE_LIMIT' ||
+    errorCode === 'MODEL_UNAVAILABLE' ||
+    data.resultStatus === 'user_visible_error';
   return {
     reply: result.reply,
     content: result.reply,
@@ -449,7 +456,10 @@ export function toWebChatResponse(result) {
     tokensUsed: data.tokensUsed ?? 0,
     costUsd: data.costUsd ?? 0,
     latencyMs: data.latencyMs ?? 0,
-    errorCode: result.errorCode ?? null,
+    errorCode,
+    errorCategory: data.errorCategory ?? null,
+    retryable: Boolean(retryable && errorCode),
+    requestId: data.requestId ?? data.requestTiming?.requestId ?? null,
   };
 }
 

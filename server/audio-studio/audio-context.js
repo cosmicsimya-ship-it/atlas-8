@@ -50,13 +50,23 @@ function prune(entries) {
 }
 
 /**
- * @param {{ channel?: string, userId?: string|null, chatId?: string|null, conversationId?: string|null }} ids
+ * @param {{
+ *   channel?: string,
+ *   userId?: string|null,
+ *   chatId?: string|null,
+ *   conversationId?: string|null,
+ *   messageThreadId?: string|number|null,
+ *   topicId?: string|number|null,
+ * }} ids
  */
 export function contextKey(ids = {}) {
   const channel = ids.channel || 'unknown';
   const user = ids.userId || 'anon';
   const chat = ids.chatId || ids.conversationId || 'default';
-  return `${channel}:${user}:${chat}`;
+  const topic = ids.messageThreadId ?? ids.topicId;
+  const topicPart =
+    topic != null && String(topic).trim() !== '' ? `:topic:${String(topic).trim()}` : '';
+  return `${channel}:${user}:${chat}${topicPart}`;
 }
 
 /**

@@ -10,7 +10,7 @@ import ChatInvitations, {
 } from '../components/cosmic/ChatInvitations';
 import CosmicShell from '../components/cosmic/CosmicShell';
 import { discoveryCopy } from '../data/capability-discovery';
-import { atlasChat } from '../services/atlas-chat';
+import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
 import { ensureAtlasSession } from '../utils/atlas-session';
 import { prefersReducedMotion } from '../utils/scroll-section';
 import type { AtlasChatMessage } from '../types/atlas-chat';
@@ -33,6 +33,10 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const seededContext = useRef(false);
+  const inFlightRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  /** Guards against applying a late response after a newer turn started. */
+  const activeTurnRef = useRef<string | null>(null);
 
   const isEmpty = messages.length === 0;
 
@@ -41,6 +45,9 @@ export default function Chat() {
     ensureAtlasSession().catch(() => {
       /* session will retry on send */
     });
+    return () => {
+      abortRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -82,7 +89,9 @@ export default function Chat() {
       const m = messages[i];
       if (m.role !== 'user' || m.pending || m.error) continue;
       const reply = messages.slice(i + 1).find((x) => x.role === 'assistant');
-      if (reply && !reply.pending && !reply.error && reply.content) completed += 1;
+      if (reply && !reply.pending && !reply.error && !reply.retryable && reply.content) {
+        completed += 1;
+      }
     }
     return {
       completedExchanges: completed,
@@ -90,77 +99,153 @@ export default function Chat() {
     };
   }, [messages]);
 
+  const sendTurn = useCallback(
+    async (text: string, opts: { reuseUser?: boolean; turnId?: string } = {}) => {
+      const trimmed = text.trim();
+      if (!trimmed || inFlightRef.current) return;
+
+      inFlightRef.current = true;
+      setLoading(true);
+
+      // Abort any previous in-flight request; never reuse its controller.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const turnId = opts.turnId || createId();
+      activeTurnRef.current = turnId;
+      const requestId = createId();
+
+      const history = messages
+        .filter((m) => !m.pending && !m.error && !m.retryable)
+        .filter((m) => !(opts.reuseUser && m.turnId === turnId))
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const pendingId = createId();
+
+      if (opts.reuseUser) {
+        setMessages((prev) => {
+          const withoutFailedAssistant = prev.filter(
+            (m) => !(m.turnId === turnId && m.role === 'assistant'),
+          );
+          return [
+            ...withoutFailedAssistant,
+            { id: pendingId, role: 'assistant', content: '', pending: true, turnId },
+          ];
+        });
+      } else {
+        const userMessage: AtlasChatMessage = {
+          id: createId(),
+          role: 'user',
+          content: trimmed,
+          turnId,
+        };
+        setMessages((prev) => [
+          ...prev,
+          userMessage,
+          { id: pendingId, role: 'assistant', content: '', pending: true, turnId },
+        ]);
+        setInput('');
+      }
+
+      try {
+        const response = await atlasChat.sendMessage(trimmed, history, {
+          signal: controller.signal,
+          requestId,
+        });
+
+        if (activeTurnRef.current !== turnId) {
+          // Stale response after a newer turn — drop to avoid duplicate assistant cards.
+          return;
+        }
+
+        if (isRetryableChatResponse(response)) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? {
+                    id: pendingId,
+                    role: 'assistant',
+                    content: response.reply,
+                    error: true,
+                    retryable: true,
+                    turnId,
+                    requestId: response.requestId ?? requestId,
+                  }
+                : m,
+            ),
+          );
+        } else {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? {
+                    id: pendingId,
+                    role: 'assistant',
+                    content: response.reply,
+                    mode: response.mode,
+                    profile: response.profile,
+                    turnId,
+                    requestId: response.requestId ?? requestId,
+                  }
+                : m,
+            ),
+          );
+        }
+      } catch (err) {
+        if (activeTurnRef.current !== turnId) return;
+        const errorText =
+          err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu.';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === pendingId
+              ? {
+                  id: pendingId,
+                  role: 'assistant',
+                  content: errorText,
+                  error: true,
+                  retryable: true,
+                  turnId,
+                }
+              : m,
+          ),
+        );
+      } finally {
+        if (activeTurnRef.current === turnId) {
+          inFlightRef.current = false;
+          setLoading(false);
+          textareaRef.current?.focus();
+        }
+      }
+    },
+    [messages],
+  );
+
   const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || loading) return;
+    await sendTurn(input);
+  }, [input, sendTurn]);
 
-    const userMessage: AtlasChatMessage = {
-      id: createId(),
-      role: 'user',
-      content: text,
-    };
-
-    const history = messages
-      .filter((m) => !m.pending && !m.error)
-      .map((m) => ({ role: m.role, content: m.content }));
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
-
-    const pendingId = createId();
-    setMessages((prev) => [
-      ...prev,
-      { id: pendingId, role: 'assistant', content: '', pending: true },
-    ]);
-
-    try {
-      const response = await atlasChat.sendMessage(text, history);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === pendingId
-            ? {
-                id: pendingId,
-                role: 'assistant',
-                content: response.reply,
-                mode: response.mode,
-                profile: response.profile,
-              }
-            : m,
-        ),
-      );
-    } catch (err) {
-      const errorText =
-        err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu.';
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === pendingId
-            ? {
-                id: pendingId,
-                role: 'assistant',
-                content: errorText,
-                error: true,
-              }
-            : m,
-        ),
-      );
-    } finally {
-      setLoading(false);
+  /** Retry the failed turn in place — keep the user bubble, new requestId. */
+  const retryLast = useCallback(() => {
+    const failed = [...messages]
+      .reverse()
+      .find((m) => m.role === 'assistant' && (m.error || m.retryable));
+    if (!failed?.turnId) {
+      // Legacy fallback: rewind into composer
+      const kept = messages.filter((m) => !m.error && !m.retryable);
+      const lastUserIndex = kept.map((m) => m.role).lastIndexOf('user');
+      if (lastUserIndex >= 0) {
+        setInput(kept[lastUserIndex].content);
+        kept.splice(lastUserIndex, 1);
+      }
+      setMessages(kept);
       textareaRef.current?.focus();
+      return;
     }
-  }, [input, loading, messages]);
-
-  /** Rewind the failed exchange so retrying never duplicates the question. */
-  const retryLast = () => {
-    const kept = messages.filter((m) => !m.error);
-    const lastUserIndex = kept.map((m) => m.role).lastIndexOf('user');
-    if (lastUserIndex >= 0) {
-      setInput(kept[lastUserIndex].content);
-      kept.splice(lastUserIndex, 1);
-    }
-    setMessages(kept);
-    textareaRef.current?.focus();
-  };
+    const userMsg = messages.find((m) => m.role === 'user' && m.turnId === failed.turnId);
+    if (!userMsg) return;
+    void sendTurn(userMsg.content, { reuseUser: true, turnId: failed.turnId });
+  }, [messages, sendTurn]);
 
   const recheckBackend = () => {
     setBackendReady(null);
@@ -170,7 +255,7 @@ export default function Chat() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      send();
+      void send();
     }
   };
 
@@ -186,7 +271,6 @@ export default function Chat() {
       <ChatAtmosphere />
 
       <main className="relative z-10 flex h-[100dvh] flex-col pt-[4.5rem]">
-        {/* Connection — screen reader only; no prototype badges */}
         <p className="sr-only" aria-live="polite">
           {backendReady === false
             ? 'Atlas şu an bağlantı kuramıyor.'
@@ -236,13 +320,14 @@ export default function Chat() {
                           />
                           <span className="text-[14px]">Düşünüyorum…</span>
                         </div>
-                      ) : msg.error ? (
+                      ) : msg.error || msg.retryable ? (
                         <div className="rounded-[18px] border border-red-400/20 bg-red-950/20 px-5 py-3.5 text-[15px] leading-[1.65] text-red-100/90">
                           {msg.content}
                           <button
                             type="button"
                             onClick={retryLast}
-                            className="site-focus mt-3 inline-flex items-center gap-1.5 text-[13px] text-red-100/80 underline-offset-2 hover:underline"
+                            disabled={loading}
+                            className="site-focus mt-3 inline-flex items-center gap-1.5 text-[13px] text-red-100/80 underline-offset-2 hover:underline disabled:opacity-40"
                           >
                             <RotateCcw size={13} aria-hidden /> Tekrar dene
                           </button>
@@ -300,7 +385,7 @@ export default function Chat() {
               />
               <button
                 type="button"
-                onClick={send}
+                onClick={() => void send()}
                 disabled={loading || !input.trim() || backendReady === false}
                 aria-label="Gönder"
                 className="atlas-send flex h-12 w-12 shrink-0 items-center justify-center rounded-full disabled:opacity-30"

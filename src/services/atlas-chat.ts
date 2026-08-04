@@ -14,6 +14,19 @@ import { ensureAtlasSession } from '../utils/atlas-session';
 
 const BACKEND = BACKEND_URL;
 
+const SOFT_FAIL_CODES = new Set(['TIMEOUT', 'RATE_LIMIT', 'MODEL_UNAVAILABLE', 'ENGINE_FAILURE']);
+
+/**
+ * Server may return HTTP 200 with a user-visible timeout fallback.
+ * Treat those as retryable failures for UI recovery.
+ */
+export function isRetryableChatResponse(response: AtlasChatResponse): boolean {
+  if (response.retryable === true) return true;
+  if (response.errorCode && SOFT_FAIL_CODES.has(response.errorCode)) return true;
+  if (response.status === 'error' && response.errorCode) return true;
+  return false;
+}
+
 export class AtlasChatService {
   private _backendStatus: 'unknown' | 'up' | 'down' = 'unknown';
 
@@ -51,12 +64,16 @@ export class AtlasChatService {
   async sendMessage(
     message: string,
     history: AtlasChatTurn[] = [],
-    options: Omit<AtlasChatRequest, 'message' | 'history'> = {},
+    options: Omit<AtlasChatRequest, 'message' | 'history'> & {
+      signal?: AbortSignal;
+      requestId?: string;
+    } = {},
   ): Promise<AtlasChatResponse> {
     await ensureAtlasSession();
     // userId in body is ignored by server; session cookie is authoritative
     return apiRequest<AtlasChatResponse>('/api/chat', {
       method: 'POST',
+      signal: options.signal,
       body: JSON.stringify({
         message,
         history,
@@ -64,6 +81,7 @@ export class AtlasChatService {
         model: options.model,
         temperature: options.temperature,
         maxTokens: options.maxTokens,
+        clientRequestId: options.requestId,
       }),
     });
   }

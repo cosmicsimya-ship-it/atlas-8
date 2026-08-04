@@ -172,7 +172,7 @@ export function operationsForIntent(intent) {
 /**
  * @param {string} message
  * @param {{ role: string, content: string }[]} [history]
- * @param {{ pendingAudioIntent?: boolean, hasMediaAttachment?: boolean, mediaKind?: string|null }} [opts]
+ * @param {{ pendingAudioIntent?: boolean, hasMediaAttachment?: boolean, mediaKind?: string|null, allowContextualFollowup?: boolean }} [opts]
  * @returns {AudioIntent}
  */
 export function detectAudioIntent(message, history = [], opts = {}) {
@@ -272,10 +272,24 @@ export function detectAudioIntent(message, history = [], opts = {}) {
       : 'save_audio_feature_request';
     confidence = 0.78;
     cues.push('vocal_instrument_plan');
-  } else if (ctx && /d[uü]zenle|temizle|[oö]ne\s+[cç][ıi]kar|profesyonel|st[uü]dyo/i.test(text)) {
-    // Follow-up that looks vague alone but continues audio production context
+  } else if (
+    ctx &&
+    opts.allowContextualFollowup !== false &&
+    /^(?:devam\s+et|devam|bunu\s+yap|ayn[ıi]\s+[sş]ekilde|tamam\s+yap)\b/i.test(text)
+  ) {
+    // Explicit continuation only — never infer studio from unrelated announcements
     intent = 'create_studio_version';
     confidence = 0.75;
+    cues.push('contextual_followup');
+  } else if (
+    ctx &&
+    opts.allowContextualFollowup !== false &&
+    /d[uü]zenle|temizle|[oö]ne\s+[cç][ıi]kar|st[uü]dyo|mix|master/i.test(text) &&
+    (AUDIO_DOMAIN.test(text) || STUDIO_CUES.test(text) || VOCAL_CUES.test(text) || INSTRUMENT_CUES.test(text))
+  ) {
+    // Vague follow-up must still carry current-turn audio evidence
+    intent = 'create_studio_version';
+    confidence = 0.72;
     cues.push('contextual_followup');
   } else if (opts.hasMediaAttachment && (AUDIO_DOMAIN.test(text) || STUDIO_CUES.test(text) || NOISE_CUES.test(text) || !text)) {
     if (!text) {
@@ -285,12 +299,19 @@ export function detectAudioIntent(message, history = [], opts = {}) {
     }
   }
 
-  // Hüseyin-style compound: baglama + vocal + professional studio language across turns
-  if (!intent && ctx) {
+  // Multi-turn studio requires current-message operational evidence + scoped history context.
+  // History alone must never activate studio on an unrelated announcement.
+  if (!intent && ctx && opts.allowContextualFollowup !== false) {
     const histText = (history || []).map((h) => h.content || '').join(' ');
+    const currentHasOps =
+      STUDIO_CUES.test(text) ||
+      SEND_AND_DO.test(text) ||
+      /d[uü]zenle|temizle|mix|master|stem|aranje/i.test(text) ||
+      AUDIO_DOMAIN.test(text);
     if (
+      currentHasOps &&
       (INSTRUMENT_CUES.test(histText) || VOCAL_CUES.test(histText) || INSTRUMENT_CUES.test(text)) &&
-      /profesyonel|st[uü]dyo|d[uü]zenle/i.test(text + ' ' + histText)
+      /profesyonel|st[uü]dyo|d[uü]zenle|mix|master/i.test(text)
     ) {
       intent = 'create_studio_version';
       confidence = 0.8;

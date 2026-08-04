@@ -12,6 +12,11 @@ import {
 import { callOpenAI } from './openai-client.js';
 import { extractResponseText } from './atlas-response.js';
 import {
+  withProviderRetry,
+  classifyProviderError,
+  categoryToErrorCode,
+} from './provider-errors.js';
+import {
   detectAnalysisMode,
   buildChatUserPrompt,
   detectTarotSpreadIntent,
@@ -762,6 +767,8 @@ export function buildAtlasPromptBundle(input, options = {}) {
     speakerAttributionContext,
     abjadVerificationContext,
     conversationContext: options.conversationContextBlock || null,
+    repliedToText: options.repliedToText || input.metadata?.repliedToText || null,
+    quotedText: options.quotedText || input.metadata?.quotedText || null,
   });
 
   return {
@@ -1187,6 +1194,11 @@ export async function processAtlasMessage(input, options = {}) {
       channel: input.channel || 'api',
       chatId: meta.chatId || input.conversationId || null,
       messageId: meta.messageId || null,
+      messageThreadId: meta.messageThreadId ?? meta.topicId ?? null,
+      replyTargetMessageId: meta.replyTargetMessageId ?? null,
+      quotedText: meta.quotedText ?? null,
+      repliedToText: meta.repliedToText ?? null,
+      activationReason: meta.activationReason ?? null,
       conversationId,
       media: audioStudioMedia,
     });
@@ -2233,21 +2245,37 @@ export async function processAtlasMessage(input, options = {}) {
 
   try {
     requestTiming.start('llm');
-    requestTiming.noteLlmCall();
-    const result = await invokeLlm({
-      systemPrompt,
-      userPrompt,
-      model: options.model,
-      temperature: options.temperature ?? 0.4,
-      maxTokens,
-      ...(hasImage
-        ? {
-            imageBase64: input.image.base64,
-            mimeType: input.image.mimeType || 'image/jpeg',
-          }
-        : {}),
+    const llmInvoke = () => {
+      requestTiming.noteLlmCall();
+      return invokeLlm({
+        systemPrompt,
+        userPrompt,
+        model: options.model,
+        temperature: options.temperature ?? 0.4,
+        maxTokens,
+        ...(hasImage
+          ? {
+              imageBase64: input.image.base64,
+              mimeType: input.image.mimeType || 'image/jpeg',
+            }
+          : {}),
+      });
+    };
+
+    const { result, attempts: llmAttempts } = await withProviderRetry(llmInvoke, {
+      requestId: requestTiming.requestId,
+      channel: input.channel || 'api',
+      route: 'processAtlasMessage.llm',
+      provider: 'openai',
+      model: options.model || process.env.OPENAI_MODEL || null,
+      maxAttempts: 2,
+      backoffMs: 450,
+      onRetry: () => requestTiming.noteRetryOrFallback(),
     });
     requestTiming.end('llm');
+    if (llmAttempts > 1) {
+      requestTiming.noteRetryOrFallback();
+    }
 
     requestTiming.start('post_llm_guards');
     let reply = extractResponseText(result);
@@ -2355,19 +2383,25 @@ export async function processAtlasMessage(input, options = {}) {
       privacyGuardCtx,
     );
   } catch (err) {
-    const msg = err.message ?? 'Unknown error';
-    let errorCode = 'ENGINE_FAILURE';
+    const classified = classifyProviderError(err);
+    const errorCategory =
+      err?.errorCategory || classified.category;
+    const errorCode =
+      categoryToErrorCode(errorCategory) ||
+      (() => {
+        const msg = err.message ?? 'Unknown error';
+        if (/OPENAI_API_KEY not set/i.test(msg)) return 'MODEL_UNAVAILABLE';
+        if (/timeout|aborted|abort/i.test(msg)) return 'TIMEOUT';
+        if (/rate limit|429/i.test(msg)) return 'RATE_LIMIT';
+        return 'ENGINE_FAILURE';
+      })();
+    const msg = classified.message || err.message || 'Unknown error';
     let status = /** @type {AtlasMessageStatus} */ ('error');
 
-    if (/OPENAI_API_KEY not set/i.test(msg)) {
-      errorCode = 'MODEL_UNAVAILABLE';
-    } else if (/timeout|aborted|abort/i.test(msg)) {
-      errorCode = 'TIMEOUT';
-    } else if (/rate limit|429/i.test(msg)) {
-      errorCode = 'RATE_LIMIT';
-    }
-
-    console.error(`[Atlas] pipeline error (${errorCode}):`, msg);
+    console.error(
+      `[Atlas] pipeline error (${errorCode}/${errorCategory}) requestId=${requestTiming.requestId}:`,
+      msg,
+    );
 
     // Timeout / model failure: prefer deterministic synthesis prose over hard failure when available.
     if (synthesisBridge.ran && synthesisBridge.synthesis?.prose && (errorCode === 'TIMEOUT' || errorCode === 'MODEL_UNAVAILABLE')) {
@@ -2422,6 +2456,9 @@ export async function processAtlasMessage(input, options = {}) {
           pipelineDebug,
           pipelineVersion: PIPELINE_VERSION,
           resultStatus: healthFallback?.resultStatus,
+          errorCategory,
+          retryable: Boolean(healthFallback) || classified.retryEligible,
+          requestId: requestTiming.requestId,
           crossLayerSynthesis: synthesisBridge.ran
             ? { ran: true, once: true, llmError: errorCode }
             : { ran: false, once: true },

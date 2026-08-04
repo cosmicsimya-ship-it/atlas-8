@@ -39,6 +39,11 @@ export interface AtlasChatResponse {
   latencyMs: number;
   memoryUpdated?: boolean;
   memoryHandled?: boolean;
+  status?: string;
+  errorCode?: string | null;
+  errorCategory?: string | null;
+  retryable?: boolean;
+  requestId?: string | null;
 }
 
 export interface AtlasChatErrorResponse {
@@ -55,4 +60,9 @@ export interface AtlasChatMessage {
   profile?: AtlasPromptProfile;
   pending?: boolean;
   error?: boolean;
+  /** Soft server fallback (HTTP 200 + TIMEOUT) — still retryable in UI */
+  retryable?: boolean;
+  requestId?: string | null;
+  /** Stable id linking a user turn to its assistant response for retry without duplication */
+  turnId?: string;
 }

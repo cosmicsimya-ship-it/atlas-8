@@ -26,6 +26,7 @@ import {
   logFounderNotMatchedSafe,
   logFounderSetupHintSafe,
 } from './telegram-identity-log.js';
+import { telegramHistoryScopeKey } from './telegram-turn-intent.js';
 import {
   resolveMultimodalInbound,
   detectInboundKind,
@@ -215,7 +216,7 @@ bot
     console.warn('[Telegram] getMe failed:', err.message);
   });
 
-/** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string }>>} */
+/** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string, userId?: string|null, messageThreadId?: string|number|null }>>} */
 const chatHistories = new Map();
 const MAX_HISTORY_TURNS = 20;
 let firstFromIdLogged = false;
@@ -231,8 +232,9 @@ function normalizeOptions(extra = {}) {
 function flightKey(msg) {
   const chatId = msg.chat?.id;
   const fromId = msg.from?.id ?? (msg.sender_chat?.id != null ? `sc_${msg.sender_chat.id}` : null);
+  const topic = msg.message_thread_id != null ? `:t${msg.message_thread_id}` : '';
   if (msg.chat?.type === 'group' || msg.chat?.type === 'supergroup') {
-    return `${chatId}:${fromId ?? 'unknown'}`;
+    return `${chatId}:${fromId ?? 'unknown'}${topic}`;
   }
   return String(chatId);
 }
@@ -250,12 +252,33 @@ function logFirstTelegramFromId(_msg) {
   logFounderSetupHintSafe(console);
 }
 
+function historyKeyForMessage(msg) {
+  return telegramHistoryScopeKey({
+    chatId: msg.chat?.id,
+    messageThreadId: msg.message_thread_id ?? null,
+  });
+}
+
 function getChatHistory(conversationId) {
   return chatHistories.get(conversationId) ?? [];
 }
 
-function appendChatTurn(conversationId, role, content) {
-  const history = [...getChatHistory(conversationId), { role, content }];
+/**
+ * @param {string} conversationId
+ * @param {'user'|'assistant'} role
+ * @param {string} content
+ * @param {{ userId?: string|null, messageThreadId?: string|number|null }} [meta]
+ */
+function appendChatTurn(conversationId, role, content, meta = {}) {
+  const history = [
+    ...getChatHistory(conversationId),
+    {
+      role,
+      content,
+      userId: meta.userId ?? null,
+      messageThreadId: meta.messageThreadId ?? null,
+    },
+  ];
   chatHistories.set(conversationId, history.slice(-MAX_HISTORY_TURNS));
 }
 
@@ -335,14 +358,21 @@ async function sendReplySafe(msg, reply, trace = {}) {
  * }} [resolveOpts]
  */
 async function forwardToPipeline(msg, resolveOpts = {}) {
-  const conversationId = String(msg.chat.id);
-  const history = getChatHistory(conversationId);
+  const historyScope = historyKeyForMessage(msg);
+  const history = getChatHistory(historyScope);
   const normalized = normalizeTelegramMessage(
     msg,
     history,
     normalizeOptions(resolveOpts),
   );
   const fromId = msg.from?.id != null ? String(msg.from.id) : null;
+  const replyMsg = msg.reply_to_message;
+  const repliedToText =
+    typeof replyMsg?.text === 'string'
+      ? replyMsg.text
+      : typeof replyMsg?.caption === 'string'
+        ? replyMsg.caption
+        : null;
 
   const founderSession =
     normalized.metadata?.senderType === 'sender_chat'
@@ -384,9 +414,17 @@ async function forwardToPipeline(msg, resolveOpts = {}) {
     metadata: {
       ...(normalized.metadata ?? {}),
       ...(fromId ? { telegramFromId: fromId } : { telegramFromId: null }),
+      chatId: String(msg.chat.id),
+      messageThreadId: msg.message_thread_id ?? null,
+      replyTargetMessageId: replyMsg?.message_id ?? null,
+      repliedToText,
+      quotedText: repliedToText,
+      historyScopeKey: historyScope,
     },
     context: {
       speakerAttribution: normalized.context?.speakerAttribution ?? null,
+      repliedToText,
+      quotedText: repliedToText,
     },
   };
 
@@ -521,7 +559,7 @@ async function processOneMessage(msg) {
     if (isGroupChat && process.env.TELEGRAM_GROUP_REQUIRE_MENTION === 'true') {
       normalizeTelegramMessage(
         msg,
-        getChatHistory(conversationId),
+        getChatHistory(historyKeyForMessage(msg)),
         normalizeOptions({
           resolvedMessage: msg.text || msg.caption || 'media',
           mediaKind: inboundKind === 'text' ? null : inboundKind,
@@ -657,8 +695,14 @@ async function processOneMessage(msg) {
         intent: backend.intent,
       });
 
-    appendChatTurn(conversationId, 'user', normalized.message);
-    appendChatTurn(conversationId, 'assistant', reply);
+    appendChatTurn(historyKeyForMessage(msg), 'user', normalized.message, {
+      userId: normalized.userId,
+      messageThreadId: msg.message_thread_id ?? null,
+    });
+    appendChatTurn(historyKeyForMessage(msg), 'assistant', reply, {
+      userId: normalized.userId,
+      messageThreadId: msg.message_thread_id ?? null,
+    });
     await sendReplySafe(msg, reply, {
       ...traceBase,
       intent: backend.intent ?? healthHint.intent ?? null,

@@ -64,6 +64,7 @@ export async function runAudioStudioTurn(input) {
     userId: input.userId,
     chatId: input.chatId,
     conversationId: input.conversationId,
+    messageThreadId: input.messageThreadId,
   });
   const pending = getPendingAudioContext(key);
   const hasMedia = Boolean(input.media?.localPath || input.media?.fileId);
@@ -72,6 +73,7 @@ export async function runAudioStudioTurn(input) {
     pendingAudioIntent: pending?.kind === 'instruction',
     hasMediaAttachment: hasMedia,
     mediaKind: input.media?.mediaKind || null,
+    allowContextualFollowup: pending?.kind === 'instruction',
   });
 
   if (!intent.active && !hasMedia) {
