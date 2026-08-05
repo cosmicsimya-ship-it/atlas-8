@@ -82,10 +82,20 @@ import {
   audioHealthSnapshot,
   getJobStats,
 } from './audio-studio/index.js';
-import { mountSeoRoutes } from './seo/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/** Optional — missing server/seo must not crash the whole Node app (cPanel 503). */
+let mountSeoRoutes = () => {};
+try {
+  const seo = await import('./seo/index.js');
+  mountSeoRoutes = seo.mountSeoRoutes;
+} catch (err) {
+  console.warn(
+    `[ATLAS] SEO routes unavailable (${err?.code || err?.message || err}) — upload server/seo/ to enable /sitemap.xml`,
+  );
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -293,7 +303,17 @@ app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (
 });
 
 app.get('/api/auth/google/status', (_req, res) => {
-  return res.json(getGoogleOAuthPublicStatus());
+  try {
+    return res.status(200).json(getGoogleOAuthPublicStatus());
+  } catch (err) {
+    console.error('[ATLAS] google oauth status error:', err?.message || err);
+    return res.status(200).json({
+      configured: false,
+      redirectUriConfigured: false,
+      redirectUri: null,
+      error: 'google_status_failed',
+    });
+  }
 });
 
 app.get('/api/auth/google', googleOAuthRateLimit, (req, res) => {

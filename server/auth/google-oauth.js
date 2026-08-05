@@ -17,6 +17,30 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 
 /**
+ * Callback URL Google Console'da birebir eşleşmeli.
+ * cPanel'de yalnızca CLIENT_ID + CLIENT_SECRET yeterli — URI otomatik türetilir.
+ * @returns {string}
+ */
+export function resolveGoogleRedirectUri() {
+  const explicit = String(
+    process.env.GOOGLE_REDIRECT_URI || process.env.ATLAS_GOOGLE_REDIRECT_URI || '',
+  ).trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+
+  const front = normalizeOrigin(process.env.FRONTEND_ORIGIN);
+  if (front) {
+    return `${front}/api/auth/google/callback`;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://cosmicsimya.com/api/auth/google/callback';
+  }
+
+  const port = String(process.env.PORT || '3001').trim() || '3001';
+  return `http://localhost:${port}/api/auth/google/callback`;
+}
+
+/**
  * @returns {{
  *   configured: boolean,
  *   clientId: string|null,
@@ -31,11 +55,10 @@ export function getGoogleOAuthConfig() {
   const clientSecret = String(
     process.env.GOOGLE_CLIENT_SECRET || process.env.ATLAS_GOOGLE_CLIENT_SECRET || '',
   ).trim();
-  const redirectUri = String(
-    process.env.GOOGLE_REDIRECT_URI || process.env.ATLAS_GOOGLE_REDIRECT_URI || '',
-  ).trim();
+  const redirectUri = resolveGoogleRedirectUri();
 
   return {
+    // Redirect URI her zaman çözülür; cPanel için ID + secret yeterlidir.
     configured: Boolean(clientId && clientSecret && redirectUri),
     clientId: clientId || null,
     clientSecret: clientSecret || null,
@@ -265,11 +288,13 @@ export async function completeGoogleOAuth(input) {
 
 /**
  * Safe public status — never includes secrets.
+ * redirectUri is non-secret (must match Google Console); useful for deploy checks.
  */
 export function getGoogleOAuthPublicStatus() {
   const cfg = getGoogleOAuthConfig();
   return {
     configured: cfg.configured,
     redirectUriConfigured: Boolean(cfg.redirectUri),
+    redirectUri: cfg.redirectUri,
   };
 }

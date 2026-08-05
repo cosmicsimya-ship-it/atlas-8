@@ -237,14 +237,19 @@ Same-origin Mod A’da CORS daha az kritik; yine de `ATLAS_CORS_ORIGINS` gerçek
 
 ATLAS özel cookie oturumu kullanır; Google yalnızca kimlik doğrular. Client secret yalnızca sunucu `.env` içindedir.
 
-cPanel `.env` içine (gerçek değerleri Google Cloud Console’dan alın):
+cPanel Node.js → Environment Variables (veya `.env`) içine gerçek değerleri Google Cloud Console’dan alın:
 
 ```env
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=https://cosmicsimya.com/api/auth/google/callback
 FRONTEND_ORIGIN=https://cosmicsimya.com
+ATLAS_SECURE_COOKIES=true
+NODE_ENV=production
 ```
+
+`GOOGLE_REDIRECT_URI` boş bırakılırsa Atlas otomatik olarak  
+`https://cosmicsimya.com/api/auth/google/callback` kullanır (veya `FRONTEND_ORIGIN` + `/api/auth/google/callback`).
 
 Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client:
 
@@ -254,7 +259,8 @@ Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web clien
 | Authorized redirect URIs | `https://cosmicsimya.com/api/auth/google/callback` |
 
 Yerel geliştirme ek URI: `http://localhost:3001/api/auth/google/callback`  
-Doğrulama: `GET /api/auth/google/status` → `{ "configured": true }`  
+Doğrulama: `GET /api/auth/google/status` → `{ "configured": true, "redirectUri": "https://cosmicsimya.com/api/auth/google/callback" }`  
+UI: Giriş modalında **Google ile Giriş Yap** aktif olur; başarıda `/atlas` + nav’da ad / e-posta / avatar.  
 E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, `POST /api/auth/login`).
 
 ### Adım 10 — Smoke test

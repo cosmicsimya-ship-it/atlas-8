@@ -66,6 +66,7 @@ export {
 export {
   getGoogleOAuthConfig,
   getGoogleOAuthPublicStatus,
+  resolveGoogleRedirectUri,
   beginGoogleOAuth,
   completeGoogleOAuth,
   buildOAuthReturnUrl,

@@ -118,6 +118,7 @@ export async function logoutAtlas(): Promise<void> {
 export type GoogleAuthStatus = {
   configured: boolean;
   redirectUriConfigured: boolean;
+  redirectUri?: string | null;
 };
 
 export async function fetchGoogleAuthStatus(): Promise<GoogleAuthStatus> {

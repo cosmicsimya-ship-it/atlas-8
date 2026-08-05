@@ -1,6 +1,6 @@
 ﻿import { useEffect, useId, useRef, useState } from 'react';
 import { Eye, EyeOff, LogIn, LogOut, UserPlus, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import {
   consumeAuthCallbackParams,
@@ -30,6 +30,7 @@ export default function AuthSessionControl({
   autoOpen?: boolean;
   initialMode?: AuthMode;
 }) {
+  const navigate = useNavigate();
   const [session, setSession] = useState<AtlasSessionInfo | null>(null);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -59,14 +60,18 @@ export default function AuthSessionControl({
         } else if (callback.auth === 'ok') {
           setError(null);
           setOpen(false);
+          // Google / e-posta dönüşünde Atlas sohbetine al
+          if (next.authenticated && !next.isAnonymous) {
+            navigate('/atlas', { replace: true });
+          }
         }
       })
       .catch(() => setSession(null));
 
     fetchGoogleAuthStatus()
-      .then((s) => setGoogleConfigured(s.configured))
+      .then((s) => setGoogleConfigured(Boolean(s.configured)))
       .catch(() => setGoogleConfigured(false));
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!autoOpen || session == null) return;
@@ -183,6 +188,9 @@ export default function AuthSessionControl({
       setPassword('');
       setPasswordConfirm('');
       closeModal();
+      if (next.authenticated && !next.isAnonymous) {
+        navigate('/atlas');
+      }
     } catch (err) {
       setError(mapAuthError(err));
       setPassword('');
@@ -222,16 +230,20 @@ export default function AuthSessionControl({
     }
   }
 
-  const displayLabel =
+  const displayName =
     session?.displayName ||
-    session?.email ||
     (session?.isFounder ? 'Kurucu' : null) ||
+    (session?.email ? session.email.split('@')[0] : null) ||
     'Hesap';
+  const displayEmail = session?.email || null;
 
   const isLanding = appearance === 'landing';
-  const sessionLabelClass = isLanding
-    ? 'hidden max-w-[9rem] truncate text-[10px] uppercase tracking-[0.2em] text-[#9aa3ae] sm:inline'
-    : 'hidden max-w-[9rem] truncate text-[10px] uppercase tracking-[0.2em] text-[#c9b37a]/55 sm:inline';
+  const sessionNameClass = isLanding
+    ? 'max-w-[9rem] truncate text-[11px] font-medium text-[#e8ecf2] sm:max-w-[11rem]'
+    : 'max-w-[9rem] truncate text-[11px] font-medium text-[#e8ecf2] sm:max-w-[11rem]';
+  const sessionEmailClass = isLanding
+    ? 'max-w-[9rem] truncate text-[10px] normal-case tracking-normal text-[#9aa3ae] sm:max-w-[11rem]'
+    : 'max-w-[9rem] truncate text-[10px] normal-case tracking-normal text-[#c9b37a]/55 sm:max-w-[11rem]';
   const actionBtnClass = isLanding
     ? 'site-focus inline-flex items-center gap-1.5 rounded-full border border-white/16 bg-white/[0.04] px-3.5 py-1.5 text-xs font-medium text-[#d4dae2] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:border-white/24 hover:bg-white/[0.07] hover:text-[#eef1f5] disabled:opacity-60'
     : 'atlas-focus inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#e8ecf2]/75 transition hover:bg-white/5 disabled:opacity-60';
@@ -248,13 +260,24 @@ export default function AuthSessionControl({
               <img
                 src={session.avatarUrl}
                 alt=""
-                className="h-7 w-7 rounded-full border border-white/15 object-cover"
+                className="h-8 w-8 shrink-0 rounded-full border border-white/15 object-cover"
                 referrerPolicy="no-referrer"
               />
-            ) : null}
-            <span className={sessionLabelClass} title={displayLabel}>
-              {displayLabel}
-            </span>
+            ) : (
+              <span
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/5 text-[11px] font-semibold text-[#e8ecf2]/80"
+                aria-hidden
+              >
+                {displayName.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <div
+              className="hidden min-w-0 flex-col sm:flex"
+              title={[displayName, displayEmail].filter(Boolean).join(' · ')}
+            >
+              <span className={sessionNameClass}>{displayName}</span>
+              {displayEmail ? <span className={sessionEmailClass}>{displayEmail}</span> : null}
+            </div>
             <button
               type="button"
               onClick={onLogout}
@@ -326,12 +349,22 @@ export default function AuthSessionControl({
               <button
                 type="button"
                 onClick={onGoogle}
-                disabled={busy}
-                className="atlas-focus flex w-full items-center justify-center gap-2 rounded-xl border border-white/14 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-[#eef1f5] transition hover:bg-white/[0.1] disabled:opacity-60"
+                disabled={busy || !googleConfigured}
+                title={
+                  googleConfigured
+                    ? 'Google hesabınızla Atlas oturumu açın'
+                    : 'Google OAuth sunucuda henüz yapılandırılmadı'
+                }
+                className="atlas-focus flex w-full items-center justify-center gap-2 rounded-xl border border-white/14 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-[#eef1f5] transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <GoogleMark />
-                Google ile Devam Et
+                Google ile Giriş Yap
               </button>
+              {!googleConfigured ? (
+                <p className="text-[10px] leading-relaxed text-[#e8ecf2]/40">
+                  Google girişi şu an kapalı. E-posta ile devam edebilirsiniz.
+                </p>
+              ) : null}
 
               {mode === 'chooser' ? (
                 <div className="grid gap-2 pt-1">

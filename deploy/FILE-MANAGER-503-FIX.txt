@@ -1,0 +1,31 @@
+# File Manager — 503 düzeltme (eksik SEO + güncel index)
+
+Yerel kaynak klasör:
+  server\
+
+cPanel → Node app kökü → server\
+
+## Zorunlu yükle (üzerine yaz)
+
+1) server/index.js
+   → sunucu: server/index.js
+
+2) server/seo/ klasörünün tamamı (yoksa Yeni Klasör: seo)
+   - server/seo/index.js
+   - server/seo/public-routes.js
+   - server/seo/robots.js
+   - server/seo/sitemap.js
+
+3) (Google OAuth için, henüz yüklemediysen)
+   - server/auth/google-oauth.js
+   - server/auth/index.js
+
+## Sonra
+Setup Node.js App → Restart
+
+## Test
+https://cosmicsimya.com/api/ai/health
+https://cosmicsimya.com/api/auth/google/status
+
+503 devam ederse: cPanel → Node app → stderr / error log’a bak
+(genelde "Cannot find module" satırı kalır).
