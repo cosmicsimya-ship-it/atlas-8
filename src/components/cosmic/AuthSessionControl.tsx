@@ -1,4 +1,5 @@
 ﻿import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Eye, EyeOff, LogIn, LogOut, UserPlus, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -315,205 +316,221 @@ export default function AuthSessionControl({
         )}
       </div>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto overscroll-contain bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:p-4"
-          role="presentation"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeModal();
-          }}
-        >
-          <div
-            ref={dialogRef}
-            className="relative my-auto max-h-[min(92dvh,40rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-white/10 bg-[#0a0a0a] p-5 shadow-2xl sm:p-6"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-          >
-            <button
-              type="button"
-              className="atlas-focus absolute right-3 top-3 rounded-full p-1 text-[#e8ecf2]/50 hover:bg-white/5"
-              onClick={closeModal}
-              aria-label="Kapat"
+      {open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="atlas-auth-overlay fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/70 p-3 backdrop-blur-sm sm:p-4"
+              role="presentation"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) closeModal();
+              }}
             >
-              <X className="h-4 w-4" />
-            </button>
-            <h2 id={titleId} className="pr-8 font-brand text-lg font-semibold text-[#e8ecf2]">
-              {title}
-            </h2>
-            <p className="mt-1 text-xs text-[#e8ecf2]/50">
-              Oturum çerez ile korunur. Şifre tarayıcıda saklanmaz.
-            </p>
-
-            <div className="mt-5 space-y-3">
-              <button
-                type="button"
-                onClick={onGoogle}
-                disabled={busy || !googleConfigured}
-                title={
-                  googleConfigured
-                    ? 'Google hesabınızla Atlas oturumu açın'
-                    : 'Google OAuth sunucuda henüz yapılandırılmadı'
-                }
-                className="atlas-focus flex w-full items-center justify-center gap-2 rounded-xl border border-white/14 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-[#eef1f5] transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
+              {/*
+                Portal to document.body: AuthSessionControl lives inside AtlasNav
+                (fixed + backdrop-blur). backdrop-filter creates a containing block
+                so nested position:fixed was clipped to the header height (~64px).
+              */}
+              <div
+                ref={dialogRef}
+                className="atlas-auth-dialog relative my-auto max-h-[calc(100vh-32px)] max-h-[calc(100dvh-32px)] w-[min(100%-24px,480px)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#0a0a0a] p-5 shadow-2xl sm:p-6"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
               >
-                <GoogleMark />
-                Google ile Giriş Yap
-              </button>
-              {!googleConfigured ? (
-                <p className="text-[10px] leading-relaxed text-[#e8ecf2]/40">
-                  Google girişi şu an kapalı. E-posta ile devam edebilirsiniz.
+                <button
+                  type="button"
+                  className="atlas-focus absolute right-3 top-3 z-10 rounded-full p-1 text-[#e8ecf2]/50 hover:bg-white/5"
+                  onClick={closeModal}
+                  aria-label="Kapat"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <h2 id={titleId} className="pr-8 font-brand text-lg font-semibold text-[#e8ecf2]">
+                  {title}
+                </h2>
+                <p className="mt-1 text-xs text-[#e8ecf2]/50">
+                  Oturum çerez ile korunur. Şifre tarayıcıda saklanmaz.
                 </p>
-              ) : null}
 
-              {mode === 'chooser' ? (
-                <div className="grid gap-2 pt-1">
+                <div className="mt-5 space-y-3">
                   <button
                     type="button"
-                    className="atlas-btn-gold w-full"
-                    onClick={() => setMode('register')}
-                    disabled={busy}
+                    onClick={onGoogle}
+                    disabled={busy || !googleConfigured}
+                    title={
+                      googleConfigured
+                        ? 'Google hesabınızla Atlas oturumu açın'
+                        : 'Google OAuth sunucuda henüz yapılandırılmadı'
+                    }
+                    className="atlas-focus flex w-full items-center justify-center gap-2 rounded-xl border border-white/14 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-[#eef1f5] transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    E-posta ile Üye Ol
+                    <GoogleMark />
+                    Google ile Giriş Yap
                   </button>
-                  <button
-                    type="button"
-                    className={actionBtnClass + ' w-full justify-center py-2.5'}
-                    onClick={() => setMode('login')}
-                    disabled={busy}
-                  >
-                    E-posta ile Giriş Yap
-                  </button>
-                </div>
-              ) : (
-                <form className="space-y-3 pt-1" onSubmit={onSubmit}>
-                  <div className="flex gap-2 text-[11px]">
-                    <button
-                      type="button"
-                      className={
-                        mode === 'login'
-                          ? 'text-[#c9b37a]'
-                          : 'text-[#e8ecf2]/45 hover:text-[#e8ecf2]/75'
-                      }
-                      onClick={() => {
-                        setMode('login');
-                        setError(null);
-                      }}
-                    >
-                      Giriş
-                    </button>
-                    <span className="text-[#e8ecf2]/25">·</span>
-                    <button
-                      type="button"
-                      className={
-                        mode === 'register'
-                          ? 'text-[#c9b37a]'
-                          : 'text-[#e8ecf2]/45 hover:text-[#e8ecf2]/75'
-                      }
-                      onClick={() => {
-                        setMode('register');
-                        setError(null);
-                      }}
-                    >
-                      Üye Ol
-                    </button>
-                  </div>
-
-                  <label className="block text-xs text-[#e8ecf2]/65">
-                    {mode === 'register' ? 'E-posta' : 'E-posta veya kullanıcı adı'}
-                    <input
-                      ref={emailRef}
-                      type={mode === 'register' ? 'email' : 'text'}
-                      inputMode={mode === 'register' ? 'email' : 'text'}
-                      autoComplete={mode === 'register' ? 'email' : 'username'}
-                      className="atlas-field mt-1 text-sm"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                      disabled={busy}
-                    />
-                  </label>
-
-                  <label className="block text-xs text-[#e8ecf2]/65">
-                    Şifre
-                    <span className="relative mt-1 block">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        className="atlas-field w-full pr-10 text-sm"
-                        autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        minLength={8}
-                        disabled={busy}
-                      />
-                      <button
-                        type="button"
-                        className="atlas-focus absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#e8ecf2]/45 hover:text-[#e8ecf2]/8"
-                        onClick={() => setShowPassword((v) => !v)}
-                        aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
-                        tabIndex={0}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </span>
-                  </label>
-
-                  {mode === 'register' ? (
-                    <label className="block text-xs text-[#e8ecf2]/65">
-                      Şifre (tekrar)
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        className="atlas-field mt-1 text-sm"
-                        autoComplete="new-password"
-                        value={passwordConfirm}
-                        onChange={(e) => setPasswordConfirm(e.target.value)}
-                        required
-                        minLength={8}
-                        disabled={busy}
-                      />
-                    </label>
+                  {!googleConfigured ? (
+                    <p className="text-[10px] leading-relaxed text-[#e8ecf2]/40">
+                      Google girişi şu an kapalı. E-posta ile devam edebilirsiniz.
+                    </p>
                   ) : null}
 
-                  {error ? (
+                  {mode === 'chooser' ? (
+                    <div className="grid gap-2 pt-1">
+                      <button
+                        type="button"
+                        className="atlas-btn-gold w-full"
+                        onClick={() => setMode('register')}
+                        disabled={busy}
+                      >
+                        E-posta ile Üye Ol
+                      </button>
+                      <button
+                        type="button"
+                        className={actionBtnClass + ' w-full justify-center py-2.5'}
+                        onClick={() => setMode('login')}
+                        disabled={busy}
+                      >
+                        E-posta ile Giriş Yap
+                      </button>
+                    </div>
+                  ) : (
+                    <form className="space-y-3 pt-1" onSubmit={onSubmit}>
+                      <div className="flex gap-2 text-[11px]">
+                        <button
+                          type="button"
+                          className={
+                            mode === 'login'
+                              ? 'text-[#c9b37a]'
+                              : 'text-[#e8ecf2]/45 hover:text-[#e8ecf2]/75'
+                          }
+                          onClick={() => {
+                            setMode('login');
+                            setError(null);
+                          }}
+                        >
+                          Giriş
+                        </button>
+                        <span className="text-[#e8ecf2]/25">·</span>
+                        <button
+                          type="button"
+                          className={
+                            mode === 'register'
+                              ? 'text-[#c9b37a]'
+                              : 'text-[#e8ecf2]/45 hover:text-[#e8ecf2]/75'
+                          }
+                          onClick={() => {
+                            setMode('register');
+                            setError(null);
+                          }}
+                        >
+                          Üye Ol
+                        </button>
+                      </div>
+
+                      <label className="block text-xs text-[#e8ecf2]/65">
+                        {mode === 'register' ? 'E-posta' : 'E-posta veya kullanıcı adı'}
+                        <input
+                          ref={emailRef}
+                          type={mode === 'register' ? 'email' : 'text'}
+                          inputMode={mode === 'register' ? 'email' : 'text'}
+                          autoComplete={mode === 'register' ? 'email' : 'username'}
+                          className="atlas-field mt-1 text-sm"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          disabled={busy}
+                        />
+                      </label>
+
+                      <label className="block text-xs text-[#e8ecf2]/65">
+                        Şifre
+                        <span className="relative mt-1 block">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            className="atlas-field w-full pr-10 text-sm"
+                            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required
+                            minLength={8}
+                            disabled={busy}
+                          />
+                          <button
+                            type="button"
+                            className="atlas-focus absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[#e8ecf2]/45 hover:text-[#e8ecf2]/8"
+                            onClick={() => setShowPassword((v) => !v)}
+                            aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'}
+                            tabIndex={0}
+                          >
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </span>
+                      </label>
+
+                      {mode === 'register' ? (
+                        <label className="block text-xs text-[#e8ecf2]/65">
+                          Şifre (tekrar)
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            className="atlas-field mt-1 text-sm"
+                            autoComplete="new-password"
+                            value={passwordConfirm}
+                            onChange={(e) => setPasswordConfirm(e.target.value)}
+                            required
+                            minLength={8}
+                            disabled={busy}
+                          />
+                        </label>
+                      ) : null}
+
+                      {error ? (
+                        <p className="text-xs text-red-300/90" role="alert">
+                          {error}
+                        </p>
+                      ) : null}
+
+                      <button type="submit" disabled={busy} className="atlas-btn-gold w-full">
+                        {busy
+                          ? mode === 'register'
+                            ? 'Hesap oluşturuluyor…'
+                            : 'Giriş yapılıyor…'
+                          : mode === 'register'
+                            ? 'E-posta ile Üye Ol'
+                            : 'E-posta ile Giriş Yap'}
+                      </button>
+                    </form>
+                  )}
+
+                  {error && mode === 'chooser' ? (
                     <p className="text-xs text-red-300/90" role="alert">
                       {error}
                     </p>
                   ) : null}
 
-                  <button type="submit" disabled={busy} className="atlas-btn-gold w-full">
-                    {busy
-                      ? mode === 'register'
-                        ? 'Hesap oluşturuluyor…'
-                        : 'Giriş yapılıyor…'
-                      : mode === 'register'
-                        ? 'E-posta ile Üye Ol'
-                        : 'E-posta ile Giriş Yap'}
-                  </button>
-                </form>
-              )}
-
-              {error && mode === 'chooser' ? (
-                <p className="text-xs text-red-300/90" role="alert">
-                  {error}
-                </p>
-              ) : null}
-
-              <p className="pt-1 text-center text-[10px] leading-relaxed text-[#e8ecf2]/40">
-                Devam ederek{' '}
-                <Link to="/about#sartlar" className="underline hover:text-[#e8ecf2]/70" onClick={closeModal}>
-                  Kullanım Koşulları
-                </Link>{' '}
-                ve{' '}
-                <Link to="/about#gizlilik" className="underline hover:text-[#e8ecf2]/70" onClick={closeModal}>
-                  Gizlilik Politikası
-                </Link>
-                ’nı kabul etmiş olursunuz.
-              </p>
-            </div>
-          </div>
-        </div>
-      ) : null}
+                  <p className="pt-1 text-center text-[10px] leading-relaxed text-[#e8ecf2]/40">
+                    Devam ederek{' '}
+                    <Link
+                      to="/about#sartlar"
+                      className="underline hover:text-[#e8ecf2]/70"
+                      onClick={closeModal}
+                    >
+                      Kullanım Koşulları
+                    </Link>{' '}
+                    ve{' '}
+                    <Link
+                      to="/about#gizlilik"
+                      className="underline hover:text-[#e8ecf2]/70"
+                      onClick={closeModal}
+                    >
+                      Gizlilik Politikası
+                    </Link>
+                    ’nı kabul etmiş olursunuz.
+                  </p>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
