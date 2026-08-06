@@ -93,6 +93,7 @@ writeFileSync(join(OUT, 'server', 'generated', '.gitkeep'), '');
 const REQUIRED_AUTH_FILES = [
   'server/auth/index.js',
   'server/auth/google-oauth.js',
+  'server/auth/google-oauth-http.js',
   'server/auth/cookie-config.js',
   'server/auth/account-store.js',
   'server/auth/session-service.js',
@@ -116,6 +117,30 @@ const missing = REQUIRED_SERVER_FILES.filter((rel) => !existsSync(join(OUT, rel)
 if (missing.length) {
   console.error('[prepare-production] MISSING required files:');
   for (const m of missing) console.error('  -', m);
+  process.exit(1);
+}
+
+// LiteSpeed lsnode uses require() — packaged server/index.js must not contain top-level await.
+const packagedIndex = readFileSync(join(OUT, 'server', 'index.js'), 'utf8');
+// Strip line comments before scanning so docs like `// await import(...)` do not false-positive.
+const indexNoLineComments = packagedIndex.replace(/^\s*\/\/.*$/gm, '');
+if (/\bawait\s+import\s*\(/.test(indexNoLineComments)) {
+  console.error(
+    '[prepare-production] REFUSING package: server/index.js has top-level await import —',
+    'LiteSpeed lsnode will crash with ERR_REQUIRE_ASYNC_MODULE (HTML 503 on all routes).',
+  );
+  process.exit(1);
+}
+if (!packagedIndex.includes("from './seo/index.js'") && !packagedIndex.includes('from "./seo/index.js"')) {
+  console.error('[prepare-production] server/index.js must statically import ./seo/index.js');
+  process.exit(1);
+}
+if (!packagedIndex.includes('mountGoogleOAuthRoutes')) {
+  console.error('[prepare-production] server/index.js must call mountGoogleOAuthRoutes');
+  process.exit(1);
+}
+if (!existsSync(join(OUT, 'server', 'auth', 'google-oauth-http.js'))) {
+  console.error('[prepare-production] missing server/auth/google-oauth-http.js');
   process.exit(1);
 }
 
@@ -208,12 +233,13 @@ Upload these paths into the Node application root (overwrite):
 
 Then: Setup Node.js App → Restart
 
-Test URLs:
+Test URLs (prefer oauth/* — LiteSpeed may HTML-503 paths with "/google/"):
   https://cosmicsimya.com/api/ai/health
-  https://cosmicsimya.com/api/auth/google/status
-  https://cosmicsimya.com/api/auth/google   (Accept: application/json)
+  https://cosmicsimya.com/api/auth/oauth/status
+  https://cosmicsimya.com/api/auth/oauth/start   (Accept: application/json)
+  https://cosmicsimya.com/api/auth/google/status (legacy)
 
-Auth files packaged:
+Required auth files (must include google-oauth-http.js):
 ${authExpected.map((n) => `  - server/auth/${n}`).join('\n')}
 `,
 );
@@ -232,7 +258,7 @@ FRONTEND_ORIGIN=https://YOURDOMAIN.com
 # Google OAuth (cPanel Environment Variables — same names):
 # GOOGLE_CLIENT_ID=
 # GOOGLE_CLIENT_SECRET=
-# GOOGLE_REDIRECT_URI=https://YOURDOMAIN.com/api/auth/google/callback
+# GOOGLE_REDIRECT_URI=https://YOURDOMAIN.com/api/auth/oauth/callback
 # Same machine Telegram → API:
 BACKEND_URL=http://127.0.0.1:3001
 # ATLAS_INTERNAL_BOT_SECRET=generate-a-long-random-secret
@@ -252,11 +278,12 @@ Generated: ${new Date().toISOString()}
    Or set the same keys in cPanel Node.js → Environment Variables.
 3. Google OAuth: paste CLIENT_ID / CLIENT_SECRET (see deploy/cpanel-google-oauth.env.txt).
    Google Console redirect URI must be:
-   https://cosmicsimya.com/api/auth/google/callback
+   https://cosmicsimya.com/api/auth/oauth/callback
+   (legacy also: https://cosmicsimya.com/api/auth/google/callback)
 4. npm ci --omit=dev   (or npm install --omit=dev)
 5. Start API:   NODE_ENV=production node server/index.js
 6. Start bot:   NODE_ENV=production node server/telegram.js   (separate process)
-7. Verify: GET /api/auth/google/status → configured:true
+7. Verify: GET /api/auth/oauth/status → configured:true
 8. See docs/PRODUCTION-NAMECHEAP-DEPLOY.md in the source repo for full checklist.
 
 Same-origin mode: browser loads dist via Express; API is /api on the same host.

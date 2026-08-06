@@ -66,14 +66,7 @@ import {
   toPublicAccount,
   toSessionProfile,
   logAdminAudit,
-  getGoogleOAuthPublicStatus,
-  beginGoogleOAuth,
-  completeGoogleOAuth,
-  buildOAuthReturnUrl,
-  resolveFrontendReturnOrigin,
-  setOAuthStateCookie,
-  clearOAuthStateCookie,
-  OAUTH_STATE_COOKIE,
+  mountGoogleOAuthRoutes,
 } from './auth/index.js';
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 import { createAudioStudioRouter } from './audio-studio-routes.js';
@@ -83,19 +76,16 @@ import {
   getJobStats,
 } from './audio-studio/index.js';
 
+import { mountSeoRoutes } from './seo/index.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Optional — missing server/seo must not crash the whole Node app (cPanel 503). */
-let mountSeoRoutes = () => {};
-try {
-  const seo = await import('./seo/index.js');
-  mountSeoRoutes = seo.mountSeoRoutes;
-} catch (err) {
-  console.warn(
-    `[ATLAS] SEO routes unavailable (${err?.code || err?.message || err}) — upload server/seo/ to enable /sitemap.xml`,
-  );
-}
+// CRITICAL (Namecheap LiteSpeed / lsnode.js):
+// Do NOT use top-level await in this file (e.g. `await import('./seo/...')`).
+// lsnode loads the app with require(); a TLA graph throws:
+//   Error [ERR_REQUIRE_ASYNC_MODULE]
+// and every URL returns HTML 503. Keep SEO as a static import; package always ships server/seo/.
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -302,100 +292,7 @@ app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (
   });
 });
 
-app.get('/api/auth/google/status', (_req, res) => {
-  try {
-    return res.status(200).json(getGoogleOAuthPublicStatus());
-  } catch (err) {
-    console.error('[ATLAS] google oauth status error:', err?.message || err);
-    return res.status(200).json({
-      configured: false,
-      redirectUriConfigured: false,
-      redirectUri: null,
-      error: 'google_status_failed',
-    });
-  }
-});
-
-app.get('/api/auth/google', googleOAuthRateLimit, (req, res) => {
-  try {
-    const returnOrigin =
-      typeof req.query.returnOrigin === 'string' ? req.query.returnOrigin : req.get('origin');
-    const started = beginGoogleOAuth({ returnOrigin });
-    if (!started.ok) {
-      if (req.accepts(['html', 'json']) === 'json') {
-        return res.status(503).json({
-          error: 'Google authentication is not configured',
-          code: 'google_not_configured',
-        });
-      }
-      return res.redirect(
-        302,
-        buildOAuthReturnUrl(resolveFrontendReturnOrigin(returnOrigin), {
-          ok: false,
-          code: started.code || 'google_not_configured',
-        }),
-      );
-    }
-    setOAuthStateCookie(res, started.sealedState);
-    return res.redirect(302, started.authUrl);
-  } catch (err) {
-    console.error('[ATLAS] google oauth start error:', err.message);
-    return res.status(503).json({ error: 'Authentication service unavailable' });
-  }
-});
-
-app.get('/api/auth/google/callback', googleOAuthRateLimit, async (req, res) => {
-  const sealedCookie = req.cookies?.[OAUTH_STATE_COOKIE];
-  try {
-    const completed = await completeGoogleOAuth({
-      code: typeof req.query.code === 'string' ? req.query.code : null,
-      state: typeof req.query.state === 'string' ? req.query.state : null,
-      error: typeof req.query.error === 'string' ? req.query.error : null,
-      sealedCookie,
-    });
-    clearOAuthStateCookie(res);
-
-    if (!completed.ok) {
-      return res.redirect(
-        302,
-        buildOAuthReturnUrl(completed.returnOrigin, {
-          ok: false,
-          code: completed.code || 'oauth_failed',
-        }),
-      );
-    }
-
-    const previous = readSessionToken(req);
-    const result = await loginWithGoogleIdentity({
-      ...completed.google,
-      previousRawToken: previous,
-    });
-
-    if (!result.ok) {
-      return res.redirect(
-        302,
-        buildOAuthReturnUrl(completed.returnOrigin, {
-          ok: false,
-          code: result.code || 'google_auth_failed',
-        }),
-      );
-    }
-
-    setSessionCookie(res, result.rawToken);
-    ensureCsrfCookie(res, req);
-    return res.redirect(302, buildOAuthReturnUrl(completed.returnOrigin, { ok: true }));
-  } catch (err) {
-    console.error('[ATLAS] google oauth callback error:', err.message);
-    clearOAuthStateCookie(res);
-    return res.redirect(
-      302,
-      buildOAuthReturnUrl(process.env.FRONTEND_ORIGIN || 'https://cosmicsimya.com', {
-        ok: false,
-        code: 'oauth_failed',
-      }),
-    );
-  }
-});
+mountGoogleOAuthRoutes(app, { rateLimit: googleOAuthRateLimit });
 
 app.post(
   '/api/auth/register',
@@ -1580,7 +1477,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  Model:  ${DEFAULT_MODEL}`);
     console.log(`  Assets: ${GENERATED_DIR}`);
     console.log(`  Frontend: ${serveFrontend ? '✓ dist/ (same-origin)' : '✗ not served (API-only)'}`);
-    console.log('  Auth:   GET/POST /api/auth/session|login|logout|register, Google OAuth /api/auth/google');
+    console.log('  Auth:   GET/POST /api/auth/session|login|logout|register, OAuth /api/auth/oauth/* (+ legacy /api/auth/google*)');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
     console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
     console.log('  SEO:    GET /sitemap.xml, GET /robots.txt');

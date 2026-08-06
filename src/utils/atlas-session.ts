@@ -123,9 +123,14 @@ export type GoogleAuthStatus = {
 
 export async function fetchGoogleAuthStatus(): Promise<GoogleAuthStatus> {
   try {
-    return await apiRequest<GoogleAuthStatus>('/api/auth/google/status', { method: 'GET' });
+    // Prefer path without "/google/" — LiteSpeed/ModSecurity may 503 those URLs.
+    return await apiRequest<GoogleAuthStatus>('/api/auth/oauth/status', { method: 'GET' });
   } catch {
-    return { configured: false, redirectUriConfigured: false };
+    try {
+      return await apiRequest<GoogleAuthStatus>('/api/auth/google/status', { method: 'GET' });
+    } catch {
+      return { configured: false, redirectUriConfigured: false };
+    }
   }
 }
 
@@ -133,7 +138,7 @@ export async function fetchGoogleAuthStatus(): Promise<GoogleAuthStatus> {
 export function startGoogleAuth(): void {
   const returnOrigin = typeof window !== 'undefined' ? window.location.origin : '';
   const qs = returnOrigin ? `?returnOrigin=${encodeURIComponent(returnOrigin)}` : '';
-  window.location.assign(`${BACKEND_URL}/api/auth/google${qs}`);
+  window.location.assign(`${BACKEND_URL}/api/auth/oauth/start${qs}`);
 }
 
 export function mapAuthError(err: unknown): string {

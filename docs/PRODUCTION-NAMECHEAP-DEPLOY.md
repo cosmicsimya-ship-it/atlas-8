@@ -242,24 +242,26 @@ cPanel Node.js → Environment Variables (veya `.env`) içine gerçek değerleri
 ```env
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI=https://cosmicsimya.com/api/auth/google/callback
+GOOGLE_REDIRECT_URI=https://cosmicsimya.com/api/auth/oauth/callback
 FRONTEND_ORIGIN=https://cosmicsimya.com
 ATLAS_SECURE_COOKIES=true
 NODE_ENV=production
 ```
 
 `GOOGLE_REDIRECT_URI` boş bırakılırsa Atlas otomatik olarak  
-`https://cosmicsimya.com/api/auth/google/callback` kullanır (veya `FRONTEND_ORIGIN` + `/api/auth/google/callback`).
+`https://cosmicsimya.com/api/auth/oauth/callback` kullanır (veya `FRONTEND_ORIGIN` + `/api/auth/oauth/callback`).
+
+LiteSpeed / ModSecurity bazı hostlarda `/api/auth/google/*` yollarını HTML 503 ile keser; tercih edilen yollar `/api/auth/oauth/*`.
 
 Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Web client:
 
 | Alan | Değer |
 |------|--------|
 | Authorized JavaScript origins | `https://cosmicsimya.com`, `https://www.cosmicsimya.com` |
-| Authorized redirect URIs | `https://cosmicsimya.com/api/auth/google/callback` |
+| Authorized redirect URIs | `https://cosmicsimya.com/api/auth/oauth/callback` (+ isteğe bağlı legacy `.../google/callback`) |
 
-Yerel geliştirme ek URI: `http://localhost:3001/api/auth/google/callback`  
-Doğrulama: `GET /api/auth/google/status` → `{ "configured": true, "redirectUri": "https://cosmicsimya.com/api/auth/google/callback" }`  
+Yerel geliştirme ek URI: `http://localhost:3001/api/auth/oauth/callback`  
+Doğrulama: `GET /api/auth/oauth/status` → `{ "configured": true, "redirectUri": "https://cosmicsimya.com/api/auth/oauth/callback" }`  
 UI: Giriş modalında **Google ile Giriş Yap** aktif olur; başarıda `/atlas` + nav’da ad / e-posta / avatar.  
 E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, `POST /api/auth/login`).
 

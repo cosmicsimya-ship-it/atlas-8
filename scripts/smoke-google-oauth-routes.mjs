@@ -1,6 +1,6 @@
 /**
  * Local smoke test for Google OAuth routes (does not modify .env files).
- * Forces empty Google credentials for predictable 503 on /api/auth/google.
+ * Forces empty Google credentials for predictable 503 on start endpoints.
  */
 import { createServer } from 'http';
 
@@ -42,6 +42,14 @@ async function check(path, { headers = {}, expectStatus, expectJson } = {}) {
 }
 
 await check('/api/ai/health', { expectStatus: 200, expectJson: { status: 'ok' } });
+await check('/api/auth/oauth/status', {
+  expectStatus: 200,
+  expectJson: {
+    configured: false,
+    redirectUriConfigured: '*',
+    redirectUri: '*',
+  },
+});
 await check('/api/auth/google/status', {
   expectStatus: 200,
   expectJson: {
@@ -49,6 +57,11 @@ await check('/api/auth/google/status', {
     redirectUriConfigured: '*',
     redirectUri: '*',
   },
+});
+await check('/api/auth/oauth/start', {
+  headers: { Accept: 'application/json' },
+  expectStatus: 503,
+  expectJson: { code: 'google_not_configured' },
 });
 await check('/api/auth/google', {
   headers: { Accept: 'application/json' },

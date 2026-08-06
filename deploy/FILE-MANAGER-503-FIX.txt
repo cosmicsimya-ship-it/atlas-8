@@ -1,31 +1,49 @@
-# File Manager — 503 düzeltme (eksik SEO + güncel index)
+# File Manager — 503 düzeltme (Google OAuth + SEO + lsnode)
 
-Yerel kaynak klasör:
-  server\
+## Gerçek stack trace'ler (cPanel → Node app → stderr / Error log)
 
-cPanel → Node app kökü → server\
+### A) Tüm /api/* HTML 503 (Passenger / LiteSpeed)
+lsnode `require()` ile yükler. `server/index.js` içinde top-level await varsa:
 
-## Zorunlu yükle (üzerine yaz)
+```
+Error [ERR_REQUIRE_ASYNC_MODULE]: require() cannot be used on an ESM graph with top-level await.
+...
+```
+
+→ `server/index.js` içinde `await import('./seo/...')` OLMAMALI.
+→ SEO: `import { mountSeoRoutes } from './seo/index.js';` (statik) + `server/seo/` klasörü zorunlu.
+
+Eksik dosya (kısmi upload):
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '.../server/auth/google-oauth-http.js'
+```
+
+veya
+
+```
+SyntaxError: The requested module './auth/index.js' does not provide an export named 'mountGoogleOAuthRoutes'
+```
+
+### B) Yalnızca /api/auth/google/* HTML 503, /api/ai/health = 200
+LiteSpeed / ModSecurity "/google/" yolunu kesiyor (istek Node'a ulaşmaz).
+Node stack trace YOK.
+Kullan: /api/auth/oauth/status ve /api/auth/oauth/start
+Google Console redirect: https://cosmicsimya.com/api/auth/oauth/callback
+
+## Zorunlu yükle (Node app kökü)
 
 1) server/index.js
-   → sunucu: server/index.js
-
-2) server/seo/ klasörünün tamamı (yoksa Yeni Klasör: seo)
-   - server/seo/index.js
-   - server/seo/public-routes.js
-   - server/seo/robots.js
-   - server/seo/sitemap.js
-
-3) (Google OAuth için, henüz yüklemediysen)
-   - server/auth/google-oauth.js
-   - server/auth/index.js
+2) server/auth/ tamamı — özellikle google-oauth-http.js + google-oauth.js + index.js
+3) server/seo/ tamamı (statik import — eksikse app hiç açılmaz)
+4) dist/ (UI oauth yolları için)
 
 ## Sonra
 Setup Node.js App → Restart
 
+## Env
+GOOGLE_REDIRECT_URI=https://cosmicsimya.com/api/auth/oauth/callback
+
 ## Test
 https://cosmicsimya.com/api/ai/health
-https://cosmicsimya.com/api/auth/google/status
-
-503 devam ederse: cPanel → Node app → stderr / error log’a bak
-(genelde "Cannot find module" satırı kalır).
+https://cosmicsimya.com/api/auth/oauth/status

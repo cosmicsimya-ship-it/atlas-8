@@ -16,12 +16,18 @@ if (!existsSync(authIndex)) {
   process.exit(1);
 }
 
+const httpModPath = join(pkgRoot, 'server', 'auth', 'google-oauth-http.js');
+if (!existsSync(httpModPath)) {
+  throw new Error('missing server/auth/google-oauth-http.js');
+}
+
 const mod = await import(pathToFileURL(authIndex).href);
 const {
   getGoogleOAuthPublicStatus,
   resolveGoogleRedirectUri,
   beginGoogleOAuth,
   getGoogleOAuthConfig,
+  mountGoogleOAuthRoutes,
 } = mod;
 
 if (typeof getGoogleOAuthPublicStatus !== 'function') {
@@ -36,6 +42,9 @@ if (typeof beginGoogleOAuth !== 'function') {
 if (typeof getGoogleOAuthConfig !== 'function') {
   throw new Error('getGoogleOAuthConfig not exported');
 }
+if (typeof mountGoogleOAuthRoutes !== 'function') {
+  throw new Error('mountGoogleOAuthRoutes not exported (need google-oauth-http.js)');
+}
 
 const status = getGoogleOAuthPublicStatus();
 const uri = resolveGoogleRedirectUri();
@@ -45,7 +54,7 @@ if (typeof status?.redirectUriConfigured !== 'boolean') {
   throw new Error('bad redirectUriConfigured');
 }
 if (!('redirectUri' in status)) throw new Error('missing redirectUri');
-if (typeof uri !== 'string' || !uri.includes('/api/auth/google/callback')) {
+if (typeof uri !== 'string' || !uri.includes('/api/auth/') || !uri.includes('/callback')) {
   throw new Error('bad redirect uri: ' + uri);
 }
 

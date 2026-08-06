@@ -403,7 +403,7 @@ console.log('\n=== Registration / Google provisioning ===\n');
 
   const status = getGoogleOAuthPublicStatus();
   assert('google.status no secret', status.configured === false && !('clientSecret' in status));
-  assert('google.status has redirectUri', typeof status.redirectUri === 'string' && status.redirectUri.includes('/api/auth/google/callback'));
+  assert('google.status has redirectUri', typeof status.redirectUri === 'string' && status.redirectUri.includes('/api/auth/') && status.redirectUri.includes('/callback'));
   const started = beginGoogleOAuth({});
   assert('google.begin without env', started.ok === false && started.code === 'google_not_configured');
 }

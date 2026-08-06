@@ -29,15 +29,16 @@ export function resolveGoogleRedirectUri() {
 
   const front = normalizeOrigin(process.env.FRONTEND_ORIGIN);
   if (front) {
-    return `${front}/api/auth/google/callback`;
+    // Prefer /oauth/callback — LiteSpeed/ModSecurity often blocks "/google/" URL segments.
+    return `${front}/api/auth/oauth/callback`;
   }
 
   if (process.env.NODE_ENV === 'production') {
-    return 'https://cosmicsimya.com/api/auth/google/callback';
+    return 'https://cosmicsimya.com/api/auth/oauth/callback';
   }
 
   const port = String(process.env.PORT || '3001').trim() || '3001';
-  return `http://localhost:${port}/api/auth/google/callback`;
+  return `http://localhost:${port}/api/auth/oauth/callback`;
 }
 
 /**

@@ -76,6 +76,8 @@ export {
   resolveFrontendReturnOrigin,
 } from './google-oauth.js';
 
+export { mountGoogleOAuthRoutes } from './google-oauth-http.js';
+
 export {
   attachAuthFromSession,
   requireTelegramBotSecret,
