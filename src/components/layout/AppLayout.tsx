@@ -108,7 +108,7 @@ export default function AppLayout() {
             </div>
             <div className="max-h-72 overflow-y-auto py-2">
               {filtered.length === 0 && (
-                <div className="px-4 py-8 text-center text-sm text-atlas-text-dim">Sonuç bulunamadı</div>
+                <div className="px-4 py-8 text-center text-sm text-atlas-text-dim">Eşleşen komut yok</div>
               )}
               {(() => {
                 let lastSection = '';

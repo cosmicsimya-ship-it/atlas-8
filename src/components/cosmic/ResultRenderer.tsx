@@ -1,4 +1,5 @@
 ﻿import type { PersonalAnalysisEnvelope } from '../../types/personal-analysis';
+import { emptyResultUserCopy } from '../../utils/archive-result-contract';
 import { formatAnalysisSections, statusPresentation } from '../../utils/result-formatter';
 
 interface ResultRendererProps {
@@ -9,6 +10,13 @@ interface ResultRendererProps {
 export default function ResultRenderer({ title, envelope }: ResultRendererProps) {
   const status = statusPresentation(envelope.status);
   const sections = formatAnalysisSections(envelope);
+  const emptyReason =
+    envelope.status === 'insufficient_data'
+      ? 'insufficient_data'
+      : envelope.status === 'reject'
+        ? 'reject'
+        : 'empty_synthesis';
+  const emptyCopy = sections.length === 0 ? emptyResultUserCopy(emptyReason) : null;
 
   return (
     <article className="space-y-8 print:text-black">
@@ -28,18 +36,15 @@ export default function ResultRenderer({ title, envelope }: ResultRendererProps)
         </span>
       </header>
 
-      {envelope.status !== 'complete' && (
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5 text-sm leading-relaxed text-amber-100/85">
-          {envelope.status === 'insufficient_data'
-            ? 'Analiz için yeterli veri bulunamadı. Eksik alanları tamamlayıp tekrar deneyebilirsin.'
-            : 'Bu istek mevcut verilerle işlenemedi. Niyetini netleştirmek veya koordinatları gözden geçirmek faydalı olabilir.'}
+      {emptyCopy ? (
+        <div
+          className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-sm leading-relaxed"
+          role="status"
+        >
+          <p className="font-display text-lg text-[#e8ecf2]/92">{emptyCopy.title}</p>
+          <p className="mt-2 text-[#e8ecf2]/68">{emptyCopy.body}</p>
+          <p className="mt-3 text-xs text-[#c9b37a]/75">{emptyCopy.actionHint}</p>
         </div>
-      )}
-
-      {sections.length === 0 ? (
-        <p className="text-[#e8ecf2]/55">
-          Bu yanıt için görüntülenecek sentez bölümü bulunamadı. Ham veri kaydedildi.
-        </p>
       ) : (
         sections.map((section) => (
           <section key={section.id} className="space-y-3 print:break-inside-avoid">

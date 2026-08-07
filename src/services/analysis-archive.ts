@@ -1,5 +1,6 @@
 import type { PersonalAnalysisEnvelope, PersonalAnalysisStatus } from '../types/personal-analysis';
 import { apiRequest } from './api-client';
+import { unwrapArchiveRecordPayload } from '../utils/archive-result-contract';
 
 export interface AnalysisFormSummary {
   name?: string;
@@ -36,9 +37,10 @@ export async function getArchiveRecord(
   userId: string,
   analysisId: string,
 ): Promise<AnalysisArchiveRecord> {
-  return apiRequest<AnalysisArchiveRecord>(
+  const data = await apiRequest<unknown>(
     `/api/archive/${encodeURIComponent(userId)}/${encodeURIComponent(analysisId)}`,
   );
+  return unwrapArchiveRecordPayload(data);
 }
 
 export async function saveArchiveRecord(

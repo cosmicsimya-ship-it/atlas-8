@@ -6,6 +6,10 @@ import CosmicShell from '../components/cosmic/CosmicShell';
 import ResultRenderer from '../components/cosmic/ResultRenderer';
 import { getArchiveRecord } from '../services/analysis-archive';
 import type { AnalysisArchiveRecord } from '../services/analysis-archive';
+import {
+  archiveLoadUserMessage,
+  emptyResultUserCopy,
+} from '../utils/archive-result-contract';
 import { buildResultPlainText } from '../utils/result-formatter';
 import { getWebUserId } from '../utils/atlas-session';
 
@@ -16,11 +20,30 @@ export default function AnalysisResult() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<'idle' | 'done' | 'failed'>('idle');
 
-  useEffect(() => {
+  const reload = () => {
     if (!id) return;
+    setError(null);
+    setRecord(null);
     getArchiveRecord(getWebUserId(), id)
       .then(setRecord)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Kayıt yüklenemedi.'));
+      .catch((err) => setError(archiveLoadUserMessage(err)));
+  };
+
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setError(null);
+    setRecord(null);
+    getArchiveRecord(getWebUserId(), id)
+      .then((next) => {
+        if (!cancelled) setRecord(next);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(archiveLoadUserMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const copyResult = async () => {
@@ -40,16 +63,25 @@ export default function AnalysisResult() {
       <CosmicShell>
         <main className="mx-auto max-w-2xl px-4 py-28 md:px-8">
           <div
-            className="rounded-2xl border border-red-400/20 bg-red-950/20 p-6 text-center"
+            className="rounded-2xl border border-amber-400/20 bg-amber-950/20 p-6 text-center"
             role="alert"
           >
-            <p className="text-sm leading-6 text-red-100/90">{error}</p>
-            <Link
-              to="/archive"
-              className="site-focus mt-4 inline-block text-sm text-red-100/80 underline-offset-4 transition hover:underline"
-            >
-              Arşive dön
-            </Link>
+            <p className="text-sm leading-6 text-amber-50/90">{error}</p>
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={reload}
+                className="site-focus text-sm text-amber-100/85 underline-offset-4 transition hover:underline"
+              >
+                Tekrar dene
+              </button>
+              <Link
+                to="/archive"
+                className="site-focus text-sm text-amber-100/80 underline-offset-4 transition hover:underline"
+              >
+                Arşive dön
+              </Link>
+            </div>
           </div>
         </main>
       </CosmicShell>
@@ -76,13 +108,30 @@ export default function AnalysisResult() {
     );
   }
 
+  const missing = !record.envelope ? emptyResultUserCopy('missing_envelope') : null;
+
   return (
     <CosmicShell showBackground={false}>
       <main className="mx-auto max-w-3xl px-4 pb-16 pt-28 md:px-8 print:max-w-none print:px-8 print:pt-8">
         {record.envelope ? (
           <ResultRenderer title={record.title} envelope={record.envelope} />
         ) : (
-          <p className="text-[#e8ecf2]/55">Sonuç verisi bulunamadı.</p>
+          <article className="space-y-4 border-b border-white/10 pb-8">
+            <p className="text-xs uppercase tracking-[0.22em] text-[#c9b37a]/70">Analiz Sonucu</p>
+            <h1 className="font-display text-3xl leading-tight text-[#e8ecf2] md:text-4xl">
+              {record.title}
+            </h1>
+            {missing && (
+              <div
+                className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+                role="status"
+              >
+                <p className="font-display text-lg text-[#e8ecf2]/92">{missing.title}</p>
+                <p className="mt-2 text-sm leading-6 text-[#e8ecf2]/68">{missing.body}</p>
+                <p className="mt-3 text-xs text-[#c9b37a]/75">{missing.actionHint}</p>
+              </div>
+            )}
+          </article>
         )}
 
         <div className="mt-10 flex flex-wrap gap-2.5 print:hidden">
@@ -102,7 +151,12 @@ export default function AnalysisResult() {
           >
             <MessageCircle size={16} aria-hidden /> Atlas’a Sor
           </button>
-          <button type="button" onClick={copyResult} className="atlas-btn-ghost">
+          <button
+            type="button"
+            onClick={copyResult}
+            disabled={!record.envelope}
+            className="atlas-btn-ghost disabled:opacity-40"
+          >
             <Copy size={16} aria-hidden />
             <span aria-live="polite">
               {copied === 'done'

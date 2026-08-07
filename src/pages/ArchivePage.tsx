@@ -8,6 +8,7 @@ import {
   listArchive,
   type AnalysisArchiveRecord,
 } from '../services/analysis-archive';
+import { archiveLoadUserMessage } from '../utils/archive-result-contract';
 import { statusPresentation } from '../utils/result-formatter';
 import { getWebUserId } from '../utils/atlas-session';
 
@@ -27,7 +28,7 @@ export default function ArchivePage() {
     setError(null);
     listArchive(getWebUserId())
       .then(setRecords)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Arşiv yüklenemedi.'))
+      .catch((err) => setError(archiveLoadUserMessage(err)))
       .finally(() => setLoading(false));
   };
 
