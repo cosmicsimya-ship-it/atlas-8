@@ -138,6 +138,10 @@ import {
   ABJAD_VERIFICATION_VERSION,
 } from './abjad-verification.js';
 import {
+  tryDeterministicQuranVerseReply,
+  QURAN_VERSE_LOOKUP_VERSION,
+} from './quran-verse-lookup/index.js';
+import {
   tryResolveConversationContext,
   applyRepetitionGuard,
   noteAssistantTurn,
@@ -1108,6 +1112,37 @@ export async function processAtlasMessage(input, options = {}) {
       },
       privacyGuardCtx,
     );
+  }
+
+  // ── Quran verse lookup — zero-hallucination gate (before LLM / spiritual engines) ──
+  // NO SOURCE = NO VERSE. Multi-layer synthesis keeps its own path.
+  if (!skipResolvers) {
+    const quranVerse = await tryDeterministicQuranVerseReply({
+      message,
+      verseStore: options.verseStore ?? null,
+      retrieveOpts: options.quranRetrieveOpts ?? undefined,
+    });
+    if (quranVerse.handled) {
+      return applyPrivacyGuardToResult(
+        {
+          status: quranVerse.status,
+          reply: quranVerse.reply,
+          intent: quranVerse.intent ?? 'quran_verse_lookup',
+          engine: quranVerse.engine,
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            resultStatus: quranVerse.resultStatus,
+            ...quranVerse.data,
+            quranVerseLookupVersion: QURAN_VERSE_LOOKUP_VERSION,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
   }
 
   // ── Memory commands BEFORE privacy short-circuit ──

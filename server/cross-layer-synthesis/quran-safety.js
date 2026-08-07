@@ -33,7 +33,8 @@ export function validateVerseReference(surah, ayah) {
 }
 
 /**
- * Parse "2:255", "Bakara 255", "sure 2 ayet 255" loosely.
+ * Parse "2:255", "Bakara 255", "sure 2 ayet 255" loosely (numeric forms here).
+ * Named Turkish forms: use parseQuranVerseLookup in quran-verse-lookup/.
  * @param {string|object} ref
  * @returns {{ surah: number|null, ayah: number|null, raw: string }}
  */

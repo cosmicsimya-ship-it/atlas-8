@@ -31,7 +31,7 @@ export const MESSAGE_SYNTHESIS_BRIDGE_VERSION = 'atlas-message-synthesis-bridge-
 
 const LAYER_CUES = {
   quran: /(kur[’'`]?an|kuran|\bâyet\b|\bayet\b|\bsûre\b|\bsure\b)/i,
-  astrology: /(astroloj|bur[cç]\b|gökyüz|gokyuz|transit|\bgezegen|harita|sinastri|natal)/i,
+  astrology: /(astroloj|bur[cç](?:um|un|u|umun|umu)?\b|gökyüz|gokyuz|transit|\bgezegen|harita|sinastri|natal)/i,
   numerology: /(numerol|sayısal|sayisal|yaşam yolu|yasam yolu|\bebced\b)/i,
   daily: /(g[uü]nl[uü]k analiz|katmanl[ıi]\s+g[uü]nl[uü]k|daily analysis|gezegen saat)/i,
   personal: /(ki[sş]isel analiz|personal analysis|tam analiz)/i,

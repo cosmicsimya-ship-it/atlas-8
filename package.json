@@ -28,6 +28,7 @@
     "test:style": "node scripts/test-conversation-style.mjs",
     "test:identity-surfaces": "node scripts/test-atlas-identity-surfaces.mjs",
     "test:cross-layer": "node scripts/test-cross-layer-synthesis.mjs && node scripts/test-cross-layer-message-integration.mjs",
+    "test:quran-verse": "node scripts/test-quran-verse-lookup.mjs",
     "test:author-profile": "node scripts/test-author-profile.mjs",
     "test:persona-engine": "node scripts/test-persona-engine.mjs",
     "test:persona-feedback": "node scripts/test-persona-feedback.mjs",
