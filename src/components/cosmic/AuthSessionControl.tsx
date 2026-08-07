@@ -116,13 +116,19 @@ export default function AuthSessionControl({
     };
 
     document.addEventListener('keydown', onKeyDown);
-    const prevOverflow = document.body.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyTouch = document.body.style.touchAction;
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
 
     return () => {
       window.cancelAnimationFrame(frame);
       document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = prevOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.touchAction = prevBodyTouch;
       previouslyFocused?.focus?.();
     };
   }, [open, mode]);
@@ -246,8 +252,8 @@ export default function AuthSessionControl({
     ? 'max-w-[9rem] truncate text-[10px] normal-case tracking-normal text-[#9aa3ae] sm:max-w-[11rem]'
     : 'max-w-[9rem] truncate text-[10px] normal-case tracking-normal text-[#c9b37a]/55 sm:max-w-[11rem]';
   const actionBtnClass = isLanding
-    ? 'site-focus inline-flex items-center gap-1.5 rounded-full border border-white/16 bg-white/[0.04] px-3.5 py-1.5 text-xs font-medium text-[#d4dae2] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:border-white/24 hover:bg-white/[0.07] hover:text-[#eef1f5] disabled:opacity-60'
-    : 'atlas-focus inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-xs text-[#e8ecf2]/75 transition hover:bg-white/5 disabled:opacity-60';
+    ? 'site-focus inline-flex shrink-0 items-center gap-1 rounded-full border border-white/16 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-[#d4dae2] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:border-white/24 hover:bg-white/[0.07] hover:text-[#eef1f5] disabled:opacity-60 sm:gap-1.5 sm:px-3.5 sm:text-xs'
+    : 'atlas-focus inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-2.5 py-1.5 text-[11px] text-[#e8ecf2]/75 transition hover:bg-white/5 disabled:opacity-60 sm:gap-1.5 sm:px-3 sm:text-xs';
 
   const title =
     mode === 'register' ? 'Üye Ol' : mode === 'login' ? 'Giriş Yap' : 'Atlas Hesabı';
@@ -299,8 +305,8 @@ export default function AuthSessionControl({
               aria-label="Giriş yap"
               aria-haspopup="dialog"
             >
-              <LogIn className="h-3.5 w-3.5" />
-              Giriş Yap
+              <LogIn className="h-3.5 w-3.5 shrink-0 max-[360px]:hidden" />
+              Giriş
             </button>
             <button
               type="button"
@@ -309,7 +315,7 @@ export default function AuthSessionControl({
               aria-label="Üye ol"
               aria-haspopup="dialog"
             >
-              <UserPlus className="h-3.5 w-3.5" />
+              <UserPlus className="h-3.5 w-3.5 shrink-0 max-[360px]:hidden" />
               Üye Ol
             </button>
           </>
@@ -319,7 +325,13 @@ export default function AuthSessionControl({
       {open && typeof document !== 'undefined'
         ? createPortal(
             <div
-              className="atlas-auth-overlay fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/70 p-3 backdrop-blur-sm sm:p-4"
+              className="atlas-auth-overlay fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/70 backdrop-blur-sm"
+              style={{
+                paddingTop: 'max(12px, env(safe-area-inset-top))',
+                paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+                paddingLeft: 'max(12px, env(safe-area-inset-left))',
+                paddingRight: 'max(12px, env(safe-area-inset-right))',
+              }}
               role="presentation"
               onMouseDown={(e) => {
                 if (e.target === e.currentTarget) closeModal();
@@ -332,27 +344,35 @@ export default function AuthSessionControl({
               */}
               <div
                 ref={dialogRef}
-                className="atlas-auth-dialog relative my-auto max-h-[calc(100vh-32px)] max-h-[calc(100dvh-32px)] w-[min(100%-24px,480px)] overflow-y-auto overscroll-contain rounded-2xl border border-white/10 bg-[#0a0a0a] p-5 shadow-2xl sm:p-6"
+                className="atlas-auth-dialog relative my-auto flex w-[min(100%,480px)] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl"
+                style={{
+                  maxHeight:
+                    'calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px)',
+                }}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
               >
-                <button
-                  type="button"
-                  className="atlas-focus absolute right-3 top-3 z-10 rounded-full p-1 text-[#e8ecf2]/50 hover:bg-white/5"
-                  onClick={closeModal}
-                  aria-label="Kapat"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-                <h2 id={titleId} className="pr-8 font-brand text-lg font-semibold text-[#e8ecf2]">
-                  {title}
-                </h2>
-                <p className="mt-1 text-xs text-[#e8ecf2]/50">
-                  Oturum çerez ile korunur. Şifre tarayıcıda saklanmaz.
-                </p>
+                <div className="sticky top-0 z-10 flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.06] bg-[#0a0a0a]/95 px-5 pb-3 pt-5 backdrop-blur-md sm:px-6">
+                  <div className="min-w-0 pr-2">
+                    <h2 id={titleId} className="font-brand text-lg font-semibold text-[#e8ecf2]">
+                      {title}
+                    </h2>
+                    <p className="mt-1 text-xs text-[#e8ecf2]/50">
+                      Oturum çerez ile korunur. Şifre tarayıcıda saklanmaz.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="atlas-focus -mr-1 -mt-1 shrink-0 rounded-full p-2 text-[#e8ecf2]/50 hover:bg-white/5"
+                    onClick={closeModal}
+                    aria-label="Kapat"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
 
-                <div className="mt-5 space-y-3">
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:pb-6">
                   <button
                     type="button"
                     onClick={onGoogle}

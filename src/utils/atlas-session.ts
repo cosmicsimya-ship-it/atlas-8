@@ -15,7 +15,15 @@ export type AtlasSessionInfo = {
   csrfToken: string;
 };
 
+/** Fired when login/logout/register changes the active userId. */
+export const ATLAS_SESSION_CHANGED_EVENT = 'atlas:session-changed';
+
 let cachedSession: AtlasSessionInfo | null = null;
+
+function emitSessionChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(ATLAS_SESSION_CHANGED_EVENT));
+}
 
 function normalizeSession(data: Partial<AtlasSessionInfo> & { csrfToken: string }): AtlasSessionInfo {
   return {
@@ -37,12 +45,16 @@ function normalizeSession(data: Partial<AtlasSessionInfo> & { csrfToken: string 
  * Identity is assigned by the server (anonymous:<uuid> or logged-in user).
  */
 export async function ensureAtlasSession(): Promise<AtlasSessionInfo> {
+  const previousId = cachedSession?.userId ?? null;
   const data = await apiRequest<AtlasSessionInfo>('/api/auth/session', {
     method: 'GET',
   });
   cachedSession = normalizeSession(data);
   if (typeof window !== 'undefined' && data.csrfToken) {
     sessionStorage.setItem('atlas_csrf', data.csrfToken);
+  }
+  if (previousId && previousId !== cachedSession.userId) {
+    emitSessionChanged();
   }
   return cachedSession;
 }
@@ -76,9 +88,12 @@ export async function loginAtlas(emailOrUsername: string, password: string): Pro
     csrfToken: string;
   }>('/api/auth/login', {
     method: 'POST',
+    timeoutMs: 30_000,
     body: JSON.stringify({ email: emailOrUsername, username: emailOrUsername, password }),
   });
-  return ensureAtlasSession();
+  const session = await ensureAtlasSession();
+  emitSessionChanged();
+  return session;
 }
 
 export async function registerAtlas(
@@ -94,6 +109,7 @@ export async function registerAtlas(
     csrfToken: string;
   }>('/api/auth/register', {
     method: 'POST',
+    timeoutMs: 30_000,
     body: JSON.stringify({
       email,
       password,
@@ -101,7 +117,9 @@ export async function registerAtlas(
       ...(displayName ? { displayName } : {}),
     }),
   });
-  return ensureAtlasSession();
+  const session = await ensureAtlasSession();
+  emitSessionChanged();
+  return session;
 }
 
 export async function logoutAtlas(): Promise<void> {
@@ -112,6 +130,7 @@ export async function logoutAtlas(): Promise<void> {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('atlas_csrf');
     }
+    emitSessionChanged();
   }
 }
 
@@ -166,6 +185,9 @@ export function mapAuthError(err: unknown): string {
     if (err.status === 0 || err.message.includes('abort') || err.message.includes('Failed to fetch')) {
       return 'Bağlantı kurulamadı. İnternet bağlantınızı kontrol edin.';
     }
+    if (err.status === 408 || err.message.includes('timed out') || err.message.includes('Request timed out')) {
+      return 'İstek zaman aşımına uğradı. Lütfen tekrar deneyin.';
+    }
     if (err.status === 503) {
       return 'Kimlik doğrulama servisi geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar deneyin.';
     }
@@ -215,6 +237,8 @@ export function oauthErrorMessage(code: string | null): string {
     case 'oauth_failed':
     case 'google_auth_failed':
       return 'Google ile giriş tamamlanamadı. Lütfen tekrar deneyin.';
+    case 'redirect_uri_mismatch':
+      return 'Google giriş yapılandırması uyuşmuyor. Lütfen e-posta ile giriş yapın veya daha sonra tekrar deneyin.';
     default:
       return 'Giriş tamamlanamadı. Lütfen tekrar deneyin.';
   }

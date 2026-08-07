@@ -73,13 +73,12 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <div className="hidden md:block">
-            <AuthSessionControl appearance="landing" autoOpen={autoOpenLogin} />
-          </div>
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+          {/* Always visible (mobile + desktop) so Giriş / Üye Ol are not menu-only */}
+          <AuthSessionControl appearance="landing" autoOpen={autoOpenLogin} />
           <button
             type="button"
-            className="site-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/16 text-[#d4dae2] md:hidden"
+            className="site-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/16 text-[#d4dae2] md:hidden"
             aria-expanded={open}
             aria-controls="landing-mobile-nav"
             aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
@@ -121,9 +120,6 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
               </li>
             ))}
           </ul>
-          <div className="mt-3 border-t border-white/[0.08] pt-3">
-            <AuthSessionControl appearance="landing" />
-          </div>
         </nav>
       ) : null}
     </header>

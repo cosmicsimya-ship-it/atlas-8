@@ -2,6 +2,7 @@
 import { useLocation } from 'react-router-dom';
 
 import CosmicShell from '../components/cosmic/CosmicShell';
+import { atlasManifesto, socialLinks } from '../data/landing-content';
 
 export default function AboutPage() {
   const location = useLocation();
@@ -22,22 +23,19 @@ export default function AboutPage() {
           Hakkında
         </p>
         <h1 className="mt-4 font-display text-[clamp(1.85rem,4vw,2.6rem)] font-medium tracking-[-0.02em] text-[#e8ecf2]">
-          Atlas nedir?
+          {atlasManifesto.title}
         </h1>
 
-        <div className="mt-10 space-y-6 text-sm leading-8 text-[#e8ecf2]/68 md:text-base">
-          <p className="font-display text-xl text-[#e8ecf2]/88">Atlas yalnızca cevap üretmez.</p>
-          <p>
-            Bilimsel ve sembolik sistemleri yan yana getirerek tekrar eden yapıları karşılaştırır.
-            Amacı geleceği kesin biçimde söylemek değil; daha önce görünmeyen örüntüyü görünür
-            kılmaktır.
+        <div className="mt-10 space-y-8 text-sm leading-8 text-[#e8ecf2]/68 md:text-base">
+          <p className="whitespace-pre-line font-display text-[clamp(1.35rem,3vw,1.85rem)] leading-[1.35] text-[#e8ecf2]/92">
+            {atlasManifesto.lead}
           </p>
-          <p>
-            Cosmicsimya arayüzü Atlas’a erişim sağlar: kişisel analiz, arşiv, sembolik sentez ve
-            hafıza destekli sohbet — hepsi aynı güvenilir oturum ve gizlilik modeline bağlıdır.
-          </p>
-          <p className="text-[#e8ecf2]/45">
-            Atlas kesin kehanet sunmaz; sistemleri olasılık ve farkındalık diliyle ele alır.
+          {atlasManifesto.sections.map((section) => (
+            <p key={section.body}>{section.body}</p>
+          ))}
+          <p className="border-t border-white/8 pt-8 text-[#e8ecf2]/45">
+            Atlas kesin kehanet sunmaz. Çıkarım ile veriyi ayırır; dayanak güçlendikçe yorumu
+            güçlendirir — ama bilmediğini bilmiş gibi sunmaz.
           </p>
         </div>
 
@@ -63,9 +61,32 @@ export default function AboutPage() {
         <section id="iletisim" className="mt-12 scroll-mt-28 border-t border-white/8 pt-10">
           <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">İletişim</h2>
           <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/62">
-            Kurucu ve ürün soruları için Cosmicsimya üzerinden iletişime geçebilirsiniz. Destek
-            kanalları ürün olgunlaştıkça bu bölümde güncellenir.
+            Kurucu ve ürün soruları için Cosmic Simya kanallarından bize ulaşabilirsiniz.
           </p>
+          <ul className="mt-5 flex flex-wrap gap-3 text-sm">
+            <li>
+              <a
+                href={socialLinks.instagram.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={socialLinks.instagram.ariaLabel}
+                className="site-focus text-[#c9b37a] underline-offset-4 hover:underline"
+              >
+                {socialLinks.instagram.label}
+              </a>
+            </li>
+            <li>
+              <a
+                href={socialLinks.telegram.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={socialLinks.telegram.ariaLabel}
+                className="site-focus text-[#c9b37a] underline-offset-4 hover:underline"
+              >
+                {socialLinks.telegram.label}
+              </a>
+            </li>
+          </ul>
         </section>
       </main>
     </CosmicShell>

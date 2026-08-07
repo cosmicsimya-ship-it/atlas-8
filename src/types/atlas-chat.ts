@@ -44,6 +44,9 @@ export interface AtlasChatResponse {
   errorCategory?: string | null;
   retryable?: boolean;
   requestId?: string | null;
+  completionStatus?: string | null;
+  incompleteReason?: string | null;
+  completenessRetryCount?: number;
 }
 
 export interface AtlasChatErrorResponse {
@@ -65,4 +68,6 @@ export interface AtlasChatMessage {
   requestId?: string | null;
   /** Stable id linking a user turn to its assistant response for retry without duplication */
   turnId?: string;
+  errorCode?: string | null;
+  completionStatus?: string | null;
 }

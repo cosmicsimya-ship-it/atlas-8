@@ -5,6 +5,11 @@ build/
 coverage/
 *.log
 release/
+tmp/
+
+# Local Lighthouse / probe dumps
+*.report.html
+cosmicsimya.com_*.report.html
 
 # Local credential recovery — never commit
 .atlas-local-founder-credentials.txt

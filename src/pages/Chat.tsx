@@ -7,13 +7,21 @@ import CapabilityDiscovery, {
   isCapabilityDiscoveryEnabled,
 } from '../components/cosmic/CapabilityDiscovery';
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
-import ChatInvitations, {
-  type ChatInvitation,
-} from '../components/cosmic/ChatInvitations';
+import PatternGapTraces from '../components/cosmic/PatternGapTraces';
 import CosmicShell from '../components/cosmic/CosmicShell';
 import { discoveryCopy } from '../data/capability-discovery';
+import {
+  composeMessageWithTraces,
+  PATTERN_GAP_PLACEHOLDER,
+  type PatternTrace,
+} from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
-import { ensureAtlasSession } from '../utils/atlas-session';
+import {
+  ATLAS_SESSION_CHANGED_EVENT,
+  ensureAtlasSession,
+  getWebUserId,
+} from '../utils/atlas-session';
+import { trackDiscoverability } from '../utils/discoverability-events';
 import { prefersReducedMotion } from '../utils/scroll-section';
 import type { AtlasChatMessage } from '../types/atlas-chat';
 
@@ -22,9 +30,14 @@ const CAPABILITY_DISCOVERY_ENABLED = isCapabilityDiscoveryEnabled();
 /** Composer grows with the message, then scrolls internally. */
 const COMPOSER_MAX_HEIGHT = 168;
 
+/** No response for this long → show connection stall (not “thinking”). */
+const STALL_WARNING_MS = 25_000;
+
 function createId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
+
+type PendingStatus = 'thinking' | 'stalled' | 'retrying';
 
 export default function Chat() {
   const location = useLocation();
@@ -33,7 +46,9 @@ export default function Chat() {
   const [input, setInput] = useState(contextPrompt ?? '');
   const [messages, setMessages] = useState<AtlasChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<PendingStatus>('thinking');
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
+  const [selectedTraces, setSelectedTraces] = useState<PatternTrace[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const seededContext = useRef(false);
@@ -41,18 +56,65 @@ export default function Chat() {
   const abortRef = useRef<AbortController | null>(null);
   /** Guards against applying a late response after a newer turn started. */
   const activeTurnRef = useRef<string | null>(null);
+  const sessionUserIdRef = useRef<string | null>(null);
+  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Auto-retry incomplete/timeout at most once per turn. */
+  const autoRetriedTurnsRef = useRef<Set<string>>(new Set());
+  const emptyStateSeenRef = useRef(false);
+  const firstMessageTrackedRef = useRef(false);
 
   const isEmpty = messages.length === 0;
 
+  const clearStallTimer = useCallback(() => {
+    if (stallTimerRef.current) {
+      clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     atlasChat.checkBackend().then(setBackendReady);
-    ensureAtlasSession().catch(() => {
-      /* session will retry on send */
-    });
+    ensureAtlasSession()
+      .then((session) => {
+        sessionUserIdRef.current = session.userId;
+      })
+      .catch(() => {
+        /* session will retry on send */
+      });
     return () => {
       abortRef.current?.abort();
+      clearStallTimer();
     };
-  }, []);
+  }, [clearStallTimer]);
+
+  useEffect(() => {
+    if (!isEmpty || emptyStateSeenRef.current) return;
+    emptyStateSeenRef.current = true;
+    trackDiscoverability('empty_state_seen');
+  }, [isEmpty]);
+
+  // Clear local chat when account switches so memory/UI never leak across users.
+  useEffect(() => {
+    const onSessionChanged = () => {
+      const nextId = getWebUserId();
+      if (sessionUserIdRef.current && sessionUserIdRef.current !== nextId) {
+        abortRef.current?.abort();
+        inFlightRef.current = false;
+        activeTurnRef.current = null;
+        clearStallTimer();
+        setLoading(false);
+        setPendingStatus('thinking');
+        setMessages([]);
+        setInput('');
+        setSelectedTraces([]);
+        emptyStateSeenRef.current = false;
+        firstMessageTrackedRef.current = false;
+      }
+      sessionUserIdRef.current = nextId;
+    };
+    window.addEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
+    return () => window.removeEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
+  }, [clearStallTimer]);
 
   useEffect(() => {
     if (!isEmpty) {
@@ -61,7 +123,7 @@ export default function Chat() {
         block: 'end',
       });
     }
-  }, [messages, loading, isEmpty]);
+  }, [messages, loading, isEmpty, pendingStatus]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -106,13 +168,45 @@ export default function Chat() {
     };
   }, [messages]);
 
+  const markRetryableFailure = useCallback(
+    (
+      pendingId: string,
+      turnId: string,
+      content: string,
+      requestId: string,
+      extra: Partial<AtlasChatMessage> = {},
+    ) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === pendingId
+            ? {
+                id: pendingId,
+                role: 'assistant',
+                content,
+                error: true,
+                retryable: true,
+                turnId,
+                requestId,
+                ...extra,
+              }
+            : m,
+        ),
+      );
+    },
+    [],
+  );
+
   const sendTurn = useCallback(
-    async (text: string, opts: { reuseUser?: boolean; turnId?: string } = {}) => {
+    async (
+      text: string,
+      opts: { reuseUser?: boolean; turnId?: string; isAutoRetry?: boolean } = {},
+    ) => {
       const trimmed = text.trim();
       if (!trimmed || inFlightRef.current) return;
 
       inFlightRef.current = true;
       setLoading(true);
+      setPendingStatus(opts.isAutoRetry ? 'retrying' : 'thinking');
 
       // Abort any previous in-flight request; never reuse its controller.
       abortRef.current?.abort();
@@ -155,6 +249,13 @@ export default function Chat() {
         setInput('');
       }
 
+      clearStallTimer();
+      stallTimerRef.current = setTimeout(() => {
+        if (activeTurnRef.current === turnId && inFlightRef.current) {
+          setPendingStatus('stalled');
+        }
+      }, STALL_WARNING_MS);
+
       try {
         const response = await atlasChat.sendMessage(trimmed, history, {
           signal: controller.signal,
@@ -167,20 +268,36 @@ export default function Chat() {
         }
 
         if (isRetryableChatResponse(response)) {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === pendingId
-                ? {
-                    id: pendingId,
-                    role: 'assistant',
-                    content: response.reply,
-                    error: true,
-                    retryable: true,
-                    turnId,
-                    requestId: response.requestId ?? requestId,
-                  }
-                : m,
-            ),
+          const canAutoRetry =
+            !opts.isAutoRetry &&
+            !autoRetriedTurnsRef.current.has(turnId) &&
+            (response.errorCode === 'TIMEOUT' ||
+              response.errorCode === 'INCOMPLETE_RESPONSE' ||
+              response.errorCode === 'MODEL_UNAVAILABLE');
+
+          if (canAutoRetry) {
+            autoRetriedTurnsRef.current.add(turnId);
+            inFlightRef.current = false;
+            clearStallTimer();
+            setPendingStatus('retrying');
+            await sendTurn(trimmed, {
+              reuseUser: true,
+              turnId,
+              isAutoRetry: true,
+            });
+            return;
+          }
+
+          markRetryableFailure(
+            pendingId,
+            turnId,
+            response.reply ||
+              'Yanıt tamamlanamadı. Yeniden oluştur ile tekrar deneyebilirsin.',
+            response.requestId ?? requestId,
+            {
+              errorCode: response.errorCode ?? null,
+              completionStatus: response.completionStatus ?? null,
+            },
           );
         } else {
           setMessages((prev) =>
@@ -194,6 +311,7 @@ export default function Chat() {
                     profile: response.profile,
                     turnId,
                     requestId: response.requestId ?? requestId,
+                    completionStatus: response.completionStatus ?? 'complete',
                   }
                 : m,
             ),
@@ -201,43 +319,88 @@ export default function Chat() {
         }
       } catch (err) {
         if (activeTurnRef.current !== turnId) return;
+        const aborted =
+          err instanceof Error &&
+          (err.message === 'Request aborted' || /abort/i.test(err.message));
+        if (aborted) {
+          markRetryableFailure(
+            pendingId,
+            turnId,
+            'Bağlantı kesildi. Mesajın duruyor — yeniden oluşturabilirsin.',
+            requestId,
+            { errorCode: 'ABORTED' },
+          );
+          return;
+        }
+
+        const timedOut =
+          err instanceof Error &&
+          (err.message.includes('timed out') || err.message.includes('Request timed out'));
+        const canAutoRetry =
+          !opts.isAutoRetry && !autoRetriedTurnsRef.current.has(turnId) && timedOut;
+
+        if (canAutoRetry) {
+          autoRetriedTurnsRef.current.add(turnId);
+          inFlightRef.current = false;
+          clearStallTimer();
+          setPendingStatus('retrying');
+          await sendTurn(trimmed, {
+            reuseUser: true,
+            turnId,
+            isAutoRetry: true,
+          });
+          return;
+        }
+
         const errorText =
           err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu.';
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingId
-              ? {
-                  id: pendingId,
-                  role: 'assistant',
-                  content: errorText,
-                  error: true,
-                  retryable: true,
-                  turnId,
-                }
-              : m,
-          ),
-        );
+        markRetryableFailure(pendingId, turnId, errorText, requestId, {
+          errorCode: timedOut ? 'TIMEOUT' : 'NETWORK',
+        });
       } finally {
         if (activeTurnRef.current === turnId) {
+          clearStallTimer();
           inFlightRef.current = false;
           setLoading(false);
+          setPendingStatus('thinking');
           textareaRef.current?.focus();
         }
       }
     },
-    [messages],
+    [messages, clearStallTimer, markRetryableFailure],
   );
 
   const send = useCallback(async () => {
-    await sendTurn(input);
-  }, [input, sendTurn]);
+    const payload = composeMessageWithTraces(input, selectedTraces);
+    if (!payload.trim()) return;
+
+    if (!firstMessageTrackedRef.current && messages.length === 0) {
+      firstMessageTrackedRef.current = true;
+      const withTrace = selectedTraces.length > 0;
+      trackDiscoverability('first_message_sent', {
+        traceCount: selectedTraces.length,
+        traceIds: selectedTraces.map((t) => t.id),
+      });
+      trackDiscoverability(
+        withTrace ? 'first_message_with_trace' : 'first_message_without_trace',
+        { traceCount: selectedTraces.length },
+      );
+    }
+
+    setSelectedTraces([]);
+    await sendTurn(payload);
+  }, [input, selectedTraces, messages.length, sendTurn]);
 
   /** Retry the failed turn in place — keep the user bubble, new requestId. */
   const retryLast = useCallback(() => {
+    const pending = [...messages]
+      .reverse()
+      .find((m) => m.role === 'assistant' && m.pending && m.turnId);
     const failed = [...messages]
       .reverse()
       .find((m) => m.role === 'assistant' && (m.error || m.retryable));
-    if (!failed?.turnId) {
+    const target = failed || pending;
+    if (!target?.turnId) {
       // Legacy fallback: rewind into composer
       const kept = messages.filter((m) => !m.error && !m.retryable);
       const lastUserIndex = kept.map((m) => m.role).lastIndexOf('user');
@@ -249,10 +412,15 @@ export default function Chat() {
       textareaRef.current?.focus();
       return;
     }
-    const userMsg = messages.find((m) => m.role === 'user' && m.turnId === failed.turnId);
+    const userMsg = messages.find((m) => m.role === 'user' && m.turnId === target.turnId);
     if (!userMsg) return;
-    void sendTurn(userMsg.content, { reuseUser: true, turnId: failed.turnId });
-  }, [messages, sendTurn]);
+    // Allow regenerate even if a stalled request is still hanging.
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    clearStallTimer();
+    autoRetriedTurnsRef.current.delete(target.turnId);
+    void sendTurn(userMsg.content, { reuseUser: true, turnId: target.turnId });
+  }, [messages, sendTurn, clearStallTimer]);
 
   const recheckBackend = () => {
     setBackendReady(null);
@@ -262,16 +430,37 @@ export default function Chat() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      if (loading || !input.trim() || backendReady === false) return;
       void send();
     }
   };
 
-  const handleInvitation = (invitation: ChatInvitation) => {
-    if (invitation.prompt) {
-      setInput(invitation.prompt);
+  const handleTracesChange = (next: PatternTrace[]) => {
+    const prevCount = selectedTraces.length;
+    setSelectedTraces(next);
+    if (next.length > prevCount) {
+      const added = next[next.length - 1];
+      trackDiscoverability('trace_selected', {
+        id: added?.id,
+        label: added?.label,
+        count: next.length,
+      });
+      if (next.length >= 2) {
+        trackDiscoverability('multiple_traces_selected', {
+          count: next.length,
+          ids: next.map((t) => t.id),
+        });
+      }
     }
     textareaRef.current?.focus();
   };
+
+  const pendingLabel =
+    pendingStatus === 'stalled'
+      ? 'Bağlantı gecikiyor… Yeni yanıt gelmiyor.'
+      : pendingStatus === 'retrying'
+        ? 'Yanıt tamamlanamadı, tekrar deniyorum…'
+        : 'Düşünüyorum…';
 
   return (
     <CosmicShell showBackground={false} transparentNav chatMode>
@@ -281,9 +470,11 @@ export default function Chat() {
         <p className="sr-only" aria-live="polite">
           {backendReady === false
             ? 'Atlas şu an bağlantı kuramıyor.'
-            : backendReady === true
-              ? 'Atlas hazır.'
-              : 'Atlas bağlantısı kontrol ediliyor.'}
+            : loading
+              ? pendingLabel
+              : backendReady === true
+                ? 'Atlas hazır.'
+                : 'Atlas bağlantısı kontrol ediliyor.'}
         </p>
 
         <section
@@ -291,17 +482,16 @@ export default function Chat() {
           aria-label="Konuşma"
         >
           {isEmpty ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-0 pb-2 pt-2 text-center">
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-0 pb-1 pt-2 text-center">
               <AtlasCorePresence state={loading ? 'thinking' : 'idle'} />
-              <p className="mt-8 max-w-[16rem] text-[16px] leading-[1.7] tracking-[-0.01em] text-[#c5ccd6] sm:mt-9 sm:max-w-sm sm:text-[17px]">
+              <p className="mt-7 max-w-[16rem] text-[16px] leading-[1.7] tracking-[-0.01em] text-[#e8ecf2]/90 sm:mt-8 sm:max-w-sm sm:text-[17px]">
                 {discoveryCopy.emptyInvite.line1}
-                <br />
-                <span className="text-[#e8ecf2]/90">{discoveryCopy.emptyInvite.line2}</span>
               </p>
               {backendReady !== false && (
-                <ChatInvitations
-                  onSelect={handleInvitation}
-                  className="mt-8 max-w-xl sm:mt-9"
+                <PatternGapTraces
+                  selected={selectedTraces}
+                  onChange={handleTracesChange}
+                  className="mt-6 max-w-md sm:mt-7"
                 />
               )}
             </div>
@@ -320,12 +510,26 @@ export default function Chat() {
                   ) : (
                     <div className="max-w-[92%] sm:max-w-[85%]">
                       {msg.pending ? (
-                        <div className="flex items-center gap-3 py-1 text-[#8b93a3]" aria-live="polite">
+                        <div
+                          className="flex items-center gap-3 py-1 text-[#8b93a3]"
+                          aria-live="polite"
+                        >
                           <AtlasCorePresence
-                            state="thinking"
+                            state={pendingStatus === 'stalled' ? 'idle' : 'thinking'}
                             className="!w-10 !min-w-10 sm:!w-12"
                           />
-                          <span className="text-[14px]">Düşünüyorum…</span>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[14px]">{pendingLabel}</span>
+                            {pendingStatus === 'stalled' ? (
+                              <button
+                                type="button"
+                                onClick={retryLast}
+                                className="site-focus inline-flex items-center gap-1.5 text-[13px] text-[#c5ccd6] underline-offset-2 hover:underline"
+                              >
+                                <RotateCcw size={13} aria-hidden /> Yeniden oluştur
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
                       ) : msg.error || msg.retryable ? (
                         <div className="rounded-[18px] border border-red-400/20 bg-red-950/20 px-5 py-3.5 text-[15px] leading-[1.65] text-red-100/90">
@@ -336,7 +540,7 @@ export default function Chat() {
                             disabled={loading}
                             className="site-focus mt-3 inline-flex items-center gap-1.5 text-[13px] text-red-100/80 underline-offset-2 hover:underline disabled:opacity-40"
                           >
-                            <RotateCcw size={13} aria-hidden /> Tekrar dene
+                            <RotateCcw size={13} aria-hidden /> Yeniden oluştur
                           </button>
                         </div>
                       ) : (
@@ -377,21 +581,38 @@ export default function Chat() {
             )}
 
             <div className="atlas-composer flex items-end gap-3">
-              <label htmlFor="atlas-message" className="sr-only">
-                Atlas’a yaz
-              </label>
-              <textarea
-                id="atlas-message"
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isEmpty ? 'Buradan yazmaya başla…' : 'Ne üzerinde düşünelim?'}
-                disabled={loading || backendReady === false}
-                rows={isEmpty ? 2 : 1}
-                aria-label="Mesaj"
-                className="atlas-field atlas-field-hero flex-1 resize-none overflow-y-auto disabled:opacity-40"
-              />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                {isEmpty && selectedTraces.length > 0 ? (
+                  <div
+                    className="flex flex-wrap items-center gap-1.5 px-0.5"
+                    aria-label="Seçilen izler"
+                  >
+                    {selectedTraces.map((t) => (
+                      <span
+                        key={t.id}
+                        className="text-[12px] tracking-[-0.01em] text-[#7a8494]"
+                      >
+                        [{t.marker}]
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <label htmlFor="atlas-message" className="sr-only">
+                  Atlas’a yaz
+                </label>
+                <textarea
+                  id="atlas-message"
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isEmpty ? PATTERN_GAP_PLACEHOLDER : 'Neye bakıyoruz?'}
+                  disabled={backendReady === false}
+                  rows={isEmpty ? 2 : 1}
+                  aria-label="Mesaj"
+                  className="atlas-field atlas-field-hero w-full resize-none overflow-y-auto disabled:opacity-40"
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => void send()}

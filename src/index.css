@@ -419,6 +419,7 @@ body {
 .hero-reveal-3 { animation-delay: 0.24s; }
 .hero-reveal-4 { animation-delay: 0.36s; }
 .hero-reveal-5 { animation-delay: 0.48s; }
+.hero-reveal-6 { animation-delay: 0.58s; }
 .hero-reveal-visual { animation-delay: 0.32s; }
 
 /* Landing section / card micro-interactions */

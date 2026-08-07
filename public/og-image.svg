@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Cosmic Simya">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#1a2230"/>
+      <stop offset="55%" stop-color="#0a0e14"/>
+      <stop offset="100%" stop-color="#050608"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <circle cx="900" cy="180" r="120" fill="none" stroke="#7eb6ff" stroke-opacity="0.35" stroke-width="2"/>
+  <circle cx="900" cy="180" r="70" fill="none" stroke="#8eeafa" stroke-opacity="0.45" stroke-width="1.5"/>
+  <path d="M820 200h160" stroke="#c9b37a" stroke-opacity="0.7" stroke-width="2" stroke-linecap="round"/>
+  <text x="96" y="280" fill="#eef1f5" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="600">Cosmic Simya</text>
+  <text x="96" y="350" fill="#c9b37a" font-family="Arial, Helvetica, sans-serif" font-size="28" letter-spacing="4">ATLAS 0LE K0^0SEL VE SEMBOL0K ANAL0Z</text>
+  <text x="96" y="420" fill="#9aa3ae" font-family="Arial, Helvetica, sans-serif" font-size="24">cosmicsimya.com</text>
+</svg>

@@ -14,7 +14,13 @@ import { ensureAtlasSession } from '../utils/atlas-session';
 
 const BACKEND = BACKEND_URL;
 
-const SOFT_FAIL_CODES = new Set(['TIMEOUT', 'RATE_LIMIT', 'MODEL_UNAVAILABLE', 'ENGINE_FAILURE']);
+const SOFT_FAIL_CODES = new Set([
+  'TIMEOUT',
+  'RATE_LIMIT',
+  'MODEL_UNAVAILABLE',
+  'ENGINE_FAILURE',
+  'INCOMPLETE_RESPONSE',
+]);
 
 /**
  * Server may return HTTP 200 with a user-visible timeout fallback.

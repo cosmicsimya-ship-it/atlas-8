@@ -114,7 +114,8 @@ export function resolveDiscoveredModules(
 
 export const discoveryCopy = {
   emptyInvite: {
-    line1: 'Ben Atlas.',
-    line2: 'Hazırsan başlayabiliriz.',
+    line1: 'Neye bakıyoruz?',
+    /** Kept blank — Pattern Gap traces carry the soft entry, not a second instruction. */
+    line2: '',
   },
 } as const;

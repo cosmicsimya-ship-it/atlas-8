@@ -1,18 +1,18 @@
-import { landingPrinciples } from '../../data/landing-content';
+import { landingManifestoTeaser } from '../../data/landing-content';
 
-export default function AtlasPrinciples() {
-  const { id, titleLines, principles } = landingPrinciples;
+export default function ManifestoTeaser() {
+  const { id, titleLines, principles } = landingManifestoTeaser;
 
   return (
-    <section id={id} className="atlas-section relative scroll-mt-24" aria-labelledby="principles-title">
+    <section id={id} className="atlas-section relative scroll-mt-24" aria-labelledby="manifesto-teaser-title">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-14">
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-[#c9b37a]/65">
-              Atlas İlkeleri
+              İlke
             </p>
             <h2
-              id="principles-title"
+              id="manifesto-teaser-title"
               className="mt-4 font-display text-[clamp(1.75rem,4vw,2.85rem)] font-medium leading-[1.15] tracking-[-0.02em] text-[#e8ecf2]"
             >
               {titleLines.map((line) => (

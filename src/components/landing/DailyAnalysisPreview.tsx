@@ -198,7 +198,7 @@ export default function DailyAnalysisPreview() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl">
           <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-[#c9b37a]/65">
-            Örnek Analiz
+            Deneme
           </p>
           <h2
             id="daily-title"
@@ -214,7 +214,7 @@ export default function DailyAnalysisPreview() {
             <div className="min-w-0 border-b border-white/[0.06] px-4 py-5 sm:px-6 sm:py-6 lg:border-b-0 lg:border-r lg:border-white/[0.06]">
               <div className="flex items-center justify-between gap-3">
                 <span className="atlas-mark atlas-mark-sm text-[10px]">ATLAS</span>
-                <span className="text-[11px] text-[#8b93a3]">Canlı örnek</span>
+                <span className="text-[11px] text-[#8b93a3]">Canlı hat</span>
               </div>
 
               <form className="mt-5 space-y-4" onSubmit={onSubmit} noValidate>
@@ -460,7 +460,8 @@ export default function DailyAnalysisPreview() {
                     </div>
                   ) : (
                     <p className="text-[13px] leading-6 text-[#8b93a3]">
-                      Yanıt alındı ancak gösterilebilir bölüm bulunamadı.
+                      Yanıt geldi; bu turda gösterilecek bir sentez bölümü yok. Niyetini netleştirip
+                      tekrar deneyebilir veya Atlas sohbetinde devam edebilirsin.
                     </p>
                   )}
 

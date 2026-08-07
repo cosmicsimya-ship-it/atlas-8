@@ -6,7 +6,8 @@ import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
 
 export default function HeroSection() {
-  const { brand, eyebrow, titleLines, body, primaryCta, secondaryCta } = landingHero;
+  const { brand, eyebrow, titleLines, methodLines, body, primaryCta, secondaryCta } =
+    landingHero;
 
   return (
     <section
@@ -15,7 +16,6 @@ export default function HeroSection() {
     >
       <HeroAtmosphere />
 
-      {/* Left clarity field — readable copy without flattening the visual */}
       <div
         className="pointer-events-none absolute inset-y-0 left-0 w-full max-w-[min(100%,52rem)] bg-[linear-gradient(to_right,#050608_0%,rgba(5,6,8,0.88)_48%,transparent_100%)] max-lg:bg-[linear-gradient(to_bottom,#050608_0%,rgba(5,6,8,0.9)_32%,transparent_62%)]"
         aria-hidden="true"
@@ -23,7 +23,6 @@ export default function HeroSection() {
 
       <div className="relative z-10 mx-auto grid w-full max-w-6xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)] lg:gap-12 lg:px-8">
         <div className="relative max-w-xl lg:max-w-[36rem]">
-          {/* Brand is the hero signal — Figma: Display/Brand */}
           <p className="hero-reveal hero-reveal-1 atlas-mark mb-7 text-[clamp(1.65rem,4.5vw,2.75rem)] leading-none text-transparent">
             {brand}
           </p>
@@ -43,11 +42,16 @@ export default function HeroSection() {
             ))}
           </h1>
 
-          <p className="hero-reveal hero-reveal-4 mt-7 max-w-md text-[15px] leading-7 text-[#9aa3b0] sm:mt-8 sm:max-w-lg sm:text-[1.05rem] sm:leading-8">
+          <p className="hero-reveal hero-reveal-4 mt-5 max-w-md font-display text-[clamp(1.15rem,2.8vw,1.55rem)] font-medium leading-[1.25] tracking-[-0.01em] text-[#c9b37a]/c8 sm:mt-6 sm:max-w-lg">
+            <span className="block sm:inline">{methodLines[0]}</span>{' '}
+            <span className="block sm:inline">{methodLines[1]}</span>
+          </p>
+
+          <p className="hero-reveal hero-reveal-5 mt-6 max-w-md text-[15px] leading-7 text-[#9aa3b0] sm:mt-7 sm:max-w-lg sm:text-[1.05rem] sm:leading-8">
             {body}
           </p>
 
-          <div className="hero-reveal hero-reveal-5 mt-10 flex flex-col gap-3 sm:mt-11 sm:flex-row sm:items-center sm:gap-3.5">
+          <div className="hero-reveal hero-reveal-6 mt-10 flex flex-col gap-3 sm:mt-11 sm:flex-row sm:items-center sm:gap-3.5">
             <Link to={primaryCta.to} className="atlas-btn-primary sm:min-w-[10.5rem]">
               {primaryCta.label}
             </Link>

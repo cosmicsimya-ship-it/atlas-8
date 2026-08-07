@@ -109,13 +109,11 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
             })}
         </nav>
 
-        <div className="flex items-center gap-2">
-          <div className="hidden md:block">
-            <AuthSessionControl />
-          </div>
+        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+          <AuthSessionControl />
           <button
             type="button"
-            className="atlas-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/16 text-[#d4dae2] md:hidden"
+            className="atlas-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/16 text-[#d4dae2] md:hidden"
             aria-expanded={open}
             aria-controls="mobile-nav"
             aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
@@ -153,9 +151,6 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
               );
             })}
           </ul>
-          <div className="mt-3 border-t border-white/[0.08] pt-3">
-            <AuthSessionControl />
-          </div>
         </nav>
       )}
     </header>

@@ -1,15 +1,17 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import AlreadyThere from '../components/landing/AlreadyThere';
+import AtlasLooks from '../components/landing/AtlasLooks';
 import AtlasNav from '../components/landing/AtlasNav';
-import AtlasPrinciples from '../components/landing/AtlasPrinciples';
+import ConvergenceSection from '../components/landing/ConvergenceSection';
 import DailyAnalysisPreview from '../components/landing/DailyAnalysisPreview';
 import FinalCTA from '../components/landing/FinalCTA';
 import HeroSection from '../components/landing/HeroSection';
-import HowAtlasWorks from '../components/landing/HowAtlasWorks';
+import ManifestoTeaser from '../components/landing/ManifestoTeaser';
+import PatternSelf from '../components/landing/PatternSelf';
 import SiteAtmosphere from '../components/landing/SiteAtmosphere';
 import SiteFooter from '../components/landing/SiteFooter';
-import WhatIsAtlas from '../components/landing/WhatIsAtlas';
 
 export default function Landing() {
   const [params] = useSearchParams();
@@ -24,10 +26,12 @@ export default function Landing() {
       <AtlasNav autoOpenLogin={adminLogin} />
       <main id="main-content" className="relative z-10">
         <HeroSection />
-        <WhatIsAtlas />
-        <HowAtlasWorks />
+        <AlreadyThere />
+        <ConvergenceSection />
+        <PatternSelf />
+        <AtlasLooks />
+        <ManifestoTeaser />
         <DailyAnalysisPreview />
-        <AtlasPrinciples />
         <FinalCTA />
       </main>
       <div className="relative z-10">
