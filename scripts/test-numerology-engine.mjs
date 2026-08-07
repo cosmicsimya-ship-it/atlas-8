@@ -101,8 +101,8 @@ record('master analysis has active/passive', Boolean(masterAnalysis?.activeMode 
 
 // ── Depth resolution ──────────────────────────────────────────────────
 record(
-  'default depth deep for personal anlat',
-  resolveNumerologyDepth(FIXTURE_MSG) === DEPTH_LEVEL.DEEP,
+  'default depth short for personal anlat',
+  resolveNumerologyDepth(FIXTURE_MSG) === DEPTH_LEVEL.SHORT,
 );
 record('short depth', resolveNumerologyDepth('kısaca numerolojim') === DEPTH_LEVEL.SHORT);
 record(
@@ -110,8 +110,8 @@ record(
   resolveNumerologyDepth('detaylı tam analiz, bilmediğim şeyleri söyle') === DEPTH_LEVEL.DEEP,
 );
 record(
-  'birth+numeroloji without analiz verb → standard',
-  resolveNumerologyDepth('27.01.1986 numeroloji') === DEPTH_LEVEL.STANDARD,
+  'birth+numeroloji without depth verb → short',
+  resolveNumerologyDepth('27.01.1986 numeroloji') === DEPTH_LEVEL.SHORT,
 );
 
 // ── Test 1: full analysis scope ───────────────────────────────────────
@@ -126,13 +126,10 @@ record('test1 handled', Boolean(t1?.handled && t1.reply));
 record('test1 engine', t1?.engine === 'numerology-engine');
 const r1 = t1?.reply || '';
 record('test1 life path', /yaşam yolu|7\b/i.test(r1));
-record('test1 birthday', /doğum günü/i.test(r1));
-record('test1 life cycle', /döngü|biçimlenme|üretim|hasat/i.test(r1));
-record('test1 personal year / period', /kişisel yıl|şu an|aktif/i.test(r1));
-record('test1 strength+shadow', /güçlü/i.test(r1) && /gölge/i.test(r1));
-record('test1 further analysis hint', /ad|soyad|ileri/i.test(r1));
-record('test1 not tiny', r1.length > 500, `len=${r1.length}`);
-record('test1 methodology', /pythagorean|metodoloji|atlas-pythagorean/i.test(r1));
+record('test1 has reading', /okuma|gölge|kişisel yıl/i.test(r1));
+record('test1 not report dump', (r1.match(/^##\s+/gm) || []).length === 0);
+record('test1 concise', r1.length < 900 && r1.split(/\s+/).length < 160, `len=${r1.length}`);
+record('test1 single-signal caution', /tek\s+say[ıi]|hüküm\s+vermez/i.test(r1));
 record(
   'test1 pinnacles or challenges in chart data',
   Boolean(t1?.data?.chart?.pinnacles?.length === 4 && t1?.data?.chart?.challenges?.length === 4),
@@ -351,13 +348,11 @@ const huseyinBirth = tryNumerologyFlowReply({
 });
 record('huseyin birth+analiz handled', Boolean(huseyinBirth?.handled));
 record(
-  'huseyin birth first-turn not number-only',
+  'huseyin birth first-turn short prose',
   /yaşam yolu/i.test(huseyinBirth?.reply || '') &&
-    /doğum günü/i.test(huseyinBirth?.reply || '') &&
-    /döngü|kişisel yıl/i.test(huseyinBirth?.reply || '') &&
-    /güçlü/i.test(huseyinBirth?.reply || '') &&
-    /gölge/i.test(huseyinBirth?.reply || '') &&
-    (huseyinBirth?.reply || '').length > 500,
+    /okuma|gölge|kişisel yıl/i.test(huseyinBirth?.reply || '') &&
+    (huseyinBirth?.reply || '').length < 900 &&
+    (huseyinBirth?.data?.depth ?? DEPTH_LEVEL.SHORT) <= DEPTH_LEVEL.SHORT,
   `len=${(huseyinBirth?.reply || '').length} depth=${huseyinBirth?.data?.depth}`,
 );
 

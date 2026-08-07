@@ -90,7 +90,7 @@ record('combinations produced', analysisOnly.combinations.pairs.length >= 3);
 record('methodology id', analysisOnly.methodologyId === ATLAS_CLASSIC_TAROT_METHODOLOGY.methodologyId);
 
 // ── Depth resolution ──────────────────────────────────────────────────
-record('default depth standard', resolveTarotDepth('tarot aç') === DEPTH_LEVEL.STANDARD);
+record('default depth short', resolveTarotDepth('tarot aç') === DEPTH_LEVEL.SHORT);
 record('short depth', resolveTarotDepth('kısaca tarot') === DEPTH_LEVEL.SHORT);
 record('deep depth', resolveTarotDepth('detaylı tam analiz') === DEPTH_LEVEL.DEEP);
 
@@ -118,19 +118,13 @@ record('test1 handled', Boolean(t1?.handled && t1.reply));
 record('test1 engine', t1?.engine === 'tarot-engine');
 record('test1 flow version', t1?.data?.tarotFlowVersion === TAROT_FLOW_VERSION);
 const r1 = t1?.reply || '';
-record('test1 has Açılım section', /##\s*Açılım/i.test(r1));
-record('test1 has Kartlar', /##\s*Kartlar/i.test(r1));
-record('test1 has relationships', /##\s*Kartların Birbirine Etkisi/i.test(r1));
-record('test1 has hidden dynamic', /##\s*Gizli Dinamik/i.test(r1));
-record('test1 has blind spot', /##\s*Kör Nokta/i.test(r1));
-record('test1 has main message', /##\s*Ana Mesaj/i.test(r1));
-record('test1 has growth', /##\s*Gelişim/i.test(r1));
-record('test1 has sonuç', /##\s*Sonuç/i.test(r1));
-record('test1 intention centered', /niyet|görünmeyen/i.test(r1));
-record('test1 not dictionary', looksLikeCardDictionary(r1) === false);
+record('test1 default is short prose', !/##\s*Açılım/i.test(r1));
+record('test1 names cards', /kart|niyet|açılım/i.test(r1) || Boolean(t1?.data?.cards?.length));
+record('test1 has structure cue', /çizgi|hat|gerilim|ortak|öne çıkan/i.test(r1));
 record('test1 symbolic boundary', /sembolik|olas[ıi]l[ıi]k|kehanet\s+de[gğ]il|zihin\s+okuma/i.test(r1));
-record('test1 methodology', /atlas-classic-tarot/i.test(r1));
-record('test1 not tiny', r1.length > 500, `len=${r1.length}`);
+record('test1 not report dump', (r1.match(/^##\s+/gm) || []).length === 0);
+record('test1 not dictionary', looksLikeCardDictionary(r1) === false);
+record('test1 concise', r1.length < 900 && r1.split(/\s+/).length < 180, `len=${r1.length}`);
 record('test1 three cards in data', t1?.data?.cards?.length === 3);
 const t1Cards = (t1?.data?.cards || []).map((c) => c.name);
 
@@ -146,6 +140,8 @@ record(
   t1run.guard && t1run.guard.ok === true,
   `score=${t1run.guard?.score}/${t1run.guard?.maxScore} failed=${t1run.guard?.failedChecks?.join(',')}`,
 );
+record('standard still layered when requested', /##\s*Açılım/i.test(t1run.reply || ''));
+record('standard has Ana Mesaj when requested', /##\s*Ana Mesaj/i.test(t1run.reply || ''));
 
 // ── Test 1b: deep ─────────────────────────────────────────────────────
 const t1deep = runTarotAnalysis({

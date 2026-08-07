@@ -294,7 +294,7 @@ function baseInput(message, extras = {}) {
     '17 timeout uses synthesis prose',
     result.engine === 'cross-layer-synthesis' &&
       result.data?.crossLayerSynthesis?.usedDeterministicFallback === true &&
-      /Kaynakların ayrı özeti|Ortak tema/i.test(result.reply),
+      /Ortak çizgi|yakınsama|Tek katman hüküm vermez|Kaynakların ayrı özeti|Ortak tema/i.test(result.reply),
   );
 }
 
@@ -321,6 +321,50 @@ function baseInput(message, extras = {}) {
   record('18 single synthesis block in prompt', synthBlocks === 1, String(synthBlocks));
   record('18 once flag', result.data?.crossLayerSynthesis?.once === true);
   record('18 bridge version present', Boolean(MESSAGE_SYNTHESIS_BRIDGE_VERSION));
+}
+
+// ── 19. P4 gate: tarot+numerology wants synthesis; solo numerology does not ─
+{
+  const multi = detectCrossLayerSynthesisIntent('Tarot ve numerolojiyi birlikte oku.');
+  record(
+    '19 tarot+num wants synth',
+    multi.wantsSynthesis === true &&
+      multi.layersRequested.includes('tarot') &&
+      multi.layersRequested.includes('numerology'),
+    JSON.stringify(multi.layersRequested),
+  );
+
+  const solo = detectCrossLayerSynthesisIntent('Yaşam yolumu hesapla.');
+  record(
+    '19 solo numerology no synth',
+    solo.wantsSynthesis === false && solo.layersRequested.includes('numerology'),
+  );
+
+  const equation = detectCrossLayerSynthesisIntent('Bu denklemi yakınsama olarak oku.');
+  record('19 denklem/yakınsama combine', equation.wantsSynthesis === true && equation.combineExplicit === true);
+}
+
+// ── 20. P4 gate: multi-layer ask must not exit via solo numerology/tarot engine ─
+{
+  const result = await processAtlasMessage(
+    baseInput('Tarot ve numerolojiyi birlikte oku; tekrar temasını karşılaştır.'),
+    {
+      callOpenAI: mockLlm(
+        'İki katman ayrı yöntemlerdir. Ortak tema iddiası dayanak güçlendikçe artar; tek başına hüküm değildir.',
+      ),
+    },
+  );
+  const soloEngine =
+    result.engine === 'numerology-engine' ||
+    result.engine === 'tarot-engine' ||
+    result.engine === 'dream-engine' ||
+    /^numerology:/.test(String(result.intent ?? '')) ||
+    /^tarot:/.test(String(result.intent ?? ''));
+  record(
+    '20 multi-layer not solo-engine monopoly',
+    !soloEngine,
+    `engine=${result.engine} intent=${result.intent}`,
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

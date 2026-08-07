@@ -123,7 +123,10 @@ _resetAllSessionExamplesForTests();
     !/\bdoğruluyor\b|\bkanıtlıyor\b/i.test(result.prose) &&
       result.sections.limits.some((l) => /doğrulanmış.*sayılmaz|doğrulayıcısı olarak sunulmaz/i.test(l)),
   );
-  record('1 prose has source summaries', /Kaynakların ayrı özeti/i.test(result.prose));
+  record(
+    '1 prose has source summaries',
+    /quran:|astrology:|Ortak çizgi|Kaynakların ayrı özeti/i.test(result.prose),
+  );
 }
 
 // ─── 2. Kur’an + astroloji zıt tema ───────────────────────────────────
@@ -223,7 +226,8 @@ _resetAllSessionExamplesForTests();
   record('4 three-layer relationships', result.relationships.length === 3, String(result.relationships.length));
   record(
     '4 three-layer prose sections',
-    /## 1\./.test(result.prose) && /## 2\./.test(result.prose) && /## 6\./.test(result.prose),
+    /Ortak çizgi|yakınsama|Tek katman hüküm vermez/i.test(result.prose) &&
+      /quran:|astrology:|numerology:/i.test(result.prose),
   );
 }
 

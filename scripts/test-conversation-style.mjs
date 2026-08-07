@@ -403,6 +403,9 @@ for (const c of pipelineCases) {
   if (c.label.includes('Ben kimim F') && /ben atlas/i.test(reply)) reasons.push('self as user');
   if (c.label.includes('Ben kimim NF') && /lara|kurucu/i.test(reply)) reasons.push('founder leak');
   if (c.label.includes('Sen kimsin') && !/ben atlas/i.test(reply)) reasons.push('not atlas');
+  if (c.label.includes('Sen kimsin') && /yapay zek[aâ] asistan/i.test(reply)) {
+    reasons.push('assistant cliché');
+  }
   record({
     label: c.label,
     words,

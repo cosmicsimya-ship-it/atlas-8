@@ -80,7 +80,7 @@ const jung = matchJungArchetypes({
 record('jung may include Shadow', jung.length === 0 || jung.some((j) => j.id === 'Shadow') || jung.length >= 1);
 
 // ── Depth resolution ──────────────────────────────────────────────────
-record('default depth standard', resolveDreamDepth('rüyamı yorumla') === DEPTH_LEVEL.STANDARD);
+record('default depth short', resolveDreamDepth('rüyamı yorumla') === DEPTH_LEVEL.SHORT);
 record('short depth', resolveDreamDepth('kısaca rüya yorumu') === DEPTH_LEVEL.SHORT);
 record('deep depth', resolveDreamDepth('detaylı jung analizi') === DEPTH_LEVEL.DEEP);
 
@@ -119,21 +119,13 @@ record('test1 handled', Boolean(t1?.handled && t1.reply));
 record('test1 engine', t1?.engine === 'dream-engine');
 record('test1 flow version', t1?.data?.dreamFlowVersion === DREAM_FLOW_VERSION);
 const r1 = t1?.reply || '';
-record('test1 has Rüya Analizi', /##\s*Rüya\s*Analizi/i.test(r1));
-record('test1 has Duygu', /##\s*Duygu/i.test(r1));
-record('test1 has Sembol', /##\s*Sembol/i.test(r1));
-record('test1 has Olay Örgüsü', /##\s*Olay/i.test(r1));
-record('test1 has Jung', /##\s*Jung/i.test(r1));
-record('test1 has Klasik', /##\s*Klasik/i.test(r1));
-record('test1 has Psikolojik', /##\s*Psikolojik/i.test(r1));
-record('test1 has Kişisel', /##\s*Kişisel/i.test(r1));
-record('test1 has Kör Nokta', /##\s*Kör\s*Nokta/i.test(r1));
-record('test1 has Sonuç', /##\s*Sonuç/i.test(r1));
+record('test1 default is short prose', !/##\s*Rüya\s*Analizi/i.test(r1));
+record('test1 has emotion or images', /duygu|imge|sembol/i.test(r1));
+record('test1 has structure cue', /çizgi|vurgu|gerilim|yapı|birlikte/i.test(r1));
 record('test1 uncertainty', /kesin\s+de[gğ]ildir|sembolik|olas[ıi]l[ıi]k/i.test(r1));
-record('test1 methodology', /atlas-dream/i.test(r1));
-record('test1 single-symbol disclaimer', /tek\s+ba[sş][ıi]na\s+tek\s+bir\s+anlam/i.test(r1));
+record('test1 not report dump', (r1.match(/^##\s+/gm) || []).length === 0);
 record('test1 not dictionary', looksLikeSymbolDictionary(r1) === false);
-record('test1 not tiny', r1.length > 600, `len=${r1.length}`);
+record('test1 concise', r1.length < 1400 && r1.split(/\s+/).length < 220, `len=${r1.length}`);
 record('test1 symbols in data', (t1?.data?.symbols?.length || 0) >= 3);
 record(
   'test1 no absolute prophecy',
@@ -151,6 +143,7 @@ record(
   t1run.guard && t1run.guard.ok === true,
   `score=${t1run.guard?.score}/${t1run.guard?.maxScore} failed=${t1run.guard?.failedChecks?.join(',')}`,
 );
+record('standard still layered when requested', /##\s*Rüya\s*Analizi/i.test(t1run.reply || ''));
 
 // ── Deep analysis ─────────────────────────────────────────────────────
 const deep = runDreamAnalysis({
@@ -255,7 +248,7 @@ const e2e = await processAtlasMessage(
 record('e2e complete', e2e?.status === 'complete');
 record('e2e dream engine', e2e?.engine === 'dream-engine' || e2e?.data?.provider === 'atlas-dream-engine');
 record('e2e domain dream', e2e?.data?.domain === 'dream' || e2e?.data?.responseMode === 'dream_analysis');
-record('e2e reply has layers', /Duygu|Sembol|Psikolojik/i.test(e2e?.reply || ''));
+record('e2e reply has layers', /duygu|imge|vurgu|çizgi|sembol/i.test(e2e?.reply || ''));
 record('e2e clarify reply available', DREAM_CLARIFY_REPLY.length > 50);
 
 // Session isolation: clear helper works

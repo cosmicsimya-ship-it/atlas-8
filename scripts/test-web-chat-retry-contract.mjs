@@ -5,7 +5,13 @@
 import assert from 'assert';
 
 function isRetryable(response) {
-  const SOFT = new Set(['TIMEOUT', 'RATE_LIMIT', 'MODEL_UNAVAILABLE', 'ENGINE_FAILURE']);
+  const SOFT = new Set([
+    'TIMEOUT',
+    'RATE_LIMIT',
+    'MODEL_UNAVAILABLE',
+    'ENGINE_FAILURE',
+    'INCOMPLETE_RESPONSE',
+  ]);
   if (response.retryable === true) return true;
   if (response.errorCode && SOFT.has(response.errorCode)) return true;
   if (response.status === 'error' && response.errorCode) return true;
@@ -19,6 +25,14 @@ function ok(name, cond) {
   console.log(`  ✓ ${name}`);
 }
 
+ok(
+  'incomplete soft fail retryable',
+  isRetryable({
+    reply: 'Yanıt tamamlanamadı',
+    errorCode: 'INCOMPLETE_RESPONSE',
+    status: 'error',
+  }),
+);
 ok(
   'timeout soft fail retryable',
   isRetryable({
