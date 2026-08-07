@@ -322,7 +322,11 @@ const mustWrite = [
   },
   {
     msg: 'Bundan sonra bana Lara de.',
-    expect: { type: 'profile-update', field: 'name', value: 'Lara', memoryUpdated: false, clarity: 'ambiguous' },
+    expect: { type: 'profile-update', field: 'name', value: 'Lara', memoryUpdated: true },
+  },
+  {
+    msg: 'Benim adım Ayşe',
+    expect: { type: 'profile-update', field: 'name', value: 'Ayşe', memoryUpdated: true },
   },
   {
     msg: 'Benim adımı Lara olarak hatırla.',
@@ -456,7 +460,9 @@ const FAILING_SENTENCE =
     saveE2e.engine === 'memory' &&
       saveE2e.memoryUpdated === true &&
       getUserMemory(e2eUser).profile.name === 'Zeynep' &&
-      String(saveE2e.reply).includes('Ad bilgini kaydettim: Zeynep'),
+      String(saveE2e.reply).includes('Zeynep') &&
+      (String(saveE2e.reply).includes('hatırlıyorum') ||
+        String(saveE2e.reply).includes('kaydettim')),
     `engine=${saveE2e.engine} updated=${saveE2e.memoryUpdated} name=${getUserMemory(e2eUser).profile.name} reply=${String(saveE2e.reply).slice(0, 80)}`,
   );
 }

@@ -438,6 +438,7 @@ export function toWebChatResponse(result) {
     errorCode === 'TIMEOUT' ||
     errorCode === 'RATE_LIMIT' ||
     errorCode === 'MODEL_UNAVAILABLE' ||
+    errorCode === 'INCOMPLETE_RESPONSE' ||
     data.resultStatus === 'user_visible_error';
   return {
     reply: result.reply,
@@ -460,6 +461,9 @@ export function toWebChatResponse(result) {
     errorCategory: data.errorCategory ?? null,
     retryable: Boolean(retryable && errorCode),
     requestId: data.requestId ?? data.requestTiming?.requestId ?? null,
+    completionStatus: data.completionStatus ?? (errorCode === 'INCOMPLETE_RESPONSE' ? 'incomplete' : null),
+    incompleteReason: data.incompleteReason ?? null,
+    completenessRetryCount: data.completenessRetryCount ?? 0,
   };
 }
 
@@ -473,10 +477,12 @@ export function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata 
     BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
     MODEL_UNAVAILABLE: 'Model şu an geçici olarak kullanılamıyor. Lütfen biraz sonra tekrar dene.',
     TIMEOUT: 'Mesajını aldım ancak şu anda yanıtı tamamlayamadım. Lütfen birkaç saniye sonra tekrar dene.',
+    INCOMPLETE_RESPONSE:
+      'Yanıt tamamlanamadı. Lütfen “Yeniden oluştur” ile tekrar dene.',
     RATE_LIMIT: 'İstek limiti aşıldı. Kısa bir süre sonra tekrar dene.',
     INVALID_INPUT: 'Geçersiz istek.',
     MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
-    ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
+    ENGINE_FAILURE: 'Atlas bu turda güvenilir bir yanıt üretemedi. Biraz sonra tekrar deneyebilirsin.',
     IMAGE_DOWNLOAD_FAILED: 'Görseli indiremedim. Lütfen fotoğrafı tekrar gönder.',
     UNSUPPORTED_IMAGE_FORMAT:
       'Bu görsel formatını desteklemiyorum. JPEG, PNG, WebP veya GIF gönder.',

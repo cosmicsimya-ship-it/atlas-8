@@ -7,6 +7,8 @@ import { resolveSiteOrigin } from './public-routes.js';
  */
 export function buildRobotsTxt(options = {}) {
   const origin = resolveSiteOrigin(options.origin);
+  // Always emit a concrete sitemap URL — never an empty "Sitemap:" line.
+  const sitemapUrl = `${origin}/sitemap.xml`;
   return `User-agent: *
 Allow: /
 
@@ -25,6 +27,6 @@ Disallow: /memory
 Disallow: /analytics
 Disallow: /settings
 
-Sitemap: ${origin}/sitemap.xml
+Sitemap: ${sitemapUrl}
 `;
 }

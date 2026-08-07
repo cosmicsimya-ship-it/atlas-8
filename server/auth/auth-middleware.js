@@ -17,6 +17,7 @@ import {
   createUnauthenticatedIdentity,
   authToRequesterContext,
 } from './session-service.js';
+import { findAccountByUserId } from './account-store.js';
 import { logPrivacyEvent } from '../privacy/privacy-logger.js';
 
 /**
@@ -373,9 +374,18 @@ export function requireFounder(req, res, next) {
  * @param {import('express').Request} req
  */
 export function requesterContextFromRequest(req) {
+  let displayName = req.body?.displayName ?? null;
+  if (!displayName && req.auth?.authenticated && !req.auth?.isAnonymous && req.auth?.userId) {
+    try {
+      const account = findAccountByUserId(req.auth.userId);
+      displayName = account?.displayName ?? null;
+    } catch {
+      /* non-fatal */
+    }
+  }
   return authToRequesterContext(req.auth ?? createUnauthenticatedIdentity(), {
     channel: req.atlasBotVerified ? 'telegram' : 'web',
-    displayName: req.body?.displayName ?? null,
+    displayName,
   });
 }
 

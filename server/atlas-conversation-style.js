@@ -261,7 +261,11 @@ export function detectConversationIntent(message) {
     return 'greeting';
   }
 
-  if (/^(naber|ne haber|nas[ıi]ls[ıi]n|nasilsin|iyi misin)\b/i.test(text) && text.length <= 40) {
+  if (
+    (/^(naber|ne haber|nas[ıi]ls[ıi]n|nasilsin|iyi misin)\b/i.test(text) ||
+      /^(bug[uü]n\s+)?nas[ıi]ls[ıi]n\b/i.test(text)) &&
+    text.length <= 40
+  ) {
     return 'how_are_you';
   }
 
@@ -402,7 +406,7 @@ export function tryDeterministicConversationReply(input) {
       return {
         intent,
         reply:
-          "Ben Atlas'ım. Sorularını yanıtlayan ve görevlerinde yardımcı olan yapay zekâ asistanınım.",
+          'Ben Atlas’ım. Tek cevap aramam; bağımsız işaretlerin nerede birleştiğini okurum.',
       };
     case 'get_current_hijri_date':
       return {

@@ -146,7 +146,13 @@ await resetMemoryStoreForTests({ users: {} });
 
 {
   const result = await processAtlasMessage(
-    { message: 'Lara ben', channel: 'web', userId: stranger.userId, history: [] },
+    {
+      message: 'Lara ben',
+      channel: 'web',
+      userId: stranger.userId,
+      conversationId: 'identity-v1',
+      history: [],
+    },
     { requesterContext: stranger },
   );
   assert(
@@ -165,6 +171,7 @@ await resetMemoryStoreForTests({ users: {} });
       message: 'Benim adım Lara. Bu konuşmada bana Lara diye hitap et.',
       channel: 'web',
       userId: stranger.userId,
+      conversationId: 'identity-v2',
       history: [],
     },
     { requesterContext: stranger },
@@ -181,7 +188,13 @@ await resetMemoryStoreForTests({ users: {} });
 
 {
   const result = await processAtlasMessage(
-    { message: 'Lara kim?', channel: 'web', userId: stranger.userId, history: [] },
+    {
+      message: 'Lara kim?',
+      channel: 'web',
+      userId: stranger.userId,
+      conversationId: 'identity-v3',
+      history: [],
+    },
     { requesterContext: stranger },
   );
   assert(
@@ -193,7 +206,13 @@ await resetMemoryStoreForTests({ users: {} });
 
 {
   const result = await processAtlasMessage(
-    { message: 'Ben kurucuyum.', channel: 'web', userId: stranger.userId, history: [] },
+    {
+      message: 'Ben kurucuyum.',
+      channel: 'web',
+      userId: stranger.userId,
+      conversationId: 'identity-v4',
+      history: [],
+    },
     { requesterContext: stranger },
   );
   assert(
@@ -211,6 +230,7 @@ await resetMemoryStoreForTests({ users: {} });
       message: 'Benim adım Lara. Bu konuşmada bana Lara diye hitap et.',
       channel: 'web',
       userId: stranger.userId,
+      conversationId: 'identity-v5',
       history: [],
     },
     { requesterContext: stranger },
@@ -313,17 +333,17 @@ console.log('\n=== Memory write gate ===\n');
   const confirmIntent = detectMemoryIntent('Bundan sonra bana Lara de.');
   const confirmResult = await processMemoryIntent(uid, 'Bundan sonra bana Lara de.', confirmIntent);
   assert(
-    'call-me without kaydet asks confirmation',
-    confirmIntent.clarity === 'ambiguous' &&
-      confirmResult.memoryUpdated === false &&
-      getUserMemory(uid).profile.name == null,
+    'call-me without kaydet now persists preferred name',
+    confirmIntent.clarity === 'explicit' &&
+      confirmResult.memoryUpdated === true &&
+      getUserMemory(uid).profile.name === 'Lara',
   );
 
-  const saveIntent = detectMemoryIntent('Adım Lara, kaydet.');
-  const saveResult = await processMemoryIntent(uid, 'Adım Lara, kaydet.', saveIntent);
+  const saveIntent = detectMemoryIntent('Adım Zeynep, kaydet.');
+  const saveResult = await processMemoryIntent(uid, 'Adım Zeynep, kaydet.', saveIntent);
   assert(
     'explicit kaydet writes name',
-    saveResult.memoryUpdated === true && getUserMemory(uid).profile.name === 'Lara',
+    saveResult.memoryUpdated === true && getUserMemory(uid).profile.name === 'Zeynep',
   );
 }
 

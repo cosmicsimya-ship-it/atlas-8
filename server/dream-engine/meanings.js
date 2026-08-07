@@ -20,18 +20,17 @@ export function interpretSymbolInContext(symbol, ctx = {}) {
   const shortReading = `${symbol.name} — ${symbol.themes.slice(0, 2).join(', ')}`;
 
   let reading =
-    `«${symbol.name}» tek başına tek bir anlam taşımaz. ` +
-    `Ancak rüyanın bütünü değerlendirildiğinde ${symbol.themes.join(', ')} katmanları öne çıkabilir. ` +
-    `Bu, bilinçaltında ${symbol.psychological}`;
+    `«${symbol.name}» — ${symbol.themes.slice(0, 3).join(', ')}. ` +
+    `${symbol.psychological}`;
 
   if (emotion) {
-    reading += ` Duygu merkezi «${emotion}» iken bu sembol bazen o hissin taşıyıcısı olur.`;
+    reading += ` Duygu merkezi «${emotion}» iken bu imge bazen o hissin taşıyıcısı olur.`;
   }
   if (narr) {
     reading += ` Olay örgüsünde «${narr}» ile birlikte okununca anlamı genişler.`;
   }
   reading += recurringBit;
-  reading += ' Bu yorum kesin değildir.';
+  reading += ' Tek başına hüküm değildir.';
 
   return {
     symbolId: symbol.id,

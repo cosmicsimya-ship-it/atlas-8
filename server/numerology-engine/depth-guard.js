@@ -89,7 +89,10 @@ export function applyNumerologyDepthGuard(result, context = {}) {
   checks.push({
     id: 'strength_and_shadow',
     weight: 1.5,
-    pass: anyMatch(reply, [/güçlü/i]) && anyMatch(reply, [/gölge/i]),
+    pass:
+      depth <= DEPTH_LEVEL.SHORT
+        ? anyMatch(reply, [/güçlü|gölge/i])
+        : anyMatch(reply, [/güçlü/i]) && anyMatch(reply, [/gölge/i]),
   });
 
   checks.push({
@@ -162,7 +165,11 @@ export function applyNumerologyDepthGuard(result, context = {}) {
   }
 
   const ratio = maxScore > 0 ? score / maxScore : 1;
-  const shouldExpand = ratio < minPassRatio || failedChecks.includes('not_only_single_number');
+  // Default SHORT first replies must stay short — never promote to "## Ana hesap" report.
+  const expandBlocked = depth <= DEPTH_LEVEL.SHORT && !requireDeep && !focus;
+  const shouldExpand =
+    !expandBlocked &&
+    (ratio < minPassRatio || failedChecks.includes('not_only_single_number'));
 
   return {
     ok: !shouldExpand,

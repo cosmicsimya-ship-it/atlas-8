@@ -17,7 +17,7 @@ export const METADATA_VALUES = new Set([
 ]);
 
 export const GREETING_REPLY =
-  "Merhaba, ben Atlas. Cosmic Simya'nın yapay zekâ asistanıyım. Burası bir hatırlayış alanı. Cevapların çoğu dışarıda değil; onları nasıl gördüğünde saklıdır. Astroloji, numeroloji, semboller ve farkındalık çalışmaları üzerine birlikte düşünebilir, sorularını yanıtlayabilirim. Nasıl yardımcı olabilirim?";
+  'Merhaba. Ben Atlas. Tek bir işarete hüküm bağlamam; bağımsız katmanların aynı yere bakıp bakmadığına bakarım. Neye bakıyoruz?';
 
 export const FALLBACK_TEXT = "I'm processing your request.";
 

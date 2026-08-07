@@ -18,6 +18,10 @@ import {
 import { RELATIONSHIP_LABELS_TR, CROSS_LAYER_SYNTHESIS_VERSION } from './schema.js';
 import { extractThemeIds } from './theme-lexicon.js';
 import { composeSynthesis } from './composer.js';
+import {
+  buildReflexPromptLock,
+  buildReflexStateFromSynthesis,
+} from '../cognitive-reflex-guards.js';
 import { detectDailyAnalysisIntent, tryDailyAnalysis } from '../daily-analysis-flow.js';
 import { buildSymbolicCalendarContext } from '../atlas-symbolic-calendar.js';
 import { buildEphemerisSnapshot } from '../atlas-ephemeris.js';
@@ -27,14 +31,16 @@ export const MESSAGE_SYNTHESIS_BRIDGE_VERSION = 'atlas-message-synthesis-bridge-
 
 const LAYER_CUES = {
   quran: /(kur[’'`]?an|kuran|\bâyet\b|\bayet\b|\bsûre\b|\bsure\b)/i,
-  astrology: /(astroloj|bur[cç]\b|gökyüz|gokyuz|transit|\bgezegen|harita|sinastri)/i,
+  astrology: /(astroloj|bur[cç]\b|gökyüz|gokyuz|transit|\bgezegen|harita|sinastri|natal)/i,
   numerology: /(numerol|sayısal|sayisal|yaşam yolu|yasam yolu|\bebced\b)/i,
   daily: /(g[uü]nl[uü]k analiz|katmanl[ıi]\s+g[uü]nl[uü]k|daily analysis|gezegen saat)/i,
   personal: /(ki[sş]isel analiz|personal analysis|tam analiz)/i,
+  tarot: /(\btarot\b|kart a[cç]ılım|açılım iste|acilim iste)/i,
+  dream: /(\br[uü]ya\b|\bdream\b|rüyam|ruyam)/i,
 };
 
 const COMBINE_INTENT =
-  /\b(birleştir|birlestir|sentezle|sentez|ortak tema|zıtlık|zitlik|birbirini destek|birlikte yorumla|birlikte oku|karşılaştır|karsilastir|çok katman|cok katman|meta sentez|arasındaki ilişki|arasindaki iliski)\b/i;
+  /\b(birleştir|birlestir|sentezle|sentez|ortak tema|zıtlık|zitlik|birbirini destek|birlikte yorumla|birlikte oku|karşılaştır|karsilastir|çok katman|cok katman|meta sentez|arasındaki ilişki|arasindaki iliski|yakınsama|yakinasma|convergence|kesişim|kesisim|denklem)\b/i;
 
 const USER_EXAMPLE_CUE =
   /(örne[gğ]in\s+şöyle|ornegin\s+soyle|ben\s+şöyle\s+sentez|ben\s+soyle\s+sentez|şöyle\s+okurum|soyle\s+okurum|kendi\s+sentezim|şu\s+şekilde\s+birleştir|su\s+sekilde\s+birlestir|şöyle\s+sentezlerim|soyle\s+sentezlerim)/i;
@@ -398,7 +404,7 @@ export function collectSynthesisLayers(opts) {
  * Build controlled LLM context — model must not override locked fields.
  * @param {object} synthesisResult
  */
-export function buildSynthesisPromptBlock(synthesisResult) {
+export function buildSynthesisPromptBlock(synthesisResult, opts = {}) {
   if (!synthesisResult) return '';
 
   const primary = synthesisResult.primaryRelationship;
@@ -413,6 +419,10 @@ export function buildSynthesisPromptBlock(synthesisResult) {
     status: synthesisResult.status,
   };
 
+  const reflexLock = synthesisResult.reflex
+    ? `\n${buildReflexPromptLock(synthesisResult.reflex, { stance: opts.stance ?? null })}\n`
+    : '';
+
   return `
 ## DETERMINISTIC CROSS-LAYER SYNTHESIS (${CROSS_LAYER_SYNTHESIS_VERSION} / ${MESSAGE_SYNTHESIS_BRIDGE_VERSION})
 Bu blok kilitlidir. Bozma, çelişme, yükseltme veya yeni kaynak ekleme.
@@ -423,7 +433,7 @@ Bu blok kilitlidir. Bozma, çelişme, yükseltme veya yeni kaynak ekleme.
 - confidence: ${locked.confidence}
 - status: ${locked.status}
 - failedLayers: ${JSON.stringify(locked.failedLayers)}
-
+${reflexLock}
 ### Ortak tema (kilitli)
 ${locked.commonTheme ?? 'Ortak tema kurulamadı.'}
 
@@ -531,7 +541,16 @@ export function runMessageCrossLayerSynthesis(opts) {
     userAskedToCombine: intentInfo.combineExplicit,
   });
 
-  let promptBlock = buildSynthesisPromptBlock(synthesis);
+  const reflex = buildReflexStateFromSynthesis(synthesis, {
+    usableLayerCount: usable.length,
+    casual: opts.casual === true,
+    message: opts.message,
+  });
+  synthesis.reflex = reflex;
+
+  let promptBlock = buildSynthesisPromptBlock(synthesis, {
+    stance: opts.stance ?? null,
+  });
   if (opts._userExampleAnalysis) {
     promptBlock += `
 
@@ -552,6 +571,7 @@ export function runMessageCrossLayerSynthesis(opts) {
     intentInfo,
     collection,
     usableCount: usable.length,
+    reflex,
     bridgeVersion: MESSAGE_SYNTHESIS_BRIDGE_VERSION,
   };
 }

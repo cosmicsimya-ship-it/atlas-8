@@ -44,24 +44,15 @@ export function resolveNumerologyDepth(message) {
 
   // L3: explicit deep / detailed analysis
   if (
-    /\b(detayl[ıi]|tam\s+analiz|derin|bilmedi[gğ]im|bilmedigim|full\s+analiz|ayr[ıi]nt[ıi]|deep\s+dive|her\s+katman)\b/u.test(
+    /detayl[ıi]|tam\s+analiz|derin(?:le[sş]tir|e|\s)|tamam[ıi]n[ıi]\s+g[oö]ster|raporla|rapor\s+ver|bilmedi[gğ]im|bilmedigim|full\s+analiz|ayr[ıi]nt[ıi]|deep\s+dive|her\s+katman/u.test(
       t,
     )
   ) {
     return DEPTH_LEVEL.DEEP;
   }
 
-  // L2+/L3-leaning: personal analysis/yorum without "kısa"
-  if (
-    /\b(yorumla|analiz\s+et|analiz\s+yap|numerolojimi\s+(?:anlat|incele)|kişisel\s+analiz)\b/u.test(
-      t,
-    )
-  ) {
-    return DEPTH_LEVEL.DEEP;
-  }
-
-  // L2 default for birth-date + numerology cues
-  return DEPTH_LEVEL.STANDARD;
+  // Default first reply: Atlas prose. "yorumla/anlat" alone is not a report request.
+  return DEPTH_LEVEL.SHORT;
 }
 
 /**
@@ -157,7 +148,13 @@ export function runNumerologyAnalysis(input) {
       },
     );
 
-    if (guard.shouldExpand && !input.focus && !input.exploreMore) {
+    // Never promote an intentional SHORT first reply into STANDARD/DEEP report.
+    if (
+      guard.shouldExpand &&
+      !input.focus &&
+      !input.exploreMore &&
+      depth > DEPTH_LEVEL.SHORT
+    ) {
       const expandedDepth = guard.recommendedDepth;
       reply = buildNumerologyReply(
         birthChart,

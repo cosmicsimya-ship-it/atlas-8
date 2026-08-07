@@ -107,7 +107,8 @@ export function applyTarotDepthGuard(result, context = {}) {
     pass:
       Boolean(analysis?.placed?.length) &&
       anyMatch(reply, [/pozisyon|katman|g[oö]r[uü]nen|gizli|y[uü]zey|alan/i]),
-    skip: focus === 'reveal',
+    // SHORT first replies are prose, not position reports.
+    skip: focus === 'reveal' || depth <= DEPTH_LEVEL.SHORT,
   });
 
   checks.push({
@@ -141,9 +142,9 @@ export function applyTarotDepthGuard(result, context = {}) {
     id: 'new_inference',
     weight: 2,
     pass: anyMatch(reply, [
-      /gizli\s+dinamik|k[oö]r\s+nokta|bu\s+nedenle|as[ıi]l\s+vurgu|yeni\s+[cç][ıi]kar[ıi]m|geli[sş]im/i,
+      /gizli\s+dinamik|k[oö]r\s+nokta|bu\s+nedenle|as[ıi]l\s+vurgu|yeni\s+[cç][ıi]kar[ıi]m|geli[sş]im|ortak\s+[cç]izgi|gerilim/i,
     ]),
-    skip: focus === 'reveal',
+    skip: focus === 'reveal' || depth <= DEPTH_LEVEL.SHORT,
   });
 
   checks.push({
@@ -207,11 +208,14 @@ export function applyTarotDepthGuard(result, context = {}) {
 
   const ratio = maxScore > 0 ? score / maxScore : 1;
   const needsBoundaryFix = failedChecks.includes('uncertainty_boundary');
+  // Default SHORT first replies must stay short — never promote to report format.
+  const expandBlocked = depth <= DEPTH_LEVEL.SHORT && !requireDeep && !focus;
   const shouldExpand =
-    ratio < minPassRatio ||
-    failedChecks.includes('not_card_dictionary') ||
-    // Focus paths: missing boundary must remediate (append), not silent-pass on ratio.
-    (Boolean(focus) && needsBoundaryFix);
+    !expandBlocked &&
+    (ratio < minPassRatio ||
+      failedChecks.includes('not_card_dictionary') ||
+      // Focus paths: missing boundary must remediate (append), not silent-pass on ratio.
+      (Boolean(focus) && needsBoundaryFix));
 
   return {
     ok: !shouldExpand && !needsBoundaryFix,

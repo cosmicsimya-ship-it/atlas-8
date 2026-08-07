@@ -192,6 +192,19 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+// Canonical host: apex. www → https://cosmicsimya.com (301)
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '')
+    .split(':')[0]
+    .toLowerCase();
+  if (host === 'www.cosmicsimya.com') {
+    const pathQs = req.originalUrl || '/';
+    return res.redirect(301, `https://cosmicsimya.com${pathQs}`);
+  }
+  return next();
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
@@ -648,7 +661,12 @@ app.post(
 
       console.log(
         `[ATLAS] ✓ chat/${normalized.channel} (${response.profile}/${response.mode})` +
-          `${response.memoryHandled ? ' [memory]' : ''} | ${response.engine ?? response.model} | ${response.tokensUsed} tok`,
+          `${response.memoryHandled ? ' [memory]' : ''}` +
+          ` | ${response.engine ?? response.model} | ${response.tokensUsed} tok` +
+          ` | req=${response.requestId ?? 'n/a'}` +
+          ` | status=${response.completionStatus ?? response.status ?? 'n/a'}` +
+          `${response.retryable ? ` | retryable=${response.errorCode}` : ''}` +
+          ` | ${response.latencyMs ?? 0}ms`,
       );
       return res.status(httpStatus).json(response);
     } catch (err) {
@@ -1449,6 +1467,18 @@ if (serveFrontend) {
       index: false,
       maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
       fallthrough: true,
+      setHeaders(res, filePath) {
+        const lower = String(filePath).toLowerCase();
+        if (lower.endsWith('.html') || lower.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          return;
+        }
+        // Hashed Vite assets (when not singlefile)
+        if (/\.[a-f0-9]{8,}\.(js|css|woff2?)$/i.test(lower)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      },
     }),
   );
   app.use((req, res, next) => {
@@ -1457,6 +1487,8 @@ if (serveFrontend) {
     if (req.path === '/sitemap.xml' || req.path === '/robots.txt') return next();
     const indexPath = join(DIST_DIR, 'index.html');
     if (!existsSync(indexPath)) return next();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     return res.sendFile(indexPath);
   });
   console.log(`[ATLAS] Serving frontend from ${DIST_DIR}`);

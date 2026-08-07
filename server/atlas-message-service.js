@@ -17,6 +17,10 @@ import {
   categoryToErrorCode,
 } from './provider-errors.js';
 import {
+  assessResponseCompleteness,
+  nextRetryTokenBudget,
+} from './response-completeness.js';
+import {
   detectAnalysisMode,
   buildChatUserPrompt,
   detectTarotSpreadIntent,
@@ -30,6 +34,7 @@ import {
   processMemoryIntent,
   tryAutoSaveProfile,
   messageRequestsAnalysis,
+  resolvePreferredUserName,
 } from './memory-intents.js';
 import { routeTask } from '../runner/task-router.js';
 import { formatMetaSynthesisProse } from './symbolic-synthesis.js';
@@ -95,6 +100,12 @@ import {
   guardSynthesisReply,
   MESSAGE_SYNTHESIS_BRIDGE_VERSION,
 } from './cross-layer-synthesis/message-integration.js';
+import {
+  applyNarrowReflexPostGuard,
+  buildStancePromptHint,
+  detectAnalyticStance,
+  isCasualReflexBypass,
+} from './cognitive-reflex-guards.js';
 import {
   analyzeIdentityClaim,
   buildAmbiguousIdentityClarifyReply,
@@ -168,7 +179,7 @@ const ERROR_REPLIES = {
   RATE_LIMIT: 'İstek limiti aşıldı. Kısa bir süre sonra tekrar dene.',
   INVALID_INPUT: 'Geçersiz istek.',
   MEMORY_FAILURE: 'Hafıza işlemi başarısız oldu.',
-  ENGINE_FAILURE: 'Atlas motoru yanıt üretemedi.',
+  ENGINE_FAILURE: 'Atlas bu turda güvenilir bir yanıt üretemedi. Biraz sonra tekrar deneyebilirsin.',
   IMAGE_DOWNLOAD_FAILED: 'Görseli indiremedim. Lütfen fotoğrafı tekrar gönder.',
   UNSUPPORTED_IMAGE_FORMAT:
     'Bu görsel formatını desteklemiyorum. JPEG, PNG, WebP veya GIF gönder.',
@@ -610,7 +621,9 @@ export function buildAtlasPromptBundle(input, options = {}) {
 
   let userMemoryContext =
     userId && userId !== 'web:anonymous' && !filtered.strippedCrossUser
-      ? buildRelevantMemoryContext(userId, message, mode)
+      ? buildRelevantMemoryContext(userId, message, mode, {
+          accountDisplayName: requesterContext.displayName,
+        })
       : null;
 
   // Unauthorized founder questions must not carry private memory into the prompt.
@@ -619,8 +632,20 @@ export function buildAtlasPromptBundle(input, options = {}) {
   }
 
   const identityAnalysis = analyzeIdentityClaim(message);
-  const authenticatedProfile =
+  const rawAuthenticatedProfile =
     userId && userId !== 'web:anonymous' ? getUserMemory(userId)?.profile ?? null : null;
+  const preferredStoredName = resolvePreferredUserName(
+    userId && userId !== 'web:anonymous' ? getUserMemory(userId) : null,
+    { accountDisplayName: requesterContext.displayName },
+  );
+  const authenticatedProfile = rawAuthenticatedProfile
+    ? {
+        ...rawAuthenticatedProfile,
+        name: preferredStoredName || rawAuthenticatedProfile.name || null,
+      }
+    : preferredStoredName
+      ? { name: preferredStoredName }
+      : null;
 
   // Name conflict: do not inject conflicting profile name as verified truth.
   if (
@@ -1251,7 +1276,18 @@ export async function processAtlasMessage(input, options = {}) {
 
   // ── Personal numerology engine (layered analysis; before short self-profile) ──
   // Follow-ups stay in numerology session — do not fall through to profile resolvers.
-  if (!hasImage && !healthSafety.active) {
+  // Multi-layer / convergence asks must not be monopolized by a solo engine.
+  const synthesisIntentGate = healthSafety.active
+    ? { wantsSynthesis: false, layersRequested: [] }
+    : detectCrossLayerSynthesisIntent(message);
+  const preferConvergence =
+    synthesisIntentGate.wantsSynthesis === true &&
+    (synthesisIntentGate.layersRequested?.length >= 2 ||
+      /birlikte|sentez|yakınsama|yakinasma|karşılaştır|karsilastir|denklem|kesişim|kesisim/i.test(
+        message,
+      ));
+
+  if (!hasImage && !healthSafety.active && !preferConvergence) {
     requestTiming.start('numerology_engine');
     const numerologyFlow = tryNumerologyFlowReply({
       message,
@@ -1310,7 +1346,8 @@ export async function processAtlasMessage(input, options = {}) {
   // ── Tarot interpretation engine (selection ≠ interpretation; depth guard) ──
   // Engine-first for text AND image captions. Never fall through to LLM tarot
   // dictionary dumps. Multimodal card-from-image is not supported in v1.
-  if (!healthSafety.active) {
+  // Convergence asks skip solo monopolization (same gate as numerology).
+  if (!healthSafety.active && !preferConvergence) {
     requestTiming.start('tarot_engine');
     const tarotFlow = tryTarotFlowReply({
       message,
@@ -1422,7 +1459,8 @@ export async function processAtlasMessage(input, options = {}) {
 
   // ── Dream interpretation engine (multi-layer; after tarot; before context) ──
   // Deterministic symbolic reading. Health intents already blocked above.
-  if (!hasImage && !healthSafety.active) {
+  // Convergence asks skip solo monopolization (same gate as numerology/tarot).
+  if (!hasImage && !healthSafety.active && !preferConvergence) {
     requestTiming.start('dream_engine');
     const dreamFlow = tryDreamFlowReply({
       message,
@@ -1589,10 +1627,12 @@ export async function processAtlasMessage(input, options = {}) {
     ].includes(casualIntent);
 
     const identityAnalysis = analyzeIdentityClaim(message);
+    // Conflict checks use stored memory only — account displayName is soft prompt
+    // context, not a hard identity lock (would false-conflict "Guest" vs "Lara").
+    const storedMemory =
+      userId && userId !== 'web:anonymous' ? getUserMemory(userId) : null;
     const profileName =
-      userId && userId !== 'web:anonymous'
-        ? getUserMemory(userId)?.profile?.name?.trim() || null
-        : null;
+      resolvePreferredUserName(storedMemory, { accountDisplayName: null }) || null;
 
     if (!skipIdentityForCasual) {
     // Verified founder self-ID / recognition — confirm from profile, never clarify away.
@@ -2085,7 +2125,7 @@ export async function processAtlasMessage(input, options = {}) {
         prose ??
         (result.status === 'reject'
           ? 'Bu istek mevcut verilerle işlenemedi.'
-          : 'Kişisel analiz tamamlandı ancak sentez metni üretilemedi.');
+          : 'Analiz tamamlandı; bu turda gösterilecek sentez metni oluşmadı. Niyetini netleştirip yeniden sorabilirsin.');
 
       return applyPrivacyGuardToResult(
         {
@@ -2141,6 +2181,8 @@ export async function processAtlasMessage(input, options = {}) {
       : mode;
 
   const conversationIntent = astrologyIntent ?? detectConversationIntent(message);
+  const casualReflexBypass = isCasualReflexBypass(conversationIntent);
+  const analyticStance = detectAnalyticStance(message, { conversationIntent });
   const promptBundle = buildAtlasPromptBundle(input, {
     mode: effectiveMode,
     requesterContext,
@@ -2153,6 +2195,14 @@ export async function processAtlasMessage(input, options = {}) {
   // Explicit detail requests must not inherit casual brevity defaults.
   if (conversationIntent === 'detail') {
     systemPrompt = `${systemPrompt}\n\n${buildDetailIntentRuntimeDirective(message)}`;
+  }
+
+  // Stance hints only when not casual and clearly matched — never invent "analysis".
+  if (!casualReflexBypass && analyticStance) {
+    const stanceHint = buildStancePromptHint(analyticStance);
+    if (stanceHint) {
+      systemPrompt = `${systemPrompt}\n\n${stanceHint}`;
+    }
   }
 
   const trustedSpeakerRuntime = resolveTrustedSpeakerForPrompt(input, {
@@ -2195,6 +2245,8 @@ export async function processAtlasMessage(input, options = {}) {
       astrologyContext,
       verseStore: options.verseStore ?? null,
       intentInfo: synthesisIntent,
+      casual: casualReflexBypass,
+      stance: analyticStance,
     });
     if (synthesisBridge.ran && synthesisBridge.promptBlock) {
       userPrompt = `${userPrompt}\n\n${synthesisBridge.promptBlock}`;
@@ -2205,21 +2257,23 @@ export async function processAtlasMessage(input, options = {}) {
     contextResolution.responseMode || 'other',
   );
   // Explicit detail / symbolic analysis budgets must not be crushed by casual
-  // response-mode caps (e.g. direct_fact → 80 tokens).
+  // response-mode caps. Mode caps are floors — never starve a larger intent budget.
   const preferIntentBudget =
     conversationIntent === 'detail' ||
     tarotIntent.active ||
     Boolean(astrologyAnalysis) ||
     synthesisBridge.ran;
-  const maxTokens = resolveReplyMaxTokens(message, {
-    maxTokens:
-      options.maxTokens ??
-      (preferIntentBudget ? undefined : modeTokenCap ?? undefined),
+  const intentBudget = resolveReplyMaxTokens(message, {
     mode: effectiveMode,
     tarotActive: tarotIntent.active,
     intent: conversationIntent,
     astrologyLength: astrologyContext?.length,
   });
+  let maxTokens =
+    options.maxTokens ??
+    (preferIntentBudget || modeTokenCap == null
+      ? intentBudget
+      : Math.max(modeTokenCap, intentBudget));
   const styleDebug = buildStyleRuntimeDebug({
     channel: input.channel,
     userId,
@@ -2245,14 +2299,15 @@ export async function processAtlasMessage(input, options = {}) {
 
   try {
     requestTiming.start('llm');
-    const llmInvoke = () => {
+    const llmInvoke = (tokenBudget) => {
       requestTiming.noteLlmCall();
       return invokeLlm({
         systemPrompt,
         userPrompt,
         model: options.model,
         temperature: options.temperature ?? 0.4,
-        maxTokens,
+        maxTokens: tokenBudget,
+        requestId: requestTiming.requestId,
         ...(hasImage
           ? {
               imageBase64: input.image.base64,
@@ -2262,19 +2317,107 @@ export async function processAtlasMessage(input, options = {}) {
       });
     };
 
-    const { result, attempts: llmAttempts } = await withProviderRetry(llmInvoke, {
-      requestId: requestTiming.requestId,
-      channel: input.channel || 'api',
-      route: 'processAtlasMessage.llm',
-      provider: 'openai',
-      model: options.model || process.env.OPENAI_MODEL || null,
-      maxAttempts: 2,
-      backoffMs: 450,
-      onRetry: () => requestTiming.noteRetryOrFallback(),
-    });
+    const { result: firstResult, attempts: llmAttempts } = await withProviderRetry(
+      () => llmInvoke(maxTokens),
+      {
+        requestId: requestTiming.requestId,
+        channel: input.channel || 'api',
+        route: 'processAtlasMessage.llm',
+        provider: 'openai',
+        model: options.model || process.env.OPENAI_MODEL || null,
+        maxAttempts: 2,
+        backoffMs: 450,
+        onRetry: () => requestTiming.noteRetryOrFallback(),
+      },
+    );
+
+    let result = firstResult;
+    let completenessRetryCount = 0;
+    let completionStatus = 'complete';
+    let incompleteReason = null;
+
+    const firstText = extractResponseText(result);
+    let completeness = assessResponseCompleteness(
+      {
+        status: result?.status,
+        incompleteReason: result?.incompleteReason,
+        incomplete_details: result?.incomplete ? { reason: result.incompleteReason } : null,
+      },
+      firstText,
+    );
+
+    // At most one completeness retry with a larger token budget.
+    if (completeness.incomplete) {
+      completenessRetryCount = 1;
+      requestTiming.noteRetryOrFallback();
+      maxTokens = nextRetryTokenBudget(maxTokens);
+      console.warn(
+        `[Atlas] incomplete reply retry requestId=${requestTiming.requestId}` +
+          ` reason=${completeness.reason} nextMaxTokens=${maxTokens}`,
+      );
+      try {
+        result = await llmInvoke(maxTokens);
+      } catch (retryErr) {
+        requestTiming.end('llm');
+        throw retryErr;
+      }
+      const retryText = extractResponseText(result);
+      completeness = assessResponseCompleteness(
+        {
+          status: result?.status,
+          incompleteReason: result?.incompleteReason,
+          incomplete_details: result?.incomplete ? { reason: result.incompleteReason } : null,
+        },
+        retryText,
+      );
+    }
+
     requestTiming.end('llm');
     if (llmAttempts > 1) {
       requestTiming.noteRetryOrFallback();
+    }
+
+    if (completeness.incomplete) {
+      completionStatus = 'incomplete';
+      incompleteReason = completeness.reason;
+      console.error(
+        `[Atlas] incomplete reply after retry requestId=${requestTiming.requestId}` +
+          ` userId=${userId || 'n/a'} conversationId=${conversationId}` +
+          ` reason=${incompleteReason}`,
+      );
+      return applyPrivacyGuardToResult(
+        {
+          status: 'error',
+          reply:
+            'Yanıt tamamlanamadı, tekrar deniyorum başarısız oldu. Lütfen “Yeniden oluştur” ile tekrar dene.',
+          intent,
+          engine: 'conversation',
+          memoryUpdated: false,
+          errorCode: 'INCOMPLETE_RESPONSE',
+          data: {
+            mode: effectiveMode,
+            profile,
+            resultStatus: 'user_visible_error',
+            retryable: true,
+            completionStatus,
+            incompleteReason,
+            completenessRetryCount,
+            requestId: requestTiming.requestId,
+            model: result?.model ?? options.model ?? 'atlas',
+            provider: result?.provider ?? 'openai',
+            tokensUsed: result?.tokensUsed ?? 0,
+            costUsd: result?.costUsd ?? 0,
+            latencyMs: result?.latencyMs ?? 0,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            memoryHandled: false,
+            // Partial text is intentionally NOT promoted as a completed reply.
+            partialReplyDiscarded: true,
+          },
+        },
+        privacyGuardCtx,
+      );
     }
 
     requestTiming.start('post_llm_guards');
@@ -2286,6 +2429,15 @@ export async function processAtlasMessage(input, options = {}) {
       if (synthesisGuard.usedDeterministicFallback) {
         requestTiming.noteRetryOrFallback();
       }
+    }
+
+    if (!casualReflexBypass) {
+      const reflexPost = applyNarrowReflexPostGuard(reply, {
+        casual: false,
+        advanceAllowed: synthesisBridge.synthesis?.reflex?.advanceAllowed === true,
+        stance: analyticStance,
+      });
+      reply = reflexPost.reply;
     }
 
     const authorVoiceGuard = applyPersonaGuards(reply, {
@@ -2354,6 +2506,10 @@ export async function processAtlasMessage(input, options = {}) {
           },
           tarotIntent: tarotIntent.active ? tarotIntent.intent : null,
           memoryHandled: false,
+          completionStatus,
+          incompleteReason,
+          completenessRetryCount,
+          requestId: requestTiming.requestId,
           model: result.model,
           provider: result.provider,
           tokensUsed: result.tokensUsed,

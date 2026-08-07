@@ -28,7 +28,7 @@ function ageRange(from, to) {
  * }} [opts]
  */
 export function buildNumerologyReply(chart, nameChart, contradictions, opts = {}) {
-  const depth = opts.depth ?? DEPTH_LEVEL.STANDARD;
+  const depth = opts.depth ?? DEPTH_LEVEL.SHORT;
   const focus = opts.focus || null;
   const covered = new Set(opts.layersAlreadyCovered || []);
 
@@ -65,15 +65,63 @@ function buildShortReply(chart) {
   const lp = chart.lifePath;
   const profile = getNumberProfile(lp.value);
   const py = chart.personalYear;
-  const lines = [
-    `Ana hesap: yaşam yolu ${lp.display} (${lp.formula}${lp.steps.length ? ' → ' + lp.steps.join(' → ') : ''}).`,
-    profile ? `En net okuma: ${profile.core}` : '',
-    profile?.shadows?.[0] ? `Gölge ucu: ${profile.shadows[0]}.` : '',
-    py
-      ? `Şu an kişisel yıl ${py.display}: ${getPersonalYearTheme(py.value)}`
-      : '',
-  ];
-  return lines.filter(Boolean).join('\n');
+  const active = chart.lifeCycles?.activeCycle || null;
+  const sentences = [];
+
+  sentences.push(
+    `Doğum tarihinden yaşam yolu ${lp.display} çıkıyor` +
+      (lp.formula ? ` (${lp.formula}${lp.steps?.length ? ' → ' + lp.steps.join(' → ') : ''})` : '') +
+      '.',
+  );
+
+  if (profile?.core) {
+    sentences.push(
+      `En net okuma: ${clipWords(profile.core, 36)}${/[.!?…]$/.test(String(profile.core).trim()) ? '' : '.'}`,
+    );
+  }
+
+  const strength = profile?.strengths?.[0] ? clipWords(profile.strengths[0], 16) : '';
+  const shadow = profile?.shadows?.[0] ? clipWords(profile.shadows[0], 16) : '';
+  if (strength && shadow) {
+    sentences.push(`Güçlü uç ${strength}; gölgede ${shadow}.`);
+  } else if (shadow) {
+    sentences.push(`Gölge ucu: ${shadow}.`);
+  } else if (strength) {
+    sentences.push(`Güçlü uç: ${strength}.`);
+  }
+
+  if (profile?.lifeLesson) {
+    sentences.push(
+      `Ders tarafı: ${clipWords(profile.lifeLesson, 22)}${/[.!?…]$/.test(String(profile.lifeLesson).trim()) ? '' : '.'}`,
+    );
+  }
+
+  if (active?.name) {
+    const gov = active.governingDisplay ? ` (${active.governingDisplay})` : '';
+    sentences.push(`Aktif döngüde ${active.name}${gov} öne çıkıyor.`);
+  }
+
+  if (py) {
+    const theme = clipWords(getPersonalYearTheme(py.value), 24);
+    sentences.push(
+      `Şu an kişisel yıl ${py.display}: ${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`,
+    );
+  }
+
+  sentences.push(
+    'Tek sayı hüküm vermez; bu bir yön okuması. İstersen döngüleri veya detaylı raporu açabiliriz.',
+  );
+
+  return sentences.filter(Boolean).join(' ');
+}
+
+function clipWords(text, maxWords) {
+  const words = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return `${words.slice(0, maxWords).join(' ').replace(/[.,;:]+$/u, '')}…`;
 }
 
 function buildStandardReply(chart, nameChart, contradictions) {

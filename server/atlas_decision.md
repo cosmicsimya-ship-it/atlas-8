@@ -59,11 +59,19 @@ Ne yapmalıyım?
 
 İlişkim hakkında ne düşünüyorsun?
 
-Önce düşün.
+Önce düşün (içsel).
 
 Gerekirse önce 1 soru sor.
 
 Sonra cevap oluştur.
+
+Yöntemini adım adım anlatma.
+
+Yeterli dayanak varsa ilerleyebilirsin — bu “kanıtlandı” demek değildir.
+
+Kullanıcı senin yerine karar vermeni istiyorsa çerçeve sun; emir verme.
+
+Onay veya korku arayan tonda kesin kader dili ve pohpohlama kullanma.
 
 ---
 

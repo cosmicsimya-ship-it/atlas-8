@@ -104,7 +104,9 @@ export function applyDreamDepthGuard(result, context = {}) {
   checks.push({
     id: 'multi_layer',
     weight: 2,
-    pass: anyMatch(reply, [/katman|sembol|olay\s+[oö]rg|anlat[ıi]|psikolojik|klasik|arketip/i]),
+    pass: anyMatch(reply, [
+      /katman|sembol|imge|olay\s+[oö]rg|anlat[ıi]|psikolojik|klasik|arketip|çizgi|vurgu|yapı/i,
+    ]),
     skip: focus === 'clarify',
   });
 
@@ -122,7 +124,9 @@ export function applyDreamDepthGuard(result, context = {}) {
     weight: 2,
     pass:
       !/tek\s+sembol(?:den|le)|yaln[ıi]zca\s+\w+\s+sembolü\s+yeter/i.test(reply) &&
-      anyMatch(reply, [/bütün|birlikte|katman|tek\s+ba[sş][ıi]na\s+tek\s+bir\s+anlam\s+ta[sş][ıi]maz/i]),
+      anyMatch(reply, [
+        /bütün|birlikte|katman|tek\s+ba[sş][ıi]na\s+tek\s+bir\s+anlam\s+ta[sş][ıi]maz|tek\s+i[sş]aret\s+karar\s+vermez/i,
+      ]),
     skip: focus === 'clarify' || depth <= DEPTH_LEVEL.SHORT,
   });
 
@@ -184,10 +188,13 @@ export function applyDreamDepthGuard(result, context = {}) {
 
   const ratio = maxScore > 0 ? score / maxScore : 1;
   const needsBoundaryFix = failedChecks.includes('uncertainty_boundary');
+  // Default SHORT first replies must stay short — never promote to "## Rüya Analizi".
+  const expandBlocked = depth <= DEPTH_LEVEL.SHORT && !requireDeep && !focus;
   const shouldExpand =
-    ratio < minPassRatio ||
-    failedChecks.includes('not_symbol_dictionary') ||
-    (Boolean(focus) && focus !== 'clarify' && needsBoundaryFix);
+    !expandBlocked &&
+    (ratio < minPassRatio ||
+      failedChecks.includes('not_symbol_dictionary') ||
+      (Boolean(focus) && focus !== 'clarify' && needsBoundaryFix));
 
   return {
     ok: !shouldExpand && !needsBoundaryFix,

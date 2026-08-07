@@ -31,6 +31,48 @@ const DAILY_GUIDE_KEYWORDS = [
 
 const MULTI_SYSTEM_PATTERN = /\b(astroloji|numeroloji|tarot|kader|ebced|cifir|simya|arketip)\b.*\b(astroloji|numeroloji|tarot|kader|ebced|cifir|simya|arketip)\b/i;
 
+/**
+ * Compact long chat history to stay under prompt budget while preserving
+ * recent turns and durable cues (names / preferences) from older turns.
+ * @param {Array<{ role?: string, content?: string }>} history
+ * @param {{ keepRecent?: number, summarizeAfter?: number }} [opts]
+ */
+export function compactConversationHistory(history, opts = {}) {
+  const list = Array.isArray(history) ? history.filter((t) => t && String(t.content ?? '').trim()) : [];
+  const keepRecent = opts.keepRecent ?? 8;
+  const summarizeAfter = opts.summarizeAfter ?? 12;
+
+  if (list.length <= summarizeAfter) {
+    return { recent: list.slice(-keepRecent), summary: null };
+  }
+
+  const recent = list.slice(-keepRecent);
+  const older = list.slice(0, Math.max(0, list.length - keepRecent));
+  const cues = [];
+  for (const turn of older) {
+    const text = String(turn.content ?? '');
+    const nameMatch = text.match(
+      /(?:benim\s+)?(?:adım|adim|ismim)\s+([A-ZÇĞİÖŞÜa-zçğıöşü][\p{L}'’.-]{1,29})/iu,
+    );
+    if (nameMatch?.[1]) {
+      cues.push(`Kullanıcı adı: ${nameMatch[1]}`);
+    }
+    const callMe = text.match(/\bbana\s+([\p{L}][\p{L}'’.-]{1,29})\s+(?:de|diye)/iu);
+    if (callMe?.[1]) {
+      cues.push(`Hitap tercihi: ${callMe[1]}`);
+    }
+  }
+  const uniqueCues = [...new Set(cues)].slice(0, 4);
+  const summaryParts = [
+    `${older.length} önceki tur özetlendi.`,
+    ...uniqueCues,
+  ];
+  return {
+    recent,
+    summary: summaryParts.join(' '),
+  };
+}
+
 /** Explicit tarot spread commands from atlas_tarot_spread.md §2 */
 const TAROT_EXPLICIT_COMMANDS = [
   'açılım yap',
@@ -350,9 +392,16 @@ export function buildChatUserPrompt(
       'Aşağıdaki geçmiş yalnızca bağlamdır. Güncel niyeti ASLA geçmişle değiştirme.',
       'Önceki bir göreve yalnızca kullanıcı açıkça devam ederse devam et.',
     );
-    for (const turn of history.slice(-10)) {
+    const compacted = compactConversationHistory(history, {
+      keepRecent: 8,
+      summarizeAfter: 12,
+    });
+    if (compacted.summary) {
+      parts.push('## EARLIER CONTEXT SUMMARY', compacted.summary, '');
+    }
+    for (const turn of compacted.recent) {
       const role = turn.role === 'assistant' ? 'Atlas' : 'Kullanıcı';
-      parts.push(`${role}: ${turn.content.trim()}`);
+      parts.push(`${role}: ${String(turn.content ?? '').trim()}`);
     }
     parts.push('');
   }

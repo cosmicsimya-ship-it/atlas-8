@@ -42,7 +42,7 @@ export function ensureUncertaintyBoundary(reply) {
  * }} [opts]
  */
 export function buildTarotReply(analysis, opts = {}) {
-  const depth = opts.depth ?? DEPTH_LEVEL.STANDARD;
+  const depth = opts.depth ?? DEPTH_LEVEL.SHORT;
   const focus = opts.focus || null;
 
   if (!analysis?.ok) {
@@ -83,17 +83,59 @@ function buildRevealReply(analysis) {
 }
 
 function buildShortReply(analysis) {
-  const parts = [];
-  parts.push(
-    `Bu dinamikte öne çıkan üç katman: ${analysis.placed.map((p) => p.card.name).join(', ')}.`,
-  );
-  parts.push(analysis.combinations.commonTheme);
-  if (analysis.contradictions.tensions[0]) {
-    parts.push(analysis.contradictions.tensions[0].reading);
+  const cards = (analysis.placed || []).map((p) => p.card.name).filter(Boolean);
+  const themeRaw = String(
+    analysis.combinations?.commonTheme || analysis.synthesis || '',
+  )
+    .replace(/^Ortak tema:\s*/i, '')
+    .trim();
+  const tensionRaw = String(
+    analysis.contradictions?.tensions?.[0]?.reading || '',
+  ).trim();
+  const emphasisRaw = String(analysis.strongMessage || '').trim();
+
+  const theme = clipWords(themeRaw, 42);
+  const tension = clipWords(tensionRaw, 32);
+  const emphasis = clipWords(emphasisRaw, 32);
+
+  // One short prose block — no ## report walls, no card dictionary dump.
+  const sentences = [];
+  if (cards.length) {
+    sentences.push(`Açılımda ${cards.join(', ')} geldi.`);
+  } else {
+    sentences.push('Açılım kuruldu.');
   }
-  parts.push(`Ana mesaj: ${analysis.strongMessage}`);
-  parts.push(SYMBOLIC_UNCERTAINTY_LINE);
-  return parts.join('\n\n');
+
+  if (theme) {
+    sentences.push(`Ortak çizgi: ${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`);
+  }
+  if (emphasis && emphasis !== theme) {
+    sentences.push(`Öne çıkan yapı: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+  } else if (!theme && emphasis) {
+    sentences.push(`Öne çıkan yapı: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+  }
+
+  if (tension) {
+    sentences.push(`Bir gerilim de var: ${tension}${/[.!?…]$/.test(tension) ? '' : '.'}`);
+  }
+
+  sentences.push(
+    'Tek karttan hüküm çıkmaz; bu okuma yön ve olasılık verir.',
+  );
+  sentences.push('İstersen bir katmanı veya gerilimi detaylı açabiliriz.');
+
+  const body = sentences.join(' ');
+  return `${body}\n\n${SYMBOLIC_UNCERTAINTY_LINE}`;
+}
+
+/** Soft word clip for SHORT replies — keep Atlas rhythm without report dumps. */
+function clipWords(text, maxWords) {
+  const words = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return `${words.slice(0, maxWords).join(' ').replace(/[.,;:]+$/u, '')}…`;
 }
 
 function buildStandardReply(analysis) {

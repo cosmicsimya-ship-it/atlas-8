@@ -42,9 +42,22 @@ function extractResponsesText(data) {
  *   model?: string,
  *   temperature?: number,
  *   maxTokens?: number,
+ *   timeoutMs?: number,
  *   apiKey?: string,
+ *   requestId?: string|null,
  * }} options
- * @returns {Promise<{ content: string, model: string, provider: string, tokensUsed: number, costUsd: number, latencyMs: number }>}
+ * @returns {Promise<{
+ *   content: string,
+ *   model: string,
+ *   provider: string,
+ *   tokensUsed: number,
+ *   costUsd: number,
+ *   latencyMs: number,
+ *   incomplete: boolean,
+ *   incompleteReason: string|null,
+ *   status: string|null,
+ *   requestId: string|null,
+ * }>}
  */
 export async function callOpenAI(options) {
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY ?? '';
@@ -112,14 +125,39 @@ export async function callOpenAI(options) {
 
   const data = await response.json();
   const content = extractResponsesText(data);
+  const apiStatus = typeof data?.status === 'string' ? data.status : null;
+  const incompleteReason =
+    data?.incomplete_details?.reason != null
+      ? String(data.incomplete_details.reason)
+      : apiStatus === 'incomplete'
+        ? 'incomplete_status'
+        : null;
+  const incomplete = Boolean(incompleteReason) || apiStatus === 'incomplete';
 
   if (!content) {
-    throw new Error('OpenAI returned empty output');
+    const empty = new Error(
+      incomplete
+        ? `OpenAI incomplete empty output (${incompleteReason || 'incomplete'})`
+        : 'OpenAI returned empty output',
+    );
+    empty.status = 502;
+    empty.code = incomplete ? 'INCOMPLETE_RESPONSE' : 'EMPTY_RESPONSE';
+    empty.incomplete = incomplete;
+    empty.incompleteReason = incompleteReason;
+    empty.requestId = options.requestId ?? null;
+    throw empty;
   }
 
   const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
   const costRate = COST_PER_1K[selectedModel] ?? 0.001;
   const tokensUsed = totalTokens || Math.ceil(content.length / 4);
+
+  if (incomplete) {
+    console.warn(
+      `[OpenAI] incomplete response requestId=${options.requestId || 'n/a'}` +
+        ` reason=${incompleteReason} tokens=${tokensUsed} max_output_tokens=${options.maxTokens ?? 700}`,
+    );
+  }
 
   return {
     content,
@@ -128,6 +166,10 @@ export async function callOpenAI(options) {
     tokensUsed,
     costUsd: (tokensUsed / 1000) * costRate,
     latencyMs: Math.round(latencyMs),
+    incomplete,
+    incompleteReason,
+    status: apiStatus,
+    requestId: options.requestId ?? null,
   };
 }
 

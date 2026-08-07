@@ -85,7 +85,11 @@ export function detectDreamEngineIntent(message, history = [], opts = {}) {
   const lower = text.toLocaleLowerCase('tr-TR');
   let depthHint = null;
   if (/\b(k[ıi]saca|k[ıi]sa\s+anlat|[oö]zetle)\b/u.test(lower)) depthHint = 'short';
-  if (/\b(detayl[ıi]|tam\s+analiz|derin|her\s+katman|jung|klasik)\b/u.test(lower)) {
+  if (
+    /detayl[ıi]|ayr[ıi]nt[ıi]l[ıi]|tam\s+analiz|derin(?:le[sş]tir|e|\s)|tamam[ıi]n[ıi]\s+g[oö]ster|raporla|rapor\s+ver|her\s+katman|jung|klasik/u.test(
+      lower,
+    )
+  ) {
     depthHint = 'deep';
   }
 

@@ -90,7 +90,7 @@ function pairReading(a, b, ctx) {
   if (shared.length) {
     return (
       `${a.name} + ${b.name}${emoBit}: ortak tema «${shared.join(', ')}». ` +
-      'Bu sembol tek başına tek bir anlam taşımaz; birlikte okunduğunda örüntü güçlenir.'
+      'Birlikte okunduğunda örüntü güçlenir; tek başına hüküm değildir.'
     );
   }
 
@@ -124,6 +124,6 @@ function buildCommonTheme(list, ctx) {
   if (emotion) line += ` Duygu merkezi: ${emotion}.`;
   if (narr) line += ` Anlatı motifi: ${narr}.`;
   line +=
-    ' Bu sembol bazen tek başına okunsa da, rüyanın bütünü değerlendirildiğinde anlamı genişler.';
+    ' Tek başına okunsa da, bütünle birlikte anlamı genişler.';
   return line;
 }

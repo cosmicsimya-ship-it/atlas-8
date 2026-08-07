@@ -30,13 +30,14 @@ export function resolveTarotDepth(message) {
     return DEPTH_LEVEL.SHORT;
   }
   if (
-    /\b(detayl[ıi]|tam\s+analiz|derin|element|her\s+katman|full\s+analiz|deep)\b/u.test(
+    /detayl[ıi]|tam\s+analiz|derin(?:le[sş]tir|e|\s)|tamam[ıi]n[ıi]\s+g[oö]ster|raporla|rapor\s+ver|element|her\s+katman|full\s+analiz|\bdeep\b/u.test(
       t,
     )
   ) {
     return DEPTH_LEVEL.DEEP;
   }
-  return DEPTH_LEVEL.STANDARD;
+  // Default first reply: Atlas prose, not a section report.
+  return DEPTH_LEVEL.SHORT;
 }
 
 /**
@@ -217,7 +218,12 @@ export function runTarotAnalysis(input) {
           guardCtx,
         );
       }
-    } else if (guard.shouldExpand && depth < DEPTH_LEVEL.DEEP) {
+    } else if (
+      guard.shouldExpand &&
+      depth > DEPTH_LEVEL.SHORT &&
+      depth < DEPTH_LEVEL.DEEP
+    ) {
+      // Never promote an intentional SHORT first reply into STANDARD/DEEP report.
       effectiveDepth = guard.recommendedDepth;
       reply = buildTarotReply(analysis, { ...buildOpts, depth: effectiveDepth });
       guard = applyTarotDepthGuard(

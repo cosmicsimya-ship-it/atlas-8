@@ -880,23 +880,25 @@ export function buildAssistantSelfIdentityReply(claim) {
  * @param {ResponseMode} mode
  */
 export function resolveMaxTokensForResponseMode(mode) {
+  // Floors must be high enough that OpenAI max_output_tokens never
+  // truncates mid-word on typical short replies (was 40–80 → "za" stalls).
   switch (mode) {
     case 'presence':
     case 'casual_ack':
-      return 40;
+      return 160;
     case 'casual_banter':
     case 'correction_repair':
     case 'direct_fact':
     case 'profile_property_query':
-      return 80;
+      return 320;
     case 'clarification':
-      return 60;
+      return 240;
     case 'roleplay_or_metaphor':
-      return 70;
+      return 280;
     case 'instruction':
-      return 100;
+      return 400;
     case 'analysis_request':
-      return 700;
+      return 900;
     default:
       return null;
   }

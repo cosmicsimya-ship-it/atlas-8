@@ -76,6 +76,15 @@ const FORGET_NAME_PATTERNS = [
     `${uBoundaryBefore()}(?:adımı|adimi|ismimi)\\s+(?:hafızandan|hafizandan|belleğinden)\\s+sil${uBoundaryAfter()}`,
     'iu',
   ),
+  new RegExp(`${uBoundaryBefore()}beni\\s+unut${uBoundaryAfter()}`, 'iu'),
+  new RegExp(
+    `${uBoundaryBefore()}(?:adımı|adimi|ismimi)\\s+kullanma${uBoundaryAfter()}`,
+    'iu',
+  ),
+  new RegExp(
+    `${uBoundaryBefore()}(?:ismimi|adımı|adimi)\\s+(?:artık\\s+)?kullanma${uBoundaryAfter()}`,
+    'iu',
+  ),
 ];
 
 /** Verbs/idioms that mean "step", not "my name". */
@@ -252,6 +261,31 @@ const PREFERENCE_PATTERNS = [
         'tercih ettiğim sistem',
       ]),
   },
+  {
+    key: 'responseStyle',
+    patterns: [
+      /\b(kısa\s+yanıt|kısa\s+cevap|özet\s+yanıt|detaylı\s+yanıt|uzun\s+yanıt|kısa\s+tut|detaylı\s+anlat)\b/i,
+      /\b(yanıt\s+tarzım|cevap\s+tercihim|response\s+style)\b/i,
+    ],
+    extract: (text) => {
+      const t = String(text ?? '').toLocaleLowerCase('tr-TR');
+      if (/\b(kısa|özet)\b/.test(t)) return 'short';
+      if (/\b(detaylı|uzun|ayrıntılı)\b/.test(t)) return 'detailed';
+      return extractLabeledValue(text, ['yanıt tarzım', 'cevap tercihim', 'response style']);
+    },
+  },
+  {
+    key: 'preferredLanguage',
+    patterns: [
+      /\b(türkçe\s+konuş|ingilizce\s+konuş|yanıt\s+dilim|cevap\s+dilim|preferred\s+language)\b/i,
+    ],
+    extract: (text) => {
+      const t = String(text ?? '').toLocaleLowerCase('tr-TR');
+      if (/türkçe|turkish/.test(t)) return 'tr';
+      if (/ingilizce|english/.test(t)) return 'en';
+      return extractLabeledValue(text, ['yanıt dilim', 'cevap dilim', 'preferred language']);
+    },
+  },
 ];
 
 const PROFILE_LABELS = {
@@ -287,6 +321,27 @@ function hasExplicitWriteVerb(message) {
  */
 function isCallMeNameRequest(message) {
   return CALL_ME_NAME_PATTERN.test(message) && isPlausiblePersonName(extractName(message));
+}
+
+/**
+ * "Benim adım Ayşe" / "Adım Ayşe" — clear self-intro, not a step idiom.
+ * @param {string} message
+ */
+function isNameIntroductionStatement(message) {
+  if (NAME_STEP_IDIOMS.some((p) => p.test(message))) {
+    return false;
+  }
+  if (isCallMeNameRequest(message)) {
+    return false;
+  }
+  const name = extractName(message);
+  if (!name || !isPlausiblePersonName(name)) {
+    return false;
+  }
+  return NAME_STATEMENT_PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(message);
+  });
 }
 
 /**
@@ -332,16 +387,21 @@ export function detectMemoryIntent(message) {
 
   // Call-me naming:
   // - conversation-scoped ("bu konuşmada…") → not a memory write
-  // - with explicit save verb → permanent profile update
-  // - "bundan sonra bana X de" without kaydet → ask confirmation (ambiguous)
+  // - otherwise permanent preferred-name update (user explicitly asked to be called X)
   if (isCallMeNameRequest(text)) {
     if (CONVERSATION_SCOPED_ADDRESS_RE.test(text) && !PERMANENT_SAVE_VERB_RE.test(text)) {
       return { type: null };
     }
-    if (PERMANENT_SAVE_VERB_RE.test(text)) {
-      return { type: 'profile-update', detail: 'name', clarity: 'explicit' };
+    return { type: 'profile-update', detail: 'name', clarity: 'explicit' };
+  }
+
+  // Clear name introductions ("Benim adım Ayşe") persist for the account
+  // unless scoped to this conversation only.
+  if (isNameIntroductionStatement(text)) {
+    if (CONVERSATION_SCOPED_ADDRESS_RE.test(text) && !PERMANENT_SAVE_VERB_RE.test(text)) {
+      return { type: null };
     }
-    return { type: 'profile-update', detail: 'name', clarity: 'ambiguous' };
+    return { type: 'profile-update', detail: 'name', clarity: 'explicit' };
   }
 
   if (!hasExplicitWriteVerb(text)) {
@@ -731,6 +791,7 @@ export async function processMemoryIntent(userId, message, intent, options = {})
     if (entity?.kind === 'forget-name') {
       const result = await updateUserMemory(userId, {
         profile: { name: null },
+        preferences: { preferredName: null, addressStyle: null },
       });
       if (!result.ok) {
         return {
@@ -742,7 +803,7 @@ export async function processMemoryIntent(userId, message, intent, options = {})
       }
       return {
         handled: true,
-        reply: 'Ad bilgini hafızamdan sildim.',
+        reply: 'Ad bilgini hafızamdan sildim. Bundan sonra isminle hitap etmeyeceğim.',
         memoryUpdated: true,
       };
     }
@@ -836,8 +897,14 @@ export async function processMemoryIntent(userId, message, intent, options = {})
   }
 
   if (entity.kind === 'profile' && entity.field && entity.value != null) {
+    const profilePatch = { [entity.field]: entity.value };
+    const preferencePatch =
+      entity.field === 'name'
+        ? { preferredName: entity.value }
+        : {};
     const result = await updateUserMemory(userId, {
-      profile: { [entity.field]: entity.value },
+      profile: profilePatch,
+      ...(Object.keys(preferencePatch).length ? { preferences: preferencePatch } : {}),
     });
 
     if (!result.ok) {
@@ -851,7 +918,10 @@ export async function processMemoryIntent(userId, message, intent, options = {})
 
     return {
       handled: true,
-      reply: `${PROFILE_LABELS[entity.field] ?? entity.field} bilgini kaydettim: ${entity.value}`,
+      reply:
+        entity.field === 'name'
+          ? `Tamam ${entity.value} — adını hatırlıyorum. Her mesajda isimle hitap etmeyeceğim; gerektiğinde kullanırım.`
+          : `${PROFILE_LABELS[entity.field] ?? entity.field} bilgini kaydettim: ${entity.value}`,
       memoryUpdated: true,
     };
   }
@@ -860,14 +930,45 @@ export async function processMemoryIntent(userId, message, intent, options = {})
 }
 
 /**
+ * Resolve preferred address name for a user.
+ * Priority: preferences.preferredName → profile.name → account displayName
+ * @param {ReturnType<typeof getUserMemory>|null|undefined} memory
+ * @param {{ accountDisplayName?: string|null, memoryEnabled?: boolean }} [opts]
+ * @returns {string|null}
+ */
+export function resolvePreferredUserName(memory, opts = {}) {
+  if (opts.memoryEnabled === false) return null;
+  if (memory?.preferences && memory.preferences.memoryEnabled === false) return null;
+
+  const preferred =
+    typeof memory?.preferences?.preferredName === 'string'
+      ? memory.preferences.preferredName.trim()
+      : '';
+  if (preferred) return preferred;
+
+  const profileName =
+    typeof memory?.profile?.name === 'string' ? memory.profile.name.trim() : '';
+  if (profileName) return profileName;
+
+  const account =
+    typeof opts.accountDisplayName === 'string' ? opts.accountDisplayName.trim() : '';
+  return account || null;
+}
+
+/**
  * Build only relevant memory lines for prompt injection (not full store).
  * @param {string} userId
  * @param {string} message
  * @param {string} mode
+ * @param {{ accountDisplayName?: string|null }} [opts]
  * @returns {string|null}
  */
-export function buildRelevantMemoryContext(userId, message, mode = 'conversational') {
+export function buildRelevantMemoryContext(userId, message, mode = 'conversational', opts = {}) {
   const memory = getUserMemory(userId);
+  if (memory.preferences?.memoryEnabled === false) {
+    return null;
+  }
+
   const lines = [];
   const text = (message ?? '').toLowerCase();
 
@@ -877,8 +978,14 @@ export function buildRelevantMemoryContext(userId, message, mode = 'conversation
   const wantsDaily = mode === 'daily-guide' || /günaydın|bugün|gunluk|günlük/.test(text);
   const wantsMeta = mode === 'meta-synthesis' || wantsBirth;
 
-  if (memory.profile.name) {
-    lines.push(`Ad: ${memory.profile.name}`);
+  const preferredName = resolvePreferredUserName(memory, {
+    accountDisplayName: opts.accountDisplayName,
+  });
+  if (preferredName) {
+    lines.push(`Ad: ${preferredName}`);
+    lines.push(
+      'Hitap kuralı: İsmi yalnızca doğal ve seyrek kullan; her yanıtta isimle hitap etme.',
+    );
   }
 
   if (wantsMeta || wantsBirth) {
@@ -904,6 +1011,10 @@ export function buildRelevantMemoryContext(userId, message, mode = 'conversation
 
   if (memory.preferences.responseStyle) {
     lines.push(`Yanıt tercihi: ${memory.preferences.responseStyle}`);
+  }
+
+  if (memory.preferences.preferredLanguage) {
+    lines.push(`Tercih edilen dil: ${memory.preferences.preferredLanguage}`);
   }
 
   const factEntries = Object.entries(memory.facts).slice(-3);

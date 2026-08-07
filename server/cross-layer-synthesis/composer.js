@@ -304,49 +304,58 @@ export function composeSynthesis(input) {
 export function formatSynthesisProse(sections) {
   const blocks = [];
 
-  blocks.push('## 1. Kaynakların ayrı özeti');
-  if (Array.isArray(sections.sourceSummaries) && sections.sourceSummaries.length) {
-    for (const s of sections.sourceSummaries) {
-      blocks.push(`- **${s.layerId}** — ${s.summary}`);
-    }
+  const summaries = Array.isArray(sections.sourceSummaries) ? sections.sourceSummaries : [];
+  if (summaries.length) {
+    blocks.push(
+      summaries
+        .map((s) => {
+          const text = String(s.summary || '')
+            .replace(/\([^)]*astronomy-engine[^)]*\)/gi, '')
+            .replace(/\bkaynak=[^;]+;\s*/gi, '')
+            .replace(/\byöntem=[^;]+;\s*/gi, '')
+            .trim();
+          return `${s.layerId}: ${text || '—'}`;
+        })
+        .join('\n'),
+    );
   } else {
-    blocks.push('- Özetlenecek katman yok.');
+    blocks.push('Karşılaştırılacak katman yok.');
   }
 
-  blocks.push('', '## 2. Ortak tema');
-  blocks.push(sections.commonTheme ?? 'Ortak tema kurulamadı.');
+  if (sections.commonTheme) {
+    blocks.push(`Ortak çizgi: ${sections.commonTheme}`);
+  }
 
-  blocks.push('', '## 3. Dengeleyen veya gerilim oluşturan taraf');
   if (sections.balanceOrTension) {
     const b = sections.balanceOrTension;
-    blocks.push(
-      `İlişki türü: ${b.labelTr ?? b.type}`,
-      `Katman A: ${b.layerA}`,
-      `Katman B: ${b.layerB}`,
-    );
-    if (b.tensionWhere) blocks.push(`Gerilim: ${b.tensionWhere}`);
-    if (b.whyMeaningful) blocks.push(`Neden anlamlı olabilir: ${b.whyMeaningful}`);
-  } else {
-    blocks.push('Belirgin denge/gerilim alanı yok.');
+    const bits = [`İlişki: ${b.labelTr ?? b.type}.`];
+    if (b.layerA) bits.push(`Katman A: ${b.layerA}`);
+    if (b.layerB) bits.push(`Katman B: ${b.layerB}`);
+    if (b.tensionWhere) bits.push(`Gerilim: ${b.tensionWhere}`);
+    if (b.whyMeaningful) bits.push(b.whyMeaningful);
+    blocks.push(bits.join(' '));
   }
 
-  blocks.push('', '## 4. Neden bu ilişki kuruldu');
-  blocks.push(sections.whyRelated ?? '—');
-
-  blocks.push('', '## 5. İlişkinin sınırları');
-  for (const limit of sections.limits ?? []) {
-    blocks.push(`- ${limit}`);
+  if (sections.whyRelated) {
+    blocks.push(sections.whyRelated);
   }
 
-  blocks.push('', '## 6. Düşünme sorusu');
-  blocks.push(sections.reflectionQuestion ?? '—');
+  const limits = sections.limits ?? [];
+  if (limits.length) {
+    blocks.push(`Sınır: ${limits.slice(0, 2).join(' ')}`);
+  }
+
+  if (sections.reflectionQuestion) {
+    blocks.push(sections.reflectionQuestion);
+  }
 
   if (sections.additionalDataRequest) {
-    blocks.push('', '## 7. Ek veri talebi');
     blocks.push(sections.additionalDataRequest);
   }
 
-  const joined = blocks.join('\n');
+  blocks.push('Tek katman hüküm vermez; bu bir yakınsama okumasıdır.');
+
+  const joined = blocks.filter(Boolean).join('\n\n');
   return sanitizeCertaintyLanguage(joined).text;
 }
 

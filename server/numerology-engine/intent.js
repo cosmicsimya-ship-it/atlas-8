@@ -130,7 +130,9 @@ export function detectNumerologyIntent(message, history = [], opts = {}) {
   let depthHint = null;
   if (/\b(k[ıi]saca|k[ıi]sa\s+anlat|özetle)\b/u.test(lower)) depthHint = 'short';
   if (
-    /\b(detayl[ıi]|tam\s+analiz|derin|bilmedi[gğ]im|her\s+katman)\b/u.test(lower)
+    /detayl[ıi]|tam\s+analiz|derin(?:le[sş]tir|e|\s)|tamam[ıi]n[ıi]\s+g[oö]ster|raporla|rapor\s+ver|bilmedi[gğ]im|her\s+katman/u.test(
+      lower,
+    )
   ) {
     depthHint = 'deep';
   }

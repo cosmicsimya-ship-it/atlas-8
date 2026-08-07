@@ -30,15 +30,10 @@ export function ensureUncertaintyBoundary(reply) {
 
 /** Clarifying questions before analysis when narrative is thin. */
 export const DREAM_CLARIFY_REPLY = [
-  'Rüyanı anlamlandırmadan önce birkaç şey netleştirmek isterim — çünkü tek sembolden hüküm çıkarmak istemem.',
+  'Tek sembolden hüküm çıkarmak istemem. Biraz daha anlatır mısın?',
   '',
-  '1. Rüyayı mümkün olduğunca ayrıntılı anlat.',
-  '2. En çok aklında kalan semboller nelerdi?',
-  '3. Rüyada ne hissettin?',
-  '4. Uyandığında ilk hissettiğin duygu neydi?',
-  '5. Bu, tekrar eden bir rüya mı?',
-  '',
-  'Anlattıkça sembol, duygu ve olay örgüsünü birlikte katmanlı okurum. Bu yorumlar kesin kehanet değildir.',
+  'Rüyada ne oldu, hangi imgeler kaldı, ve uyanınca ne hissettin?',
+  'Tekrar eden bir rüyaysa onu da söyle.',
 ].join('\n');
 
 /**
@@ -51,7 +46,7 @@ export const DREAM_CLARIFY_REPLY = [
  * }} [opts]
  */
 export function buildDreamReply(analysis, opts = {}) {
-  const depth = opts.depth ?? DEPTH_LEVEL.STANDARD;
+  const depth = opts.depth ?? DEPTH_LEVEL.SHORT;
   const focus = opts.focus || null;
 
   if (!analysis?.ok) {
@@ -77,19 +72,76 @@ export function buildDreamReply(analysis, opts = {}) {
 }
 
 function buildShortReply(analysis) {
-  const parts = [];
-  const emotion = analysis.emotions?.[0]?.label || 'belirsiz duygu';
-  parts.push(
-    `Duygu merkezi: ${emotion}. ` +
-      `Öne çıkan semboller: ${(analysis.symbolReadings || []).map((s) => s.name).join(', ') || '—'}.`,
+  const emotion = analysis.emotions?.[0]?.label || null;
+  const symbols = (analysis.symbolReadings || [])
+    .map((s) => s.name)
+    .filter(Boolean)
+    .slice(0, 3);
+  const themeRaw = stripUncertaintyEcho(
+    String(
+      analysis.combinations?.commonTheme || analysis.synthesis || '',
+    ).replace(/^Ortak tema:\s*/i, ''),
   );
-  parts.push(analysis.combinations?.commonTheme || analysis.synthesis);
-  if (analysis.contradictions?.tensions?.[0]) {
-    parts.push(analysis.contradictions.tensions[0].reading);
+  const tensionRaw = stripUncertaintyEcho(
+    String(analysis.contradictions?.tensions?.[0]?.reading || ''),
+  );
+  const emphasisRaw = stripUncertaintyEcho(String(analysis.strongMessage || ''));
+
+  const theme = clipWords(themeRaw, 40);
+  const tension = clipWords(tensionRaw, 30);
+  const emphasis = clipWords(emphasisRaw, 30);
+
+  // Selective Atlas prose — no ## walls, no symbol catalog dump.
+  const sentences = [];
+  if (emotion) {
+    sentences.push(`Burada öne çıkan duygu ${emotion}.`);
   }
-  parts.push(`Ana vurgu: ${analysis.strongMessage}`);
-  parts.push(SYMBOLIC_UNCERTAINTY_LINE);
-  return parts.join('\n\n');
+
+  if (symbols.length === 1) {
+    sentences.push(
+      `Öne çıkan imge: ${symbols[0]}. Tek başına büyük sonuç vermez; bağlam ister.`,
+    );
+  } else if (symbols.length > 1) {
+    sentences.push(
+      `Öne çıkan imgeler — ${symbols.join(', ')} — birlikte bir yapı kuruyor.`,
+    );
+  }
+
+  if (theme) {
+    sentences.push(`Ortak çizgi: ${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`);
+  } else if (emphasis) {
+    sentences.push(`Asıl vurgu: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+  }
+
+  if (tension && tension !== theme) {
+    sentences.push(`Bir gerilim de var: ${tension}${/[.!?…]$/.test(tension) ? '' : '.'}`);
+  } else if (emphasis && theme && emphasis !== theme) {
+    sentences.push(`Asıl vurgu: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+  }
+
+  sentences.push('Tek imgeden kesin hüküm çıkmaz; bu okuma yön ve olasılık verir.');
+  sentences.push('İstersen duygu, gerilim veya bir katmanı detaylı açabiliriz.');
+
+  const body = sentences.filter(Boolean).join(' ');
+  return `${body}\n\n${SYMBOLIC_UNCERTAINTY_LINE}`;
+}
+
+function stripUncertaintyEcho(text) {
+  return String(text || '')
+    .replace(SYMBOLIC_UNCERTAINTY_LINE, ' ')
+    .replace(/bu\s+yorum\s+kesin\s+de[gğ]ildir[^.]*\.?/gi, ' ')
+    .replace(/kesin\s+kehanet[^.]*\.?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function clipWords(text, maxWords) {
+  const words = String(text || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return `${words.slice(0, maxWords).join(' ').replace(/[.,;:]+$/u, '')}…`;
 }
 
 function buildStandardReply(analysis) {
@@ -97,8 +149,7 @@ function buildStandardReply(analysis) {
 
   parts.push('## Rüya Analizi');
   parts.push(
-    'Bu sembol tek başına tek bir anlam taşımaz. ' +
-      'Ancak rüyanın bütünü değerlendirildiğinde katmanlar şöyle konuşuyor:',
+    'Tek işaret karar vermez. Aşağıda yalnızca en anlamlı yapıyı tutuyorum; her sembol sözlüğü değil.',
   );
 
   parts.push('');

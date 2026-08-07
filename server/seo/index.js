@@ -12,7 +12,7 @@ export function mountSeoRoutes(app) {
     res
       .status(200)
       .type('application/xml')
-      .set('Cache-Control', 'public, max-age=3600')
+      .set('Cache-Control', 'no-cache, must-revalidate')
       .send(xml);
   });
 
@@ -20,8 +20,9 @@ export function mountSeoRoutes(app) {
     const body = buildRobotsTxt({ origin: resolveSiteOrigin() });
     res
       .status(200)
-      .type('text/plain')
-      .set('Cache-Control', 'public, max-age=3600')
+      .type('text/plain; charset=utf-8')
+      .set('Cache-Control', 'no-cache, no-store, must-revalidate')
+      .set('Pragma', 'no-cache')
       .send(body);
   });
 }

@@ -62,7 +62,15 @@ export function createEmptyUserMemory() {
       referenceDate: null,
       relationshipStatus: null,
     },
-    preferences: {},
+    // Logical equivalent of user_preferences (JSON store; SQL-ready shape).
+    preferences: {
+      preferredName: null,
+      preferredLanguage: null,
+      responseStyle: null,
+      addressStyle: null,
+      memoryEnabled: true,
+    },
+    // Logical equivalent of user_memories rows (key/value map).
     facts: {},
     updatedAt: null,
   };
@@ -245,8 +253,21 @@ function normalizeUserMemory(raw) {
 
   base.preferences =
     raw.preferences && typeof raw.preferences === 'object' && !Array.isArray(raw.preferences)
-      ? { ...raw.preferences }
-      : {};
+      ? {
+          preferredName: null,
+          preferredLanguage: null,
+          responseStyle: null,
+          addressStyle: null,
+          memoryEnabled: true,
+          ...raw.preferences,
+        }
+      : {
+          preferredName: null,
+          preferredLanguage: null,
+          responseStyle: null,
+          addressStyle: null,
+          memoryEnabled: true,
+        };
 
   base.facts =
     raw.facts && typeof raw.facts === 'object' && !Array.isArray(raw.facts)
@@ -316,7 +337,15 @@ export async function updateUserMemory(userId, partial) {
     }
 
     if (partial.preferences && typeof partial.preferences === 'object') {
-      current.preferences = { ...current.preferences, ...partial.preferences };
+      const nextPrefs = { ...current.preferences };
+      for (const [key, value] of Object.entries(partial.preferences)) {
+        if (value === null || value === undefined) {
+          nextPrefs[key] = key === 'memoryEnabled' ? true : null;
+        } else {
+          nextPrefs[key] = value;
+        }
+      }
+      current.preferences = nextPrefs;
     }
 
     if (partial.facts && typeof partial.facts === 'object') {
