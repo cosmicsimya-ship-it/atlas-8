@@ -338,7 +338,8 @@ E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, 
 - [ ] `/api/ai/health` OK  
 - [ ] Chat çalışıyor  
 - [ ] Session cookie Secure + login (founder)  
-- [ ] Telegram ayrı process + heartbeat yazılıyor (`data/telegram.heartbeat.json`)  
+- [ ] Telegram ayrı process + heartbeat (`data/telegram.heartbeat.json`); production’da `nohup` + 2 dk cron watchdog + `@reboot`  
+- [ ] Telegram DM: tek mesaj → tek cevap (duplicate polling yok)  
 - [ ] Audio Studio: provider yoksa dürüst “motor yok” cevabı (sahte mastering yok)  
 - [ ] ElevenLabs / Atlas Live: stub — production vaadi yok  
 - [ ] Mobil viewport OK  
