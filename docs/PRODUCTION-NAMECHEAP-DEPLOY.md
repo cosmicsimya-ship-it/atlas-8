@@ -197,19 +197,56 @@ Node **18+** (tercihen 20/22). Bu makinede geliştirme Node 24 ile doğrulandı;
 
 | Process | Startup file | Env |
 |---------|--------------|-----|
-| atlas-api | `server/index.js` | `.env` |
-| atlas-telegram | `server/telegram.js` | aynı `.env` |
+| atlas-api | `server/index.js` | `.env` + cPanel Node env |
+| atlas-telegram | `server/telegram.js` | app `.env` (ayrı process) |
 
-Örnek PM2:
+cPanel “Setup Node.js App” yalnızca **bir** startup file kabul eder; API Passenger/`lsnode` üzerinden kalır. Telegram **asla** aynı process’te birleştirilmez.
 
-```bash
-cd ~/atlas
-pm2 start server/index.js --name atlas-api
-pm2 start server/telegram.js --name atlas-telegram
-pm2 save
+#### Production Telegram mimarisi (cosmicsimya — doğrulanmış)
+
+Gerçek app root: `~/public_html/ATLAS` (eski `~/atlas` varsayımını kullanmayın).
+
+| Öğe | Değer |
+|-----|--------|
+| API | Passenger / `lsnode` — tek writer (`server/index.js`) |
+| Telegram | Ayrı process: `node server/telegram.js` |
+| Node binary | `/opt/alt/alt-nodejs24/root/usr/bin/node` (Node 24) |
+| Mode | **Polling** (`TELEGRAM_ENABLE_POLLING=true`); webhook değil |
+| Backend hop | `POST ${BACKEND_URL}/api/atlas/message` — SQLite’a direkt yazmaz |
+| `BACKEND_URL` | Production’da public HTTPS origin (Passenger’da `:3001` yok) |
+| Kalıcılık | `nohup` + cron watchdog |
+| Watchdog script | `scripts/telegram-prod-watchdog.sh` |
+| Watchdog interval | Her **2 dakika** |
+| Reboot | `@reboot sleep 30 && …/telegram-prod-watchdog.sh` |
+| Single-instance | Process sayımı + `data/telegram.poll.lock` + pid file |
+| Logs | `data/logs/telegram.out.log`, `telegram.err.log`, `telegram-watchdog.log` |
+| Heartbeat | `data/telegram.heartbeat.json` |
+
+Cron örnekleri (secret yok):
+
+```cron
+*/2 * * * * /bin/bash /home/USER/public_html/ATLAS/scripts/telegram-prod-watchdog.sh >/dev/null 2>&1
+@reboot sleep 30 && /bin/bash /home/USER/public_html/ATLAS/scripts/telegram-prod-watchdog.sh >/dev/null 2>&1
 ```
 
-cPanel “Setup Node.js App” yalnızca **bir** startup file kabul ediyorsa Telegram için ikinci app veya cron/`@reboot` script gerekir — **tek process’te ikisini birleştirmek bu kodda yok**.
+Gerekli env anahtarları (değerleri dokümana yazmayın): `TELEGRAM_BOT_TOKEN`, `ATLAS_INTERNAL_BOT_SECRET` (≥16), `BACKEND_URL`, `TELEGRAM_ENABLE_POLLING`.
+
+Manuel start (yalnızca watchdog yoksa):
+
+```bash
+cd ~/public_html/ATLAS
+bash scripts/telegram-prod-watchdog.sh
+```
+
+PM2 varsa alternatif (cluster **yok**, `instances=1`, yalnızca Telegram):
+
+```bash
+cd ~/public_html/ATLAS
+pm2 start server/telegram.js --name atlas-telegram -i 1 --no-autorestart
+# veya fork mode + max 1; API’yi PM2 ile ikinci kez başlatmayın
+```
+
+Doğrulama: Telegram process count = 1, API `lsnode` = 1, `getMe` OK, DM’de tek mesaj → tek cevap, `/api/ai/health` 200.
 
 ### Adım 7 — Domain / port eşlemesi
 
@@ -317,7 +354,7 @@ E-posta kayıt/giriş Google olmadan da çalışır (`POST /api/auth/register`, 
 | JSON `data/` | Tek instance; çoklu Node replica için uygun değil |
 | Atlas Live | Bellek içi session; restart’ta kaybolur |
 | Audio processing | Flag kapalı; ffmpeg/provider gerekir |
-| Windows `atlas:autostart` | Linux’ta geçersiz — PM2/systemd kullan |
+| Local Windows checkout under OneDrive | Cloud sync can lock SQLite files → prefer `ATLAS_MEMORY_V2_DB` outside OneDrive for local V2 testing |
 | Paylaşımlı hosting CPU/RAM | LLM + Telegram için yetersiz kalabilir → VPS’e geçiş planı |
 
 ---
