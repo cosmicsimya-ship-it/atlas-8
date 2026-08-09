@@ -12,6 +12,8 @@ export type AtlasSessionInfo = {
   email: string | null;
   displayName: string | null;
   avatarUrl: string | null;
+  plan?: string | null;
+  entitlements?: Record<string, boolean> | null;
   csrfToken: string;
 };
 
@@ -36,6 +38,9 @@ function normalizeSession(data: Partial<AtlasSessionInfo> & { csrfToken: string 
     email: data.email ?? null,
     displayName: data.displayName ?? null,
     avatarUrl: data.avatarUrl ?? null,
+    plan: data.plan ?? null,
+    entitlements:
+      data.entitlements && typeof data.entitlements === 'object' ? data.entitlements : null,
     csrfToken: data.csrfToken,
   };
 }

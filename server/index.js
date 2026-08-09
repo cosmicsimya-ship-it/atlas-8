@@ -71,6 +71,14 @@ import {
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 import { createAudioStudioRouter } from './audio-studio-routes.js';
 import {
+  createEntitlementsRouter,
+  buildEntitlementsResponse,
+} from './entitlements/index.js';
+import {
+  createBillingRouter,
+  createBillingWebhookRouter,
+} from './billing/index.js';
+import {
   getCapabilityRegistry,
   audioHealthSnapshot,
   getJobStats,
@@ -273,6 +281,53 @@ app.use(
   }),
 );
 
+
+const entitlementsRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  keyFn: (req) => `entitlements:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.use(
+  '/api/me/entitlements',
+  attachAuthFromSession({ createAnonymous: true }),
+  createEntitlementsRouter({ rateLimit: entitlementsRateLimit }),
+);
+
+/** Alias for mobile clients that prefer a flat path */
+app.use(
+  '/api/entitlements',
+  attachAuthFromSession({ createAnonymous: true }),
+  createEntitlementsRouter({ rateLimit: entitlementsRateLimit }),
+);
+
+const billingRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 30,
+  keyFn: (req) => `billing:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+const billingWebhookRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 120,
+  keyFn: (req) => `billing-webhook:${req.ip || 'unknown'}`,
+});
+
+app.use(
+  '/api/billing',
+  attachAuthFromSession({ createAnonymous: true }),
+  createBillingRouter({
+    requireAuth: requireAuthenticated,
+    requireCsrf: requireCsrfProtection,
+    rateLimit: billingRateLimit,
+  }),
+);
+
+app.use(
+  '/api/billing/webhook',
+  createBillingWebhookRouter({ rateLimit: billingWebhookRateLimit }),
+);
+
 // ══════════════════════════════════════════════════════════════════════
 // SEO — /sitemap.xml + /robots.txt (before static SPA fallback)
 // ══════════════════════════════════════════════════════════════════════
@@ -291,6 +346,7 @@ app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (
       ? findAccountByUserId(req.auth.userId)
       : null;
   const profile = toSessionProfile(account);
+  const entitlements = buildEntitlementsResponse(req.auth || {});
   return res.json({
     authenticated: Boolean(req.auth?.authenticated),
     userId: req.auth?.userId ?? null,
@@ -301,6 +357,8 @@ app.get('/api/auth/session', attachAuthFromSession({ createAnonymous: true }), (
     email: profile?.email ?? null,
     displayName: profile?.displayName ?? null,
     avatarUrl: profile?.avatarUrl ?? null,
+    plan: entitlements.plan,
+    entitlements: entitlements.entitlements,
     csrfToken: csrf,
   });
 });

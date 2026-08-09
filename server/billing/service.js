@@ -1,0 +1,602 @@
+/**
+ * Billing service — bridges verified provider events → subscription store → entitlements.
+ * Providers must never write plan flags directly outside this path.
+ */
+
+import { ATLAS_PLANS } from '../entitlements/capabilities.js';
+import {
+  getSubscription,
+  upsertSubscription,
+  toPublicSubscription,
+} from '../entitlements/subscription-store.js';
+import { buildEntitlementsResponse } from '../entitlements/resolve.js';
+import { getBillingConfig, getPublicBillingConfig, buildBillingResultRedirectUrl } from './config.js';
+import { BILLING_ERROR_CODES } from './errors.js';
+import { createBillingProvider } from './providers/index.js';
+import { getBillingEvent, recordBillingEvent } from './webhook-store.js';
+import {
+  createCheckoutSession,
+  getCheckoutSession,
+  updateCheckoutSession,
+} from './checkout-session-store.js';
+
+/** @type {import('./errors.js').BillingProvider|null} */
+let cachedProvider = null;
+
+/**
+ * @param {import('./errors.js').BillingProvider} [provider]
+ */
+export function setBillingProviderForTests(provider) {
+  cachedProvider = provider || null;
+}
+
+export function getActiveBillingProvider() {
+  if (cachedProvider) return cachedProvider;
+  return createBillingProvider(getBillingConfig().provider);
+}
+
+function amountsEqual(a, b) {
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isFinite(na) || !Number.isFinite(nb)) return false;
+  return Math.abs(na - nb) < 0.005;
+}
+
+/**
+ * Apply a verified payment / subscription event to canonical subscription store.
+ * @param {{
+ *   userId: string,
+ *   provider: string,
+ *   status: string,
+ *   providerCustomerId?: string|null,
+ *   providerSubscriptionId?: string|null,
+ *   providerPaymentId?: string|null,
+ *   currentPeriodEnd?: string|null,
+ *   cancelAtPeriodEnd?: boolean,
+ *   eventId?: string|null,
+ *   kind?: string,
+ * }} input
+ */
+export function applyVerifiedBillingEvent(input) {
+  const userId = String(input.userId || '').trim();
+  if (!userId) {
+    const err = new Error('user_id_required');
+    err.code = 'user_id_required';
+    throw err;
+  }
+
+  const status = String(input.status || 'inactive').toLowerCase();
+  const grantsPremium = status === 'active' || status === 'trialing';
+
+  if (input.eventId) {
+    const existing = getBillingEvent(input.provider || 'unknown', input.eventId);
+    if (existing) {
+      return {
+        duplicate: true,
+        subscription: getSubscription(userId),
+        entitlements: buildEntitlementsResponse({
+          authenticated: true,
+          userId,
+          isAnonymous: false,
+        }),
+      };
+    }
+    recordBillingEvent({
+      provider: input.provider || 'unknown',
+      eventId: input.eventId,
+      userId,
+      kind: input.kind || 'payment',
+      status,
+      meta: {
+        providerPaymentId: input.providerPaymentId || null,
+        providerSubscriptionId: input.providerSubscriptionId || null,
+      },
+    });
+  }
+
+  const now = new Date();
+  const periodEnd =
+    input.currentPeriodEnd ||
+    (grantsPremium
+      ? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null);
+
+  const subscription = upsertSubscription({
+    userId,
+    plan: grantsPremium ? ATLAS_PLANS.PREMIUM : ATLAS_PLANS.FREE,
+    status,
+    provider: input.provider || null,
+    providerCustomerId: input.providerCustomerId || null,
+    providerSubscriptionId: input.providerSubscriptionId || null,
+    currentPeriodStart: grantsPremium ? now.toISOString() : null,
+    currentPeriodEnd: periodEnd,
+    cancelAtPeriodEnd: Boolean(input.cancelAtPeriodEnd),
+  });
+
+  return {
+    duplicate: false,
+    subscription,
+    entitlements: buildEntitlementsResponse({
+      authenticated: true,
+      userId,
+      isAnonymous: false,
+    }),
+  };
+}
+
+/**
+ * @param {{ userId: string, email?: string|null, displayName?: string|null, clientIp?: string|null }} account
+ */
+export async function startCheckout(account) {
+  const userId = String(account?.userId || '').trim();
+  if (!userId) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.UNAUTHORIZED,
+      message: 'Giriş gerekli.',
+    };
+  }
+
+  const cfg = getBillingConfig();
+  if (!cfg.sandboxGate.allowed) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.PRODUCTION_BLOCKED,
+      message: 'Bu fazda yalnız Iyzico sandbox kullanılabilir.',
+      dryRun: cfg.dryRun,
+      liveCheckoutEnabled: false,
+      product: getPublicBillingConfig().product,
+      features: getPublicBillingConfig().features,
+    };
+  }
+
+  const amount = cfg.pricing.monthlyPrice;
+  const currency = cfg.pricing.currency || 'TRY';
+  if (amount == null || !Number.isFinite(Number(amount))) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.NOT_CONFIGURED,
+      message: 'Premium fiyat yapılandırılmamış.',
+    };
+  }
+
+  const provider = getActiveBillingProvider();
+  const result = await provider.createCheckout({
+    userId,
+    email: account.email || undefined,
+    displayName: account.displayName || undefined,
+    clientIp: account.clientIp || undefined,
+    amount: Number(amount),
+    currency,
+    officialSampleParity: Boolean(account.officialSampleParity),
+    parityPayload: account.parityPayload || undefined,
+  });
+
+  const publicCfg = getPublicBillingConfig();
+
+  if (result.ok && result.token) {
+    createCheckoutSession({
+      token: result.token,
+      userId,
+      amount: Number(result.meta?.amount ?? amount),
+      currency: String(result.meta?.currency || currency).toUpperCase(),
+      conversationId: result.meta?.conversationId || userId,
+      status: 'pending',
+    });
+  }
+
+  return {
+    ok: Boolean(result.ok),
+    provider: result.provider,
+    checkoutId: result.checkoutId || null,
+    paymentPageUrl: result.paymentPageUrl || null,
+    token: result.token || null,
+    dryRun: Boolean(result.meta?.dryRun ?? publicCfg.dryRun),
+    liveCheckoutEnabled: publicCfg.liveCheckoutEnabled,
+    product: publicCfg.product,
+    features: publicCfg.features,
+    error: result.error || null,
+    errorMeta: result.meta
+      ? {
+          reason: result.meta.reason || null,
+          errorCode: result.meta.errorCode || null,
+          errorMessage: result.meta.errorMessage || null,
+          iyzicoStatus: result.meta.iyzicoStatus || null,
+        }
+      : null,
+    message: result.ok
+      ? result.meta?.message || null
+      : result.error === BILLING_ERROR_CODES.PRODUCTION_BLOCKED
+        ? 'Production Iyzico bu fazda engellendi.'
+        : result.error === BILLING_ERROR_CODES.LIVE_DISABLED
+          ? 'Canlı ödeme bu ortamda kapalı.'
+          : result.error === BILLING_ERROR_CODES.NOT_CONFIGURED
+            ? 'Ödeme sağlayıcısı yapılandırılmamış.'
+            : 'Checkout başlatılamadı.',
+    meta: {
+      dryRun: Boolean(result.meta?.dryRun),
+    },
+  };
+}
+
+/**
+ * Server-side verify — ignores client paymentSuccess/paid.
+ * Requires pending checkout session + provider retrieve SUCCESS + amount/currency/user match.
+ * @param {{ userId: string, body: object }} input
+ */
+export async function verifyClientPaymentClaim(input) {
+  const userId = String(input.userId || '').trim();
+  const bodyIn = input.body && typeof input.body === 'object' ? input.body : {};
+
+  // Completely ignore client-claimed success flags
+  const body = { ...bodyIn };
+  delete body.paymentSuccess;
+  delete body.paid;
+  delete body.success;
+
+  const token = String(body.token || '').trim();
+
+  // Bare client success without token → reject
+  if (!token && (bodyIn.paymentSuccess === true || bodyIn.paid === true)) {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      message: 'Ödeme doğrulanamadı. İstemci success bayrağı kabul edilmez.',
+    };
+  }
+
+  if (!token) {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.INVALID_INPUT,
+      message: 'Checkout token gerekli.',
+    };
+  }
+
+  const session = getCheckoutSession(token);
+  if (!session) {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.SESSION_MISMATCH,
+      message: 'Checkout oturumu bulunamadı.',
+    };
+  }
+
+  if (session.userId !== userId) {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.SESSION_MISMATCH,
+      message: 'Checkout oturumu kullanıcı ile eşleşmiyor.',
+    };
+  }
+
+  const provider = getActiveBillingProvider();
+  const verified = await provider.verifyPayment({
+    token,
+    paymentId: body.paymentId,
+    raw: {
+      ...body,
+      userId,
+      // Pass expected amount for fixture tests; real retrieve supplies its own
+      amount: body.amount,
+      currency: body.currency,
+    },
+  });
+
+  if (!verified.ok || !verified.paid) {
+    updateCheckoutSession(token, { status: 'failed' });
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: verified.error || BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      message: 'Ödeme doğrulanamadı.',
+    };
+  }
+
+  const verifiedUser = String(verified.userId || userId).trim();
+  if (verifiedUser && verifiedUser !== userId && verifiedUser !== session.userId) {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.UNAUTHORIZED,
+      message: 'Ödeme kullanıcı eşleşmesi başarısız.',
+    };
+  }
+
+  if (verified.amount != null && !amountsEqual(verified.amount, session.amount)) {
+    updateCheckoutSession(token, { status: 'failed' });
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+      message: 'Ödeme tutarı eşleşmiyor.',
+    };
+  }
+
+  if (
+    verified.currency &&
+    String(verified.currency).toUpperCase() !== String(session.currency).toUpperCase()
+  ) {
+    updateCheckoutSession(token, { status: 'failed' });
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      error: BILLING_ERROR_CODES.CURRENCY_MISMATCH,
+      message: 'Ödeme para birimi eşleşmiyor.',
+    };
+  }
+
+  const paymentId = String(verified.providerPaymentId || token).trim();
+  const applied = applyVerifiedBillingEvent({
+    userId,
+    provider: verified.provider,
+    status: verified.status || 'active',
+    providerSubscriptionId: verified.providerSubscriptionId,
+    providerPaymentId: paymentId,
+    eventId: paymentId,
+    kind: 'verify',
+  });
+
+  updateCheckoutSession(token, {
+    status: 'completed',
+    paymentId,
+  });
+
+  return {
+    ok: true,
+    paid: true,
+    granted: true,
+    duplicate: applied.duplicate,
+    subscription: toPublicSubscription(applied.subscription),
+    entitlements: applied.entitlements,
+  };
+}
+
+/**
+ * Iyzico Checkout Form return URL handler.
+ * Does NOT grant Premium by itself — only triggers verifyClientPaymentClaim.
+ * Redirect URL never contains token / secrets / provider payload.
+ *
+ * @param {{
+ *   token?: string|null,
+ *   authUserId?: string|null,
+ *   cancelHint?: boolean,
+ * }} input
+ */
+export async function handleIyzicoCheckoutCallback(input = {}) {
+  const cfg = getBillingConfig();
+  if (!cfg.sandboxGate.allowed) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'failed',
+      error: BILLING_ERROR_CODES.PRODUCTION_BLOCKED,
+      redirectUrl: buildBillingResultRedirectUrl('failed', 'production_blocked'),
+    };
+  }
+
+  const token = String(input.token || '').trim();
+  if (!token) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'invalid',
+      error: BILLING_ERROR_CODES.INVALID_INPUT,
+      redirectUrl: buildBillingResultRedirectUrl('invalid', 'missing_token'),
+    };
+  }
+
+  if (input.cancelHint) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'canceled',
+      error: BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      redirectUrl: buildBillingResultRedirectUrl('canceled', 'payment_canceled'),
+    };
+  }
+
+  const session = getCheckoutSession(token);
+  if (!session) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'invalid',
+      error: BILLING_ERROR_CODES.SESSION_MISMATCH,
+      redirectUrl: buildBillingResultRedirectUrl('invalid', 'unknown_token'),
+    };
+  }
+
+  const authUserId = input.authUserId ? String(input.authUserId).trim() : '';
+  if (authUserId && authUserId !== session.userId) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'invalid',
+      error: BILLING_ERROR_CODES.SESSION_MISMATCH,
+      redirectUrl: buildBillingResultRedirectUrl('invalid', 'wrong_user'),
+    };
+  }
+
+  // Callback arrival alone never grants — verify path only.
+  const verified = await verifyClientPaymentClaim({
+    userId: session.userId,
+    body: { token },
+  });
+
+  if (verified.ok && (verified.granted || verified.duplicate)) {
+    return {
+      ok: true,
+      granted: Boolean(verified.granted || verified.duplicate),
+      duplicate: Boolean(verified.duplicate),
+      status: 'success',
+      error: null,
+      redirectUrl: buildBillingResultRedirectUrl(
+        'success',
+        verified.duplicate ? 'duplicate' : 'verified',
+      ),
+    };
+  }
+
+  const err = verified.error || BILLING_ERROR_CODES.VERIFICATION_FAILED;
+  let status = 'failed';
+  let code = 'verification_failed';
+  if (err === BILLING_ERROR_CODES.AMOUNT_MISMATCH) code = 'amount_mismatch';
+  else if (err === BILLING_ERROR_CODES.CURRENCY_MISMATCH) code = 'currency_mismatch';
+  else if (err === BILLING_ERROR_CODES.SESSION_MISMATCH) {
+    status = 'invalid';
+    code = 'session_mismatch';
+  } else if (err === BILLING_ERROR_CODES.PRODUCTION_BLOCKED) code = 'production_blocked';
+  else if (err === BILLING_ERROR_CODES.DRY_RUN) code = 'dry_run';
+
+  return {
+    ok: false,
+    granted: false,
+    status,
+    error: err,
+    redirectUrl: buildBillingResultRedirectUrl(status, code),
+  };
+}
+
+/**
+ * @param {object} rawBody
+ * @param {Record<string, string>} headers
+ */
+export async function processProviderWebhook(providerId, rawBody, headers) {
+  const provider = createBillingProvider(providerId);
+  const verified = await provider.handleWebhook(rawBody, headers);
+
+  if (!verified.ok) {
+    return {
+      ok: false,
+      statusCode: verified.error === BILLING_ERROR_CODES.WEBHOOK_INVALID ? 401 : 400,
+      error: verified.error || BILLING_ERROR_CODES.WEBHOOK_INVALID,
+    };
+  }
+
+  const eventId = String(
+    verified.meta?.eventId || verified.providerPaymentId || '',
+  ).trim();
+  if (!eventId) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: BILLING_ERROR_CODES.INVALID_INPUT,
+    };
+  }
+
+  if (!verified.paid) {
+    recordBillingEvent({
+      provider: verified.provider,
+      eventId,
+      userId: verified.userId || null,
+      kind: 'payment_failed',
+      status: 'failed',
+    });
+    return {
+      ok: true,
+      statusCode: 200,
+      paid: false,
+      granted: false,
+    };
+  }
+
+  const userId = String(verified.userId || '').trim();
+  if (!userId) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: BILLING_ERROR_CODES.INVALID_INPUT,
+      message: 'user mapping missing',
+    };
+  }
+
+  const applied = applyVerifiedBillingEvent({
+    userId,
+    provider: verified.provider,
+    status: verified.status || 'active',
+    providerSubscriptionId: verified.providerSubscriptionId,
+    providerPaymentId: verified.providerPaymentId,
+    eventId,
+    kind: String(verified.meta?.kind || 'webhook'),
+  });
+
+  return {
+    ok: true,
+    statusCode: 200,
+    paid: true,
+    granted: !applied.duplicate,
+    duplicate: applied.duplicate,
+    subscription: toPublicSubscription(applied.subscription),
+  };
+}
+
+/**
+ * @param {string} userId
+ */
+export async function cancelUserSubscription(userId) {
+  const id = String(userId || '').trim();
+  if (!id) {
+    return { ok: false, error: BILLING_ERROR_CODES.UNAUTHORIZED };
+  }
+
+  const provider = getActiveBillingProvider();
+  const remote = await provider.cancelSubscription?.(id);
+  const sub = upsertSubscription({
+    userId: id,
+    plan: ATLAS_PLANS.FREE,
+    status: 'canceled',
+    cancelAtPeriodEnd: true,
+    provider: getSubscription(id)?.provider || provider.id,
+  });
+
+  return {
+    ok: true,
+    providerCancel: remote || null,
+    subscription: toPublicSubscription(sub),
+    entitlements: buildEntitlementsResponse({
+      authenticated: true,
+      userId: id,
+      isAnonymous: false,
+    }),
+  };
+}
+
+export function getBillingStatusForUser(userId) {
+  const id = String(userId || '').trim();
+  const sub = id ? getSubscription(id) : null;
+  const publicCfg = getPublicBillingConfig();
+  return {
+    ...publicCfg,
+    subscription: toPublicSubscription(sub),
+    entitlements: id
+      ? buildEntitlementsResponse({
+          authenticated: true,
+          userId: id,
+          isAnonymous: false,
+        })
+      : null,
+  };
+}
+
+/**
+ * Future extension point — manual bank transfer is NOT active.
+ */
+export function getManualBankTransferExtensionPoint() {
+  return {
+    enabled: false,
+    reason: 'manual_bank_transfer_not_activated',
+  };
+}

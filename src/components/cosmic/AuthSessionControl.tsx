@@ -15,6 +15,7 @@ import {
   startGoogleAuth,
   type AtlasSessionInfo,
 } from '../../utils/atlas-session';
+import PremiumPlanPanel from './PremiumPlanPanel';
 
 type AuthMode = 'chooser' | 'login' | 'register';
 
@@ -42,6 +43,7 @@ export default function AuthSessionControl({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [googleConfigured, setGoogleConfigured] = useState(false);
+  const [premiumOpen, setPremiumOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -284,6 +286,21 @@ export default function AuthSessionControl({
             >
               <span className={sessionNameClass}>{displayName}</span>
               {displayEmail ? <span className={sessionEmailClass}>{displayEmail}</span> : null}
+              {session?.plan && session.plan !== 'guest' ? (
+                <span className={sessionEmailClass}>
+                  Plan: {session.plan === 'premium' ? 'Premium' : 'Free'}
+                  {session.entitlements?.['voice.lara'] ? ' · Lara Voice' : ''}
+                </span>
+              ) : null}
+              {session?.plan === 'free' || session?.plan === 'premium' ? (
+                <button
+                  type="button"
+                  onClick={() => setPremiumOpen((v) => !v)}
+                  className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
+                >
+                  {session.plan === 'premium' ? 'Premium durumu' : "Premium'a Geç"}
+                </button>
+              ) : null}
             </div>
             <button
               type="button"
@@ -295,6 +312,16 @@ export default function AuthSessionControl({
               <LogOut className="h-3.5 w-3.5" />
               Çıkış Yap
             </button>
+            {session?.plan === 'free' || session?.plan === 'premium' ? (
+              <button
+                type="button"
+                onClick={() => setPremiumOpen(true)}
+                className={`${actionBtnClass} sm:hidden`}
+                aria-label={session.plan === 'premium' ? 'Premium durumu' : "Premium'a Geç"}
+              >
+                {session.plan === 'premium' ? 'Premium' : 'Premium+'}
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -321,6 +348,27 @@ export default function AuthSessionControl({
           </>
         )}
       </div>
+
+      {premiumOpen && isAccount && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[190] flex items-start justify-end bg-black/50 p-4 backdrop-blur-sm sm:items-center sm:justify-center"
+              role="presentation"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setPremiumOpen(false);
+              }}
+            >
+              <div className="w-full max-w-sm rounded-xl border border-white/10 bg-[#0b0f16] p-1 shadow-xl">
+                <PremiumPlanPanel
+                  plan={session?.plan}
+                  hasLara={Boolean(session?.entitlements?.['voice.lara'])}
+                  onClose={() => setPremiumOpen(false)}
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {open && typeof document !== 'undefined'
         ? createPortal(

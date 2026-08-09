@@ -36,3 +36,6 @@ data/_auth_test/
 data/_admin_test/
 data/_bad_founder_profile_test.json
 data/_missing_founder_profile_test.json
+data/subscriptions.json
+data/billing_events.json
+data/billing_checkout_sessions.json
