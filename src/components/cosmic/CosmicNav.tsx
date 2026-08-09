@@ -78,7 +78,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
           </span>
           {!chatMode && (
             <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
-              Cosmicsimya
+              Cosmic Simya
             </span>
           )}
         </Link>

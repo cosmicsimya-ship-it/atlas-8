@@ -17,7 +17,7 @@ for (const width of widths) {
     await page.waitForTimeout(800);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(400);
-    const ig = page.locator('footer a[href*="instagram.com/cosmicsimya"]').first();
+    const ig = page.locator('footer a[href*="instagram.com/cosmic_simya"]').first();
     const tg = page.locator('footer a[href*="t.me/cosmicsimya"]').first();
     const igVis = await ig.isVisible();
     const tgVis = await tg.isVisible();

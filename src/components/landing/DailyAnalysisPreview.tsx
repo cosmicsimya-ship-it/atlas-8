@@ -15,10 +15,10 @@ import { parseDisplayDateToIso } from '../../utils/analysis-form';
 import { prefersReducedMotion } from '../../utils/scroll-section';
 import { cn } from '../../utils/cn';
 
-const fieldClass =
-  'w-full rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2.5 text-[14px] text-[#e8ecf2] outline-none transition placeholder:text-[#e8ecf2]/28 focus:border-[rgba(142,234,250,0.32)] focus:ring-1 focus:ring-[rgba(142,234,250,0.18)]';
+const fieldClass = 'obs-field-input';
 
-const labelClass = 'mb-1.5 block text-[11px] tracking-[0.04em] text-[#9aa3ae]';
+const labelClass =
+  'mb-1.5 block text-[0.7rem] font-medium tracking-[0.04em] text-[#9a9488]';
 
 type FormState = {
   name: string;
@@ -97,7 +97,7 @@ function buildInput(form: FormState, birthIso: string): SymbolicAnalysisInput {
 }
 
 export default function DailyAnalysisPreview() {
-  const { id, title, subtitle } = landingDailyPreview;
+  const { id, eyebrow, title, subtitle, cta } = landingDailyPreview;
   const [form, setForm] = useState<FormState>(emptyForm);
   const [phase, setPhase] = useState<UiPhase>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -197,30 +197,41 @@ export default function DailyAnalysisPreview() {
     <section id={id} className="atlas-section relative scroll-mt-24" aria-labelledby="daily-title">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="max-w-2xl">
-          <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-[#c9b37a]/65">
-            Deneme
+          <p className="text-[0.7rem] font-medium tracking-[0.28em] text-[#c9b37a]/65">
+            {eyebrow}
           </p>
           <h2
             id="daily-title"
-            className="mt-4 font-display text-[clamp(1.85rem,4vw,2.6rem)] font-medium tracking-[-0.02em] text-[#e8ecf2]"
+            className="mt-4 font-display text-[clamp(1.85rem,4vw,2.6rem)] font-medium tracking-[-0.02em] text-[#f5f0e6]"
           >
             {title}
           </h2>
-          <p className="mt-3 max-w-xl text-[15px] leading-7 text-[#8b93a3]">{subtitle}</p>
+          <p className="mt-3 max-w-xl text-[15px] leading-7 text-[#9a9488]">{subtitle}</p>
         </div>
 
-        <div className="atlas-glass-card relative mt-10 overflow-hidden shadow-[0_20px_56px_rgba(0,0,0,0.35)]">
+        {/* Observation instrument / control surface — not a web form card */}
+        <div className="obs-control-surface relative mt-10 overflow-hidden">
+          <div
+            className="pointer-events-none absolute left-0 top-0 h-px w-16 bg-[#c9b37a]/45"
+            aria-hidden="true"
+          />
+          <div
+            className="pointer-events-none absolute left-0 top-0 h-16 w-px bg-[#c9b37a]/45"
+            aria-hidden="true"
+          />
           <div className="grid gap-0 lg:grid-cols-2">
-            <div className="min-w-0 border-b border-white/[0.06] px-4 py-5 sm:px-6 sm:py-6 lg:border-b-0 lg:border-r lg:border-white/[0.06]">
+            <div className="min-w-0 border-b border-white/[0.06] px-4 py-5 sm:px-6 sm:py-7 lg:border-b-0 lg:border-r lg:border-white/[0.06]">
               <div className="flex items-center justify-between gap-3">
-                <span className="atlas-mark atlas-mark-sm text-[10px]">ATLAS</span>
-                <span className="text-[11px] text-[#8b93a3]">Canlı hat</span>
+                <span className="atlas-mark atlas-mark-sm text-[0.7rem]">ATLAS</span>
+                <span className="font-mono text-[0.65rem] tracking-[0.18em] text-[#8b93a3]">
+                  LIVE · OBS
+                </span>
               </div>
 
               <form className="mt-5 space-y-4" onSubmit={onSubmit} noValidate>
                 <div>
                   <label htmlFor="sample-name" className={labelClass}>
-                    Ad veya analiz başlığı
+                    Ad
                   </label>
                   <input
                     id="sample-name"
@@ -310,9 +321,9 @@ export default function DailyAnalysisPreview() {
                   />
                 </div>
 
-                <fieldset className="space-y-3 rounded-xl border border-white/[0.06] bg-black/20 px-3.5 py-3">
-                  <legend className="px-1 text-[10px] tracking-[0.14em] text-[#9aa3ae]">
-                    Onaylar
+                <fieldset className="space-y-3 border border-white/[0.08] bg-black/25 px-3.5 py-3">
+                  <legend className="px-1 font-mono text-[0.65rem] tracking-[0.16em] text-[#9aa3ae]">
+                    ONAYLAR
                   </legend>
                   <label className="flex cursor-pointer gap-2.5 text-[12px] leading-5 text-[#a8b0bd]">
                     <input
@@ -357,7 +368,7 @@ export default function DailyAnalysisPreview() {
                         Analiz hazırlanıyor…
                       </>
                     ) : (
-                      'Örnek analizi çalıştır'
+                      cta
                     )}
                   </button>
                   {phase === 'error' ? (
@@ -381,10 +392,10 @@ export default function DailyAnalysisPreview() {
             >
               {phase === 'idle' && !result ? (
                 <div className="flex h-full min-h-[220px] flex-col justify-center">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-[#9aa3ae]">
+                  <p className="text-[0.7rem] uppercase tracking-[0.18em] text-[#9a9488]">
                     Sonuç alanı
                   </p>
-                  <p className="mt-3 max-w-sm text-[14px] leading-7 text-[#8b93a3]">
+                  <p className="mt-3 max-w-sm text-[14px] leading-7 text-[#9a9488]">
                     Analizi başlattığında Atlas’ın gerçek yanıtı burada görünür. Önceden
                     hazırlanmış demo metin yok.
                   </p>
@@ -405,8 +416,8 @@ export default function DailyAnalysisPreview() {
 
               {phase === 'error' && !result ? (
                 <div className="flex h-full min-h-[220px] flex-col justify-center">
-                  <p className="text-[10px] uppercase tracking-[0.18em] text-red-300/70">
-                    Analiz tamamlanamadı
+                  <p className="font-mono text-[0.7rem] tracking-[0.16em] text-red-300/70">
+                    ANALİZ TAMAMLANAMADI
                   </p>
                   <p className="mt-3 max-w-sm text-[14px] leading-7 text-[#a8b0bd]">
                     {error ?? 'Bir sorun oluştu.'}
@@ -418,20 +429,18 @@ export default function DailyAnalysisPreview() {
                 <div className="space-y-5">
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-[#c9b37a]/70">
-                        Gerçek sonuç
-                      </p>
+                      <p className="obs-label text-[#c9b37a]/70">Gerçek sonuç</p>
                       <h3 className="mt-1.5 font-display text-lg tracking-[-0.02em] text-[#e8ecf2] sm:text-xl">
                         {result.title}
                       </h3>
                     </div>
-                    <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] tracking-[0.1em] text-[#8b93a3]">
+                    <span className="border border-white/10 px-2.5 py-1 font-mono text-[0.65rem] tracking-[0.12em] text-[#8b93a3]">
                       {statusLabel(result.status)}
                     </span>
                   </div>
 
                   {timeUnknownNote ? (
-                    <p className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-[12px] leading-5 text-[#8b93a3]">
+                    <p className="border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-[12px] leading-5 text-[#8b93a3]">
                       {timeUnknownNote}
                     </p>
                   ) : null}
@@ -447,7 +456,7 @@ export default function DailyAnalysisPreview() {
                       {sections.map((section) => (
                         <article
                           key={section.id}
-                          className="rounded-[0.95rem] border border-white/[0.06] bg-white/[0.02] px-3.5 py-3"
+                          className="border border-white/[0.06] bg-white/[0.02] px-3.5 py-3"
                         >
                           <h4 className="text-[12px] font-medium tracking-[0.02em] text-[#e8ecf2]/92">
                             {section.title}

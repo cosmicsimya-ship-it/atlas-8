@@ -1,34 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  --color-atlas-bg: #0a0e1a;
-  --color-atlas-surface: #111827;
-  --color-atlas-surface2: #1a2235;
-  --color-atlas-border: #1e293b;
-  --color-atlas-border-glow: #c9b37a66;
+  --color-atlas-bg: #0a0908;
+  --color-atlas-surface: #12110f;
+  --color-atlas-surface2: #1a1916;
+  --color-atlas-border: #2a2824;
+  --color-atlas-border-glow: #c9b37a55;
   --color-atlas-accent: #c9b37a;
   --color-atlas-accent2: #8b7a4a;
   --color-atlas-accent3: #6b7280;
   --color-atlas-gold: #c9b37a;
-  --color-atlas-void: #050608;
+  --color-atlas-void: #050505;
   --radius-atlas: 12px;
   --radius-atlas-lg: 16px;
   --radius-atlas-pill: 9999px;
   --color-atlas-success: #10b981;
   --color-atlas-warning: #f59e0b;
   --color-atlas-danger: #ef4444;
-  --color-atlas-text: #e2e8f0;
-  --color-atlas-text-dim: #94a3b8;
-  --color-atlas-text-bright: #f8fafc;
+  --color-atlas-text: #e8e4dc;
+  --color-atlas-text-dim: #9a958a;
+  --color-atlas-text-bright: #f5f1e8;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   --font-display: 'Cormorant Garamond', 'Times New Roman', serif;
   --font-brand: 'Syne', 'Manrope', system-ui, sans-serif;
-  --color-site-void: #050608;
-  --color-site-ink: #e8ecf2;
-  --color-site-mute: #8b93a3;
-  --color-site-steel: #9aa3b2;
-  --color-site-navy: #0b1220;
-  --color-site-violet: #1a1530;
+  /* Phase 1B — warm charcoal world (no navy primary) */
+  --color-site-void: #050505;
+  --color-site-charcoal: #0b0a08;
+  --color-site-warm: #10100e;
+  --color-site-ink: #f0ebe3;
+  --color-site-mute: #9a9488;
+  --color-site-steel: #b0a99c;
+  --color-site-metallic: #c9b37a;
+  --color-site-bronze: #8b7a4a;
+  --color-site-champagne: #e8d9a8;
+  --color-site-ivory: #f5f0e6;
 }
 
 /* One focus ring for the whole product — cool, never gold-vs-steel mixed */
@@ -43,8 +48,8 @@ html {
 }
 
 body {
-  background: #050608;
-  color: #e8ecf2;
+  background: #050505;
+  color: #f0ebe3;
   font-family: 'Manrope', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
@@ -56,8 +61,8 @@ body {
 #root { min-height: 100dvh; }
 
 ::selection {
-  background: rgba(126, 182, 255, 0.26);
-  color: #f2f5f9;
+  background: rgba(201, 179, 122, 0.28);
+  color: #f5f0e6;
 }
 
 .font-display {
@@ -506,20 +511,199 @@ body {
 
 .hero-core-vignette {
   background:
-    radial-gradient(ellipse at 52% 48%, transparent 18%, rgba(5, 6, 8, 0.35) 52%, #050608 78%),
-    radial-gradient(ellipse at 88% 92%, #050608 0%, transparent 45%);
+    radial-gradient(ellipse at 52% 48%, transparent 18%, rgba(5, 5, 5, 0.4) 52%, #050505 78%),
+    radial-gradient(ellipse at 88% 92%, #050505 0%, transparent 45%);
   pointer-events: none;
+}
+
+/* ── Phase 1B — warm charcoal world / spatial depth ───────────── */
+.obs-field {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.obs-field-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.028;
+  background-image:
+    linear-gradient(rgba(201, 179, 122, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(201, 179, 122, 0.18) 1px, transparent 1px);
+  background-size: 80px 80px;
+  mask-image: radial-gradient(ellipse at 55% 40%, black 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse at 55% 40%, black 0%, transparent 70%);
+}
+
+.obs-field-haze {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 72% 28%, rgba(201, 179, 122, 0.06) 0%, transparent 48%),
+    radial-gradient(ellipse at 18% 70%, rgba(16, 16, 14, 0.7) 0%, transparent 52%),
+    radial-gradient(ellipse at 50% 100%, rgba(11, 10, 8, 0.8) 0%, transparent 45%);
+}
+
+.obs-control-surface {
+  border: 1px solid rgba(201, 179, 122, 0.12);
+  background:
+    linear-gradient(180deg, rgba(18, 17, 15, 0.88) 0%, rgba(5, 5, 5, 0.72) 100%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 28px 70px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(245, 240, 230, 0.04);
+}
+
+.obs-field-input {
+  width: 100%;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(201, 179, 122, 0.14);
+  background: rgba(5, 5, 5, 0.55);
+  padding: 0.7rem 0.9rem;
+  font-size: 0.875rem;
+  color: #f0ebe3;
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.obs-field-input::placeholder {
+  color: rgba(240, 235, 227, 0.28);
+}
+.obs-field-input:focus {
+  border-color: rgba(201, 179, 122, 0.42);
+  box-shadow: 0 0 0 1px rgba(201, 179, 122, 0.18);
+}
+
+.obs-nav-glass {
+  background: rgba(5, 5, 5, 0.72);
+  border-bottom: 1px solid rgba(201, 179, 122, 0.08);
+  backdrop-filter: blur(18px) saturate(1.05);
+  -webkit-backdrop-filter: blur(18px) saturate(1.05);
+}
+
+.obs-nav-glass-scrolled {
+  background: rgba(5, 5, 5, 0.9);
+  border-bottom-color: rgba(201, 179, 122, 0.12);
+}
+
+.atlas-btn-quiet {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(154, 148, 136, 0.95);
+  text-decoration: none;
+  transition: color 160ms ease;
+  outline: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.atlas-btn-quiet:hover {
+  color: #f0ebe3;
+}
+.atlas-btn-quiet:focus-visible {
+  outline: 2px solid var(--atlas-focus-ring);
+  outline-offset: var(--atlas-focus-offset);
+}
+
+/* Observation engine — spatial layers */
+.obs-engine {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  perspective: 1200px;
+  perspective-origin: 70% 45%;
+}
+
+.obs-engine-layer {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.obs-engine-far {
+  transform: translateZ(-80px) scale(1.12);
+  opacity: 0.35;
+  filter: blur(0.4px);
+}
+
+.obs-engine-mid {
+  transform: translateZ(0) rotateY(-8deg) rotateX(4deg) scale(1.05);
+}
+
+.obs-engine-near {
+  transform: translateZ(40px) rotateY(-4deg);
+}
+
+@keyframes obs-orbit-ultra {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes obs-drift-soft {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-1.2%, 0.8%, 0); }
+}
+
+@keyframes obs-light-sweep {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.55; }
+}
+
+.obs-orbit-ultra {
+  animation: obs-orbit-ultra 160s linear infinite;
+}
+.obs-orbit-ultra-rev {
+  animation: obs-orbit-ultra 200s linear infinite reverse;
+}
+.obs-drift-soft {
+  animation: obs-drift-soft 28s ease-in-out infinite;
+}
+.obs-light-sweep {
+  animation: obs-light-sweep 11s ease-in-out infinite;
+}
+
+.obs-array-item {
+  scroll-margin-top: 30vh;
+}
+.obs-array-item[data-active='true'] .obs-array-title {
+  color: #f5f0e6;
+}
+.obs-array-item[data-active='true'] .obs-array-body {
+  opacity: 1;
 }
 
 @media (max-width: 768px) {
   .hero-haze > div {
-    filter: blur(40px);
+    filter: blur(36px);
   }
   .hero-grain {
-    opacity: 0.02;
+    opacity: 0.022;
   }
   .hero-lens-flare {
-    opacity: 0.35;
+    opacity: 0.28;
+  }
+  .obs-field-grid {
+    opacity: 0.015;
+    background-size: 56px 56px;
+  }
+  .obs-engine {
+    perspective: none;
+  }
+  .obs-engine-far,
+  .obs-engine-mid,
+  .obs-engine-near {
+    transform: none;
+    filter: none;
+  }
+  .obs-engine-far {
+    opacity: 0.25;
   }
 }
 
@@ -528,7 +712,11 @@ body {
   .site-animate-orbit,
   .site-animate-orbit-rev,
   .site-animate-pulse-soft,
-  .hero-reveal {
+  .hero-reveal,
+  .obs-orbit-ultra,
+  .obs-orbit-ultra-rev,
+  .obs-drift-soft,
+  .obs-light-sweep {
     animation: none !important;
   }
   .hero-reveal {
@@ -543,7 +731,7 @@ body {
     transform: none;
   }
   .hero-lens-flare {
-    opacity: 0.4;
+    opacity: 0.35;
   }
 }
 

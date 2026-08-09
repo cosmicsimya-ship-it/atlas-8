@@ -61,10 +61,11 @@ export default function AboutPage() {
         <section id="iletisim" className="mt-12 scroll-mt-28 border-t border-white/8 pt-10">
           <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">İletişim</h2>
           <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/62">
-            Kurucu ve ürün soruları için Cosmic Simya kanallarından bize ulaşabilirsiniz.
+            Marka ve ürün soruları için Cosmic Simya sosyal kanallarını kullanabilirsiniz.
           </p>
-          <ul className="mt-5 flex flex-wrap gap-3 text-sm">
-            <li>
+          <ul className="mt-5 space-y-3 text-sm">
+            <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[#8b93a3]">Sosyal</span>
               <a
                 href={socialLinks.instagram.href}
                 target="_blank"
@@ -72,16 +73,17 @@ export default function AboutPage() {
                 aria-label={socialLinks.instagram.ariaLabel}
                 className="site-focus text-[#c9b37a] underline-offset-4 hover:underline"
               >
-                {socialLinks.instagram.label}
+                Instagram {socialLinks.instagram.label}
               </a>
             </li>
-            <li>
+            <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <span className="text-[11px] uppercase tracking-[0.18em] text-[#6f7886]">Kanal</span>
               <a
                 href={socialLinks.telegram.href}
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={socialLinks.telegram.ariaLabel}
-                className="site-focus text-[#c9b37a] underline-offset-4 hover:underline"
+                className="site-focus text-[#9aa3ae] underline-offset-4 hover:underline"
               >
                 {socialLinks.telegram.label}
               </a>

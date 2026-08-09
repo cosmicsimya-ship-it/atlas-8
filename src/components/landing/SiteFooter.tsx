@@ -3,24 +3,31 @@ import { Link } from 'react-router-dom';
 import { landingFooter, socialLinks } from '../../data/landing-content';
 
 export default function SiteFooter() {
-  const { brand, tagline, links } = landingFooter;
+  const { brand, systemMark, tagline, trust, links } = landingFooter;
 
   return (
-    <footer className="relative border-t border-white/[0.06] py-10">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 sm:px-6 lg:px-8">
+    <footer className="relative border-t border-white/[0.07] py-12">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#c9b37a]/25 to-transparent"
+        aria-hidden="true"
+      />
+      <div className="mx-auto flex max-w-6xl flex-col gap-10 px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
-            <span className="atlas-mark atlas-mark-sm block">{brand}</span>
-            <p className="mt-2 text-xs text-[#8b93a3]">{tagline}</p>
+            <span lang="en" className="block text-[0.7rem] tracking-[0.28em] text-[#c9b37a]/7">
+              {brand}
+            </span>
+            <span className="atlas-mark atlas-mark-sm mt-2 block">{systemMark}</span>
+            <p className="mt-2 text-xs tracking-wide text-[#9a9488]">{tagline}</p>
           </div>
 
           <nav aria-label="Alt bilgi" className="min-w-0">
-            <ul className="flex flex-wrap gap-x-5 gap-y-2">
+            <ul className="flex flex-wrap gap-x-6 gap-y-2">
               {links.map((link) => (
                 <li key={link.label}>
                   <Link
                     to={link.to}
-                    className="site-focus text-xs text-[#9aa3ae] transition hover:text-[#e8ecf2]"
+                    className="site-focus text-xs text-[#9a9488] transition hover:text-[#f5f0e6]"
                   >
                     {link.label}
                   </Link>
@@ -30,7 +37,9 @@ export default function SiteFooter() {
           </nav>
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+        <p className="max-w-2xl text-[12px] leading-5 text-[#6f6a60]">{trust}</p>
+
+        <div className="flex flex-col gap-4 border-t border-white/[0.06] pt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <nav aria-label="Sosyal medya" className="min-w-0">
             <ul className="flex flex-wrap items-center gap-2 sm:gap-3">
               <li>
@@ -39,8 +48,8 @@ export default function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={socialLinks.instagram.ariaLabel}
-                  title={socialLinks.instagram.label}
-                  className="site-focus inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-[#c5ccd6] transition hover:border-white/20 hover:bg-white/[0.06] hover:text-[#eef1f5]"
+                  title={`Instagram ${socialLinks.instagram.label}`}
+                  className="site-focus inline-flex items-center gap-2 border border-white/14 bg-white/[0.03] px-3 py-2 text-xs text-[#e8e2d6] transition hover:border-white/22 hover:bg-white/[0.06] hover:text-[#f5f0e6]"
                 >
                   <InstagramIcon />
                   <span>{socialLinks.instagram.label}</span>
@@ -52,8 +61,8 @@ export default function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={socialLinks.telegram.ariaLabel}
-                  title={socialLinks.telegram.label}
-                  className="site-focus inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-[#c5ccd6] transition hover:border-white/20 hover:bg-white/[0.06] hover:text-[#eef1f5]"
+                  title={`${socialLinks.telegram.label} (ikincil kanal)`}
+                  className="site-focus inline-flex items-center gap-2 border border-white/[0.08] bg-transparent px-3 py-2 text-xs text-[#9a9488] transition hover:border-white/14 hover:text-[#c5bfb3]"
                 >
                   <TelegramIcon />
                   <span>{socialLinks.telegram.label}</span>
@@ -62,9 +71,9 @@ export default function SiteFooter() {
             </ul>
           </nav>
 
-          <div className="flex min-w-0 flex-col gap-1 text-[11px] text-[#6f7886] sm:items-end sm:text-right">
+          <div className="flex min-w-0 flex-col gap-1 text-[0.7rem] text-[#6f6a60] sm:items-end sm:text-right">
             <p className="break-words">Örüntüyü okur. Denklem kurar.</p>
-            <p>© {new Date().getFullYear()} ATLAS</p>
+            <p>© {new Date().getFullYear()} Cosmic Simya</p>
           </div>
         </div>
       </div>
