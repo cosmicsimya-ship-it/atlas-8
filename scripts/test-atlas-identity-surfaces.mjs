@@ -94,17 +94,13 @@ record(
 record(
   'P2 empty invite',
   /Neye bakıyoruz\?/.test(discovery) &&
-    /Bir dönem, bir kişi, bir karar/.test(discovery) &&
+    /Aklındaki herhangi bir şeyi anlatabilirsin/.test(discovery) &&
     /Aklındakini anlat/.test(discovery),
 );
 record(
-  'P2 pattern gap suggestions',
+  'P2 pattern gap editorial',
   /PatternGapTraces/.test(chatPage) &&
-    /EMPTY_STATE_SUGGESTIONS/.test(read('src/components/cosmic/PatternGapTraces.tsx')) &&
-    /Önündeki dönem/.test(discovery) &&
-    /Bir ilişki \/ kişi/.test(discovery) &&
-    /Bir karar/.test(discovery) &&
-    /Bir rüya/.test(discovery),
+    /discoveryCopy\.emptyInvite/.test(read('src/components/cosmic/PatternGapTraces.tsx')),
 );
 record(
   'P2 no engine invitation labels',
@@ -114,7 +110,9 @@ record(
 record('P2 composer placeholder', /Aklındakini anlat…/.test(read('src/data/pattern-traces.ts')));
 record(
   'P2 no technical entry markers',
-  !/\[t\.marker\]|selectedTraces|composeMessageWithTraces/.test(chatPage) &&
+  !/\[t\.marker\]|selectedTraces|composeMessageWithTraces|EMPTY_STATE_SUGGESTIONS|Önündeki dönem|Bir ilişki \/ kişi/.test(
+    chatPage + read('src/components/cosmic/PatternGapTraces.tsx') + discovery,
+  ) &&
     !/Bunları birlikte ele al/.test(chatPage) &&
     !/Ne taşıyorsun\?/.test(chatPage),
 );

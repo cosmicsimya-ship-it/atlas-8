@@ -9,12 +9,7 @@ import CapabilityDiscovery, {
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
 import PatternGapTraces from '../components/cosmic/PatternGapTraces';
 import CosmicShell from '../components/cosmic/CosmicShell';
-import {
-  DEFAULT_COMPOSER_PLACEHOLDER,
-  discoveryCopy,
-  EMPTY_STATE_SUGGESTIONS,
-  type EmptyStateSuggestionId,
-} from '../data/capability-discovery';
+import { discoveryCopy } from '../data/capability-discovery';
 import { PATTERN_GAP_PLACEHOLDER } from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
 import {
@@ -49,8 +44,6 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<PendingStatus>('thinking');
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
-  const [activeSuggestionId, setActiveSuggestionId] =
-    useState<EmptyStateSuggestionId | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const seededContext = useRef(false);
@@ -108,7 +101,6 @@ export default function Chat() {
         setPendingStatus('thinking');
         setMessages([]);
         setInput('');
-        setActiveSuggestionId(null);
         emptyStateSeenRef.current = false;
         firstMessageTrackedRef.current = false;
       }
@@ -382,7 +374,6 @@ export default function Chat() {
       trackDiscoverability('first_message_without_trace', { traceCount: 0 });
     }
 
-    setActiveSuggestionId(null);
     await sendTurn(payload);
   }, [input, messages.length, sendTurn]);
 
@@ -430,20 +421,6 @@ export default function Chat() {
     }
   };
 
-  const handleSuggestionSelect = (id: EmptyStateSuggestionId) => {
-    setActiveSuggestionId((prev) => {
-      if (prev === id) return null;
-      trackDiscoverability('trace_selected', { id, count: 1 });
-      return id;
-    });
-    textareaRef.current?.focus();
-  };
-
-  const composerPlaceholder = isEmpty
-    ? (EMPTY_STATE_SUGGESTIONS.find((s) => s.id === activeSuggestionId)?.placeholder ??
-      DEFAULT_COMPOSER_PLACEHOLDER)
-    : PATTERN_GAP_PLACEHOLDER;
-
   const pendingLabel =
     pendingStatus === 'stalled'
       ? 'Bağlantı gecikiyor… Yeni yanıt gelmiyor.'
@@ -476,15 +453,8 @@ export default function Chat() {
               <p className="mt-5 max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/90 sm:mt-7 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
                 {discoveryCopy.emptyInvite.line1}
               </p>
-              <p className="mt-2 max-w-[22rem] text-[13px] leading-snug tracking-[-0.01em] text-[#8b93a3] sm:mt-2.5 sm:max-w-md sm:text-[14px] sm:leading-relaxed">
-                {discoveryCopy.emptyInvite.line2}
-              </p>
               {backendReady !== false && (
-                <PatternGapTraces
-                  activeId={activeSuggestionId}
-                  onSelect={handleSuggestionSelect}
-                  className="mt-4 sm:mt-6"
-                />
+                <PatternGapTraces className="mt-2.5 sm:mt-3" />
               )}
             </div>
           ) : (
@@ -583,7 +553,7 @@ export default function Chat() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={composerPlaceholder}
+                  placeholder={PATTERN_GAP_PLACEHOLDER}
                   disabled={backendReady === false}
                   rows={isEmpty ? 2 : 1}
                   aria-label="Mesaj"

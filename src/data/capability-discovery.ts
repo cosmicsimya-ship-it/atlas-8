@@ -115,45 +115,8 @@ export function resolveDiscoveredModules(
 export const discoveryCopy = {
   emptyInvite: {
     line1: 'Neye bakıyoruz?',
-    line2: 'Bir dönem, bir kişi, bir karar — ya da aklındaki herhangi bir şey.',
+    line2: 'Aklındaki herhangi bir şeyi anlatabilirsin.',
   },
 } as const;
-
-/** Soft empty-state prompts — guidance only, not locked modes or taxonomy chips. */
-export type EmptyStateSuggestionId = 'donem' | 'kisi' | 'karar' | 'ruya';
-
-export type EmptyStateSuggestion = {
-  id: EmptyStateSuggestionId;
-  title: string;
-  description: string;
-  placeholder: string;
-};
-
-export const EMPTY_STATE_SUGGESTIONS: readonly EmptyStateSuggestion[] = [
-  {
-    id: 'donem',
-    title: 'Önündeki dönem',
-    description: 'Önümüzdeki birkaç ayda ne öne çıkıyor?',
-    placeholder: 'Hangi dönemden bahsediyoruz?',
-  },
-  {
-    id: 'kisi',
-    title: 'Bir ilişki / kişi',
-    description: 'Bu kişiyle aramdaki örüntü ne?',
-    placeholder: 'Bu kişiyle aranda ne oluyor?',
-  },
-  {
-    id: 'karar',
-    title: 'Bir karar',
-    description: 'Bu seçimin nereye gittiğine bakalım.',
-    placeholder: 'Hangi seçenekler arasında kaldın?',
-  },
-  {
-    id: 'ruya',
-    title: 'Bir rüya',
-    description: 'Rüyadaki sembolleri ve örüntüyü birlikte inceleyelim.',
-    placeholder: 'Rüyayı hatırladığın haliyle anlat…',
-  },
-] as const;
 
 export const DEFAULT_COMPOSER_PLACEHOLDER = 'Aklındakini anlat…';
