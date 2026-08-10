@@ -9,7 +9,6 @@ export const landingHero = {
   body:
     'Atlas; astroloji, numeroloji, semboller ve kişisel örüntüler gibi katmanları birlikte okuyan Cosmic Simya analiz zekâsıdır.',
   primaryCta: { label: 'Atlas’a Gir', to: '/atlas' },
-  secondaryCta: { label: 'Nasıl çalışır?', sectionId: 'nasil-calisir' },
 } as const;
 
 /** What Atlas does — first clarifying section. */
@@ -215,8 +214,8 @@ export const socialLinks = {
   instagram: {
     href: 'https://www.instagram.com/cosmic_simya/',
     handle: 'cosmic_simya',
-    label: '@cosmic_simya',
-    ariaLabel: 'Cosmic Simya Instagram (@cosmic_simya) profilini yeni sekmede aç',
+    label: 'Instagram',
+    ariaLabel: 'Instagram',
   },
   telegram: {
     href: 'https://t.me/cosmicsimya',

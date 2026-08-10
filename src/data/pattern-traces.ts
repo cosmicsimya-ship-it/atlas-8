@@ -115,7 +115,8 @@ export function scorePlaceholder(scores: {
   );
 }
 
-export const PATTERN_GAP_PLACEHOLDER = 'Ne taşıyorsun?';
+/** Default empty-state composer placeholder (visible layer). */
+export const PATTERN_GAP_PLACEHOLDER = 'Aklındakini anlat…';
 
 function hashSeed(seed: string): number {
   let h = 2166136261;

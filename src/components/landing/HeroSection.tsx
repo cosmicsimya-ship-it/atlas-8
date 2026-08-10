@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 
 import { landingHero } from '../../data/landing-content';
-import { scrollToSection } from '../../utils/scroll-section';
 import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
 
@@ -11,7 +10,7 @@ import HeroAtmosphere from './HeroAtmosphere';
  * Mobile: type overlays extreme lens close-crop (not stack + tiny orb).
  */
 export default function HeroSection() {
-  const { brand, titleLines, methodLines, body, primaryCta, secondaryCta } = landingHero;
+  const { brand, titleLines, methodLines, body, primaryCta } = landingHero;
 
   return (
     <section
@@ -73,23 +72,13 @@ export default function HeroSection() {
             {body}
           </p>
 
-          <div className="hero-reveal hero-reveal-6 mt-8 flex flex-col gap-3 sm:mt-11 sm:flex-row sm:items-center sm:gap-4">
+          <div className="hero-reveal hero-reveal-6 mt-8 flex sm:mt-11">
             <Link
               to={primaryCta.to}
               className="atlas-btn-primary min-h-12 w-full touch-manipulation sm:w-auto sm:min-w-[10.5rem]"
             >
               {primaryCta.label}
             </Link>
-            <button
-              type="button"
-              onClick={() => scrollToSection(secondaryCta.sectionId)}
-              className="atlas-btn-quiet min-h-12 w-full justify-center touch-manipulation sm:w-auto sm:justify-start"
-            >
-              {secondaryCta.label}
-              <span className="ml-2 text-[#c9b37a]/45" aria-hidden="true">
-                →
-              </span>
-            </button>
           </div>
         </div>
       </div>

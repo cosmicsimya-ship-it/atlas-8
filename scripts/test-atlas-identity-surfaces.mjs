@@ -52,29 +52,72 @@ record('P1 convergence honesty', /mistik bir kesinlik motoru olarak değil/.test
 record('P1 looks soften measure', /ayırt etmeye çalışır/.test(landing));
 record(
   'P1 landing IA',
-  /AlreadyThere/.test(landingPage) &&
+  /HeroSection/.test(landingPage) &&
+    /AlreadyThere/.test(landingPage) &&
+    /AtlasLooks/.test(landingPage) &&
     /ConvergenceSection/.test(landingPage) &&
-    /PatternSelf/.test(landingPage) &&
-    /AtlasLooks/.test(landingPage),
+    /ExampleQuestions/.test(landingPage) &&
+    /MemoryContext/.test(landingPage) &&
+    /DailyAnalysisPreview/.test(landingPage) &&
+    /ManifestoTeaser/.test(landingPage) &&
+    /AtlasIntelligenceStrip/.test(landingPage) &&
+    /FinalCTA/.test(landingPage),
 );
 record('P1 manifesto on about', /atlasManifesto/.test(about));
 record('P1 SEO not platform pitch', !/dijital keşif platformu/.test(indexHtml));
-record('P1 SEO equation', /Denklem kurar/.test(indexHtml));
-record('P1 hero section uses methodLines', /methodLines/.test(read('src/components/landing/HeroSection.tsx')));
-
-// ── P2 Chat start (A15 Pattern Gap) ───────────────────────────────────
-record('P2 empty invite', /Neye bakıyoruz\?/.test(discovery));
+record('P1 SEO title', /<title>Cosmic Simya<\/title>/.test(indexHtml));
 record(
-  'P2 pattern gap traces',
-  /PatternGapTraces/.test(chatPage) && /PATTERN_TRACE_POOL/.test(read('src/data/pattern-traces.ts')),
+  'P1 SEO manifesto description',
+  /Her şey zaten ortada\. Mesele nasıl okuduğun\./.test(indexHtml) &&
+    /Cosmic Simya analiz platformudur/.test(indexHtml),
+);
+record(
+  'P1 SEO OG/Twitter aligned',
+  /property="og:title" content="Cosmic Simya"/.test(indexHtml) &&
+    /name="twitter:title" content="Cosmic Simya"/.test(indexHtml),
+);
+record(
+  'P1 Instagram handle underscore',
+  /instagram\.com\/cosmic_simya\//.test(landing) && !/instagram\.com\/cosmicsimya\//.test(landing),
+);
+record('P1 hero section uses methodLines', /methodLines/.test(read('src/components/landing/HeroSection.tsx')));
+record(
+  'P1C no quran marketing claims',
+  !/Kur.?an analizi|ayet analizi|Diyanet meali/i.test(landing),
+);
+record(
+  'P1C daily trial not overclaiming timing engine',
+  /sembolik analiz/.test(landing) && !/bugünün zamanlamasını/.test(landing),
+);
+
+// ── P2 Chat start (empty analysis entry) ──────────────────────────────
+record(
+  'P2 empty invite',
+  /Neye bakıyoruz\?/.test(discovery) &&
+    /Bir dönem, bir kişi, bir karar/.test(discovery) &&
+    /Aklındakini anlat/.test(discovery),
+);
+record(
+  'P2 pattern gap suggestions',
+  /PatternGapTraces/.test(chatPage) &&
+    /EMPTY_STATE_SUGGESTIONS/.test(read('src/components/cosmic/PatternGapTraces.tsx')) &&
+    /Önündeki dönem/.test(discovery) &&
+    /Bir ilişki \/ kişi/.test(discovery) &&
+    /Bir karar/.test(discovery) &&
+    /Bir rüya/.test(discovery),
 );
 record(
   'P2 no engine invitation labels',
   !/Numerology|Tarot|Natal|Dream Engine|Persona/.test(read('src/components/cosmic/PatternGapTraces.tsx')) &&
     !/Numerology|Tarot|Natal|Dream Engine|Persona/.test(read('src/data/pattern-traces.ts')),
 );
-record('P2 composer placeholder', /PATTERN_GAP_PLACEHOLDER|Ne taşıyorsun\?/.test(chatPage));
-record('P2 human trace pool', /tekrar/.test(read('src/data/pattern-traces.ts')) && /çelişki/.test(read('src/data/pattern-traces.ts')));
+record('P2 composer placeholder', /Aklındakini anlat…/.test(read('src/data/pattern-traces.ts')));
+record(
+  'P2 no technical entry markers',
+  !/\[t\.marker\]|selectedTraces|composeMessageWithTraces/.test(chatPage) &&
+    !/Bunları birlikte ele al/.test(chatPage) &&
+    !/Ne taşıyorsun\?/.test(chatPage),
+);
 
 // ── P3 Tone ───────────────────────────────────────────────────────────
 record('P3 greeting not assistant', !/yapay zekâ asistanıyım/.test(greeting));

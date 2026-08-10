@@ -9,12 +9,13 @@ import CapabilityDiscovery, {
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
 import PatternGapTraces from '../components/cosmic/PatternGapTraces';
 import CosmicShell from '../components/cosmic/CosmicShell';
-import { discoveryCopy } from '../data/capability-discovery';
 import {
-  composeMessageWithTraces,
-  PATTERN_GAP_PLACEHOLDER,
-  type PatternTrace,
-} from '../data/pattern-traces';
+  DEFAULT_COMPOSER_PLACEHOLDER,
+  discoveryCopy,
+  EMPTY_STATE_SUGGESTIONS,
+  type EmptyStateSuggestionId,
+} from '../data/capability-discovery';
+import { PATTERN_GAP_PLACEHOLDER } from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
 import {
   ATLAS_SESSION_CHANGED_EVENT,
@@ -48,7 +49,8 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<PendingStatus>('thinking');
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
-  const [selectedTraces, setSelectedTraces] = useState<PatternTrace[]>([]);
+  const [activeSuggestionId, setActiveSuggestionId] =
+    useState<EmptyStateSuggestionId | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const seededContext = useRef(false);
@@ -106,7 +108,7 @@ export default function Chat() {
         setPendingStatus('thinking');
         setMessages([]);
         setInput('');
-        setSelectedTraces([]);
+        setActiveSuggestionId(null);
         emptyStateSeenRef.current = false;
         firstMessageTrackedRef.current = false;
       }
@@ -371,25 +373,18 @@ export default function Chat() {
   );
 
   const send = useCallback(async () => {
-    const payload = composeMessageWithTraces(input, selectedTraces);
-    if (!payload.trim()) return;
+    const payload = input.trim();
+    if (!payload) return;
 
     if (!firstMessageTrackedRef.current && messages.length === 0) {
       firstMessageTrackedRef.current = true;
-      const withTrace = selectedTraces.length > 0;
-      trackDiscoverability('first_message_sent', {
-        traceCount: selectedTraces.length,
-        traceIds: selectedTraces.map((t) => t.id),
-      });
-      trackDiscoverability(
-        withTrace ? 'first_message_with_trace' : 'first_message_without_trace',
-        { traceCount: selectedTraces.length },
-      );
+      trackDiscoverability('first_message_sent', { traceCount: 0 });
+      trackDiscoverability('first_message_without_trace', { traceCount: 0 });
     }
 
-    setSelectedTraces([]);
+    setActiveSuggestionId(null);
     await sendTurn(payload);
-  }, [input, selectedTraces, messages.length, sendTurn]);
+  }, [input, messages.length, sendTurn]);
 
   /** Retry the failed turn in place — keep the user bubble, new requestId. */
   const retryLast = useCallback(() => {
@@ -435,25 +430,19 @@ export default function Chat() {
     }
   };
 
-  const handleTracesChange = (next: PatternTrace[]) => {
-    const prevCount = selectedTraces.length;
-    setSelectedTraces(next);
-    if (next.length > prevCount) {
-      const added = next[next.length - 1];
-      trackDiscoverability('trace_selected', {
-        id: added?.id,
-        label: added?.label,
-        count: next.length,
-      });
-      if (next.length >= 2) {
-        trackDiscoverability('multiple_traces_selected', {
-          count: next.length,
-          ids: next.map((t) => t.id),
-        });
-      }
-    }
+  const handleSuggestionSelect = (id: EmptyStateSuggestionId) => {
+    setActiveSuggestionId((prev) => {
+      if (prev === id) return null;
+      trackDiscoverability('trace_selected', { id, count: 1 });
+      return id;
+    });
     textareaRef.current?.focus();
   };
+
+  const composerPlaceholder = isEmpty
+    ? (EMPTY_STATE_SUGGESTIONS.find((s) => s.id === activeSuggestionId)?.placeholder ??
+      DEFAULT_COMPOSER_PLACEHOLDER)
+    : PATTERN_GAP_PLACEHOLDER;
 
   const pendingLabel =
     pendingStatus === 'stalled'
@@ -482,16 +471,19 @@ export default function Chat() {
           aria-label="Konuşma"
         >
           {isEmpty ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-0 pb-1 pt-2 text-center">
+            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-end gap-0 pb-1 pt-2 text-center sm:justify-center">
               <AtlasCorePresence state={loading ? 'thinking' : 'idle'} />
-              <p className="mt-7 max-w-[16rem] text-[16px] leading-[1.7] tracking-[-0.01em] text-[#e8ecf2]/90 sm:mt-8 sm:max-w-sm sm:text-[17px]">
+              <p className="mt-5 max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/90 sm:mt-7 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
                 {discoveryCopy.emptyInvite.line1}
+              </p>
+              <p className="mt-2 max-w-[22rem] text-[13px] leading-snug tracking-[-0.01em] text-[#8b93a3] sm:mt-2.5 sm:max-w-md sm:text-[14px] sm:leading-relaxed">
+                {discoveryCopy.emptyInvite.line2}
               </p>
               {backendReady !== false && (
                 <PatternGapTraces
-                  selected={selectedTraces}
-                  onChange={handleTracesChange}
-                  className="mt-6 max-w-md sm:mt-7"
+                  activeId={activeSuggestionId}
+                  onSelect={handleSuggestionSelect}
+                  className="mt-4 sm:mt-6"
                 />
               )}
             </div>
@@ -582,21 +574,6 @@ export default function Chat() {
 
             <div className="atlas-composer flex items-end gap-3">
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                {isEmpty && selectedTraces.length > 0 ? (
-                  <div
-                    className="flex flex-wrap items-center gap-1.5 px-0.5"
-                    aria-label="Seçilen izler"
-                  >
-                    {selectedTraces.map((t) => (
-                      <span
-                        key={t.id}
-                        className="text-[12px] tracking-[-0.01em] text-[#7a8494]"
-                      >
-                        [{t.marker}]
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
                 <label htmlFor="atlas-message" className="sr-only">
                   Atlas’a yaz
                 </label>
@@ -606,7 +583,7 @@ export default function Chat() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={isEmpty ? PATTERN_GAP_PLACEHOLDER : 'Neye bakıyoruz?'}
+                  placeholder={composerPlaceholder}
                   disabled={backendReady === false}
                   rows={isEmpty ? 2 : 1}
                   aria-label="Mesaj"

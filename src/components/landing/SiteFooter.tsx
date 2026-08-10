@@ -48,7 +48,7 @@ export default function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={socialLinks.instagram.ariaLabel}
-                  title={`Instagram ${socialLinks.instagram.label}`}
+                  title={socialLinks.instagram.label}
                   className="site-focus inline-flex items-center gap-2 border border-white/14 bg-white/[0.03] px-3 py-2 text-xs text-[#e8e2d6] transition hover:border-white/22 hover:bg-white/[0.06] hover:text-[#f5f0e6]"
                 >
                   <InstagramIcon />

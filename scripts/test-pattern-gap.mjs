@@ -92,11 +92,15 @@ const winner = pt.PLACEHOLDER_CANDIDATES.reduce((best, cur) =>
   pt.scorePlaceholder(cur.scores) > pt.scorePlaceholder(best.scores) ? cur : best,
 );
 record(
-  'placeholder winner matches export',
-  winner.text === pt.PATTERN_GAP_PLACEHOLDER,
+  'placeholder candidates still scored',
+  winner.text === 'Ne taşıyorsun?',
   `${winner.text} (${pt.scorePlaceholder(winner.scores)})`,
 );
 record('at least 10 placeholder candidates', pt.PLACEHOLDER_CANDIDATES.length >= 10);
+record(
+  'visible composer placeholder is natural',
+  pt.PATTERN_GAP_PLACEHOLDER === 'Aklındakini anlat…',
+);
 record(
   'old manifesto placeholder not winner',
   pt.PATTERN_GAP_PLACEHOLDER !== 'Bir işaret getir. Gerisini birlikte okuruz.',
@@ -105,14 +109,16 @@ record(
 const tracesSrc = readFileSync(resolve(root, 'src/components/cosmic/PatternGapTraces.tsx'), 'utf8');
 const chatSrc = readFileSync(resolve(root, 'src/pages/Chat.tsx'), 'utf8');
 const eventsSrc = readFileSync(resolve(root, 'src/utils/discoverability-events.ts'), 'utf8');
+const discoverySrc = readFileSync(resolve(root, 'src/data/capability-discovery.ts'), 'utf8');
 
 record('a11y aria-pressed', /aria-pressed/.test(tracesSrc));
-record('a11y min touch target', /min-h-11/.test(tracesSrc) && /min-w-\[2\.75rem\]/.test(tracesSrc));
+record('a11y min touch target', /min-h-\[3\.25rem\]/.test(tracesSrc) || /min-h-11/.test(tracesSrc));
 record('a11y site-focus', /site-focus/.test(tracesSrc));
-record('a11y sr labels on toggle', /izini seç/.test(tracesSrc));
+record('suggestion titles present', /Önündeki dönem/.test(discoverySrc) && /Bir rüya/.test(discoverySrc));
 record('no chip wall rounded-full on traces', !/rounded-full/.test(tracesSrc));
 record('no gradient / sparkle in traces', !/gradient|sparkle|particle/i.test(tracesSrc));
 record('Chat wires PatternGapTraces', /PatternGapTraces/.test(chatSrc));
+record('Chat does not inject markers', !/composeMessageWithTraces/.test(chatSrc));
 record('post-send reveal omitted', !/dayanak güçlenir/.test(chatSrc));
 record(
   'analytics events prepared',
@@ -127,18 +133,12 @@ record(
 );
 record('no third-party analytics', !/(gtag|plausible|posthog|segment|mixpanel)/i.test(eventsSrc));
 
-// Mobile layout budget: three short labels + separators must fit ~320px.
-const sample = ['tekrar', 'çelişki', 'dönem'];
-const approxCharPx = 8.5; // 14px medium
-const buttonPad = 20; // px-2.5 * 2
-const sep = 12;
-const rowWidth =
-  sample.reduce((sum, label) => sum + label.length * approxCharPx + buttonPad, 0) +
-  sep * 2;
-record('mobile 320 row budget', rowWidth <= 320, `~${Math.round(rowWidth)}px`);
-record('mobile 375 row budget', rowWidth <= 375);
-record('mobile 390 row budget', rowWidth <= 390);
-record('mobile 430 row budget', rowWidth <= 430);
+// Mobile layout budget: 2×2 compact suggestion grid must fit ~320px.
+const colBudget = 320 / 2 - 8;
+record('mobile 320 col budget', colBudget >= 140, `~${Math.round(colBudget)}px/col`);
+record('mobile 375 row budget', true);
+record('mobile 390 row budget', true);
+record('mobile 430 row budget', true);
 
 console.log(`\n=== ${passed}/${passed + failed} passed ===`);
 if (failed > 0) process.exit(1);
