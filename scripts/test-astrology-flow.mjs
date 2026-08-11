@@ -11,6 +11,9 @@ import {
   ASK_BIRTH_DATA_REPLY,
   FATE_REFUSAL_REPLY,
   detectLengthPreference,
+  extractZodiacTarget,
+  resolveAstrologyDate,
+  isDateSpecificAstrologyRequest,
 } from '../server/atlas-astrology-flow.js';
 import { gregorianToHijri, buildSymbolicCalendarContext, hijriMonthSection } from '../server/atlas-symbolic-calendar.js';
 import { buildEphemerisSnapshot, longitudeToSignDegree } from '../server/atlas-ephemeris.js';
@@ -69,6 +72,39 @@ record(
 
 record('length short', detectLengthPreference('kısa özet ver') === 'short');
 record('length detailed', detectLengthPreference('detaylı analiz') === 'detailed');
+
+// ── Hüseyin date-specific astrology fixture (unit) ──
+const huseyinMsg = '12 ağustosta kovalar nasıl etkilenecek atlas';
+record(
+  'hüseyin intent date_specific',
+  detectAstrologyFlowIntent(huseyinMsg, [], { now: new Date('2026-08-11T12:00:00+03:00') }) ===
+    'date_specific_astrology',
+);
+record('hüseyin zodiac Kova', extractZodiacTarget(huseyinMsg) === 'Kova');
+const huseyinDate = resolveAstrologyDate(huseyinMsg, [], {
+  now: new Date('2026-08-11T12:00:00+03:00'),
+});
+record(
+  'hüseyin date 2026-08-12',
+  huseyinDate.ok && huseyinDate.isoDate === '2026-08-12',
+  huseyinDate.isoDate,
+);
+const huseyinCtx = buildAstrologyAnalysisContext({
+  message: huseyinMsg,
+  now: new Date('2026-08-11T12:00:00+03:00'),
+  conversationId: 'astro-huseyin-unit',
+});
+record(
+  'hüseyin context grounded',
+  huseyinCtx.intent === 'date_specific_astrology' &&
+    huseyinCtx.factualGroundingRequired === true &&
+    huseyinCtx.sky?.ok === true &&
+    /RELEVANT TRANSITS FOR Kova/i.test(huseyinCtx.promptBlock),
+);
+record(
+  'generic zodiac traits not date-specific',
+  isDateSpecificAstrologyRequest('Kova burcunun genel özellikleri nelerdir?') === false,
+);
 
 // ── Deterministic replies ──
 const d1 = tryAstrologyFlowReply({ message: 'Bugünün astrolojik analizini yap.' });
@@ -216,10 +252,10 @@ if (process.env.OPENAI_API_KEY) {
   const body = multi.reply ?? '';
   record(
     'llm multi has dates/layers cues',
-    multi.engine === 'astrology-analysis' &&
+    (multi.engine === 'astrology-analysis' || multi.engine === 'cross-layer-synthesis') &&
       (/20\d{2}|Hicri|Muharrem|Safer|Rebi|Cemazi|Recep|Şaban|Ramazan|Şevval|Zil/i.test(body) ||
         /Ay|Güneş|numer/i.test(body)),
-    body.slice(0, 200),
+    `engine=${multi.engine} | ${body.slice(0, 200)}`,
   );
 
   const afterDetail = await processAtlasMessage({

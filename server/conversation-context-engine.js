@@ -51,6 +51,7 @@ export const CONVERSATION_CONTEXT_VERSION = 'conversation-context-engine-v1';
  * @typedef {{
  *   activeTopic: string|null,
  *   symbolicDomain?: string|null,
+ *   astrologyGrounding?: object|null,
  *   currentQuestion: string|null,
  *   expectedAnswerType: string|null,
  *   expectedSubject: { displayName?: string|null, userId?: string|null }|null,
@@ -174,6 +175,7 @@ export function createEmptyConversationState() {
   return {
     activeTopic: null,
     symbolicDomain: null,
+    astrologyGrounding: null,
     currentQuestion: null,
     expectedAnswerType: null,
     expectedSubject: null,

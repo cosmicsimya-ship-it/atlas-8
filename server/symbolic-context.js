@@ -19,16 +19,22 @@ import { getConversationState } from './conversation-context-engine.js';
 
 export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v1';
 
-/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|null} SymbolicDomainId */
+/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|null} SymbolicDomainId */
 
 const SHORT_FOLLOWUP_RE =
-  /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha)[.!?…]*$/iu;
+  /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz)[.!?…]*$/iu;
 
 const SYMBOLIC_FOLLOWUP_RE =
-  /(?:a[cç][ıi]l[ıi]m|kart\s+a[cç]|kart\s+[cç]ek|yorumla|r[uü]ya|sembol|tarih|tekrar|devam|bir\s+daha|bu\s+ki[sş]i|bu\s+tarih|bu\s+sembol|bu\s+se[cç]im|yine\s+(?:yazd[ıi]|oldu|[cç][ıi]kt))/i;
+  /(?:a[cç][ıi]l[ıi]m|kart\s+a[cç]|kart\s+[cç]ek|yorumla|r[uü]ya|sembol|tarih|tekrar|devam|bir\s+daha|bu\s+ki[sş]i|bu\s+tarih|bu\s+sembol|bu\s+se[cç]im|yine\s+(?:yazd[ıi]|oldu|[cç][ıi]kt)|daha\s+detayl[ıi])/i;
 
 const EXPLICIT_DOMAIN_SWITCH =
   /\b(tarot|r[uü]ya|numeroloji|mix(?:ing)?|master(?:ing)?|\bstem\b|telegram|fatura|abonelik)\b/i;
+
+const ASTROLOGY_DOMAIN_RE =
+  /(?:astroloj|bur[cç]|transit|g[oö]ky[uü]z|(?<!\p{L})(?:ko[cç]|bo[gğ]a|[iı]kizler|yenge[cç]|aslan|ba[sş]ak|terazi|akrep|yay|o[gğ]lak|kova|bal[iı]k)(?:lar|ler)?(?!\p{L}))/iu;
+
+const DATE_BOUND_ASTRO_RE =
+  /(?:\d{1,2}\s+(?:ocak|[sş]ubat|mart|nisan|may[iı]s|haziran|temmuz|a[gğ]ustos|eyl[uü]l|ekim|kas[iı]m|aral[iı]k)\w*|\byar[ıi]n\b|\bbu\s+hafta\b|\btutulma\b)/iu;
 
 /** Unrelated capability tokens that must not appear under symbolic follow-ups. */
 export const UNRELATED_CAPABILITY_RE =
@@ -72,6 +78,8 @@ export function extractSymbolicReferents(message) {
     [/bu\s+se[cç]im/i, 'choice'],
     [/bu\s+say[ıi]/i, 'number'],
     [/ayn[ıi]\s+r[uü]ya/i, 'dream'],
+    [/\d{1,2}\s+(?:ocak|[sş]ubat|mart|nisan|may[iı]s|haziran|temmuz|a[gğ]ustos|eyl[uü]l|ekim|kas[iı]m|aral[iı]k)\w*/iu, 'date'],
+    [/(?<!\p{L})(?:ko[cç]|bo[gğ]a|[iı]kizler|yenge[cç]|aslan|ba[sş]ak|terazi|akrep|yay|o[gğ]lak|kova|bal[iı]k)(?:lar|ler)?(?!\p{L})/iu, 'zodiac'],
   ];
   for (const [re, kind] of patterns) {
     const m = text.match(re);
@@ -196,6 +204,13 @@ export function resolveSymbolicContext(input) {
   } else if (semantic.layers.includes('dream') || /(?:^|[^\p{L}])r[uü]ya(?!\p{L})/iu.test(message)) {
     primary = 'dream';
     evidence.push('message_dream');
+  } else if (
+    (ASTROLOGY_DOMAIN_RE.test(message) && DATE_BOUND_ASTRO_RE.test(message)) ||
+    semantic.layers.includes('astrology')
+  ) {
+    primary = 'astrology';
+    action = /detayl[ıi]|derine|kapsam/i.test(message) ? 'expand' : 'interpret';
+    evidence.push('message_astrology');
   } else if (semantic.layers.includes('symbol')) {
     primary = 'symbol';
     evidence.push('message_symbol');
@@ -224,6 +239,18 @@ export function resolveSymbolicContext(input) {
     } else if (patternHist) {
       primary = 'date_pattern';
       evidence.push('pattern_history');
+    } else if (
+      storedDomain === 'astrology' ||
+      /astroloj|bur[cç]|kova|transit/i.test(
+        history
+          .slice(-6)
+          .map((h) => h.content || '')
+          .join('\n'),
+      )
+    ) {
+      primary = 'astrology';
+      action = 'expand';
+      evidence.push('astrology_history');
     }
   } else if (!primary && freshest?.domain && !explicitSwitch) {
     // Soft affinity without forcing
@@ -302,7 +329,7 @@ export function shouldBlockUnrelatedCapability(ctx, message) {
     !/\b(tarot|kart|r[uü]ya|sembol)\b/i.test(text);
   if (clearOps) return false;
 
-  const symbolicPrimary = ['tarot', 'dream', 'symbol', 'date_pattern', 'person', 'choice', 'pattern'].includes(
+  const symbolicPrimary = ['tarot', 'dream', 'symbol', 'date_pattern', 'person', 'choice', 'pattern', 'astrology'].includes(
     ctx.primaryDomain || '',
   );
   if (!symbolicPrimary && !ctx.preserveActiveDomain) return false;

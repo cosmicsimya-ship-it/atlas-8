@@ -81,6 +81,7 @@ import {
   tryAstrologyFlowReply,
   buildAstrologyAnalysisContext,
   isAstrologyAnalysisIntent,
+  applyAstrologyProphecyGuard,
   ASTROLOGY_FLOW_VERSION,
 } from './atlas-astrology-flow.js';
 import { PROMPT_PROFILE_MODULES, TAROT_SPREAD_MODULE } from './atlas-prompt-loader.js';
@@ -149,6 +150,9 @@ import {
 import {
   tryDeterministicQuranVerseReply,
   QURAN_VERSE_LOOKUP_VERSION,
+  isQuranContextActive,
+  buildNoSpontaneousQuranDirective,
+  buildQuranFailClosedDirective,
 } from './quran-verse-lookup/index.js';
 import {
   tryResolveConversationContext,
@@ -184,6 +188,12 @@ import {
   createRequestTiming,
   attachRequestTiming,
 } from './request-timing.js';
+import {
+  detectSemanticLayers,
+  shouldPreferConvergence,
+  AMBIGUOUS_PATTERN_CLARIFY_REPLY,
+  SEMANTIC_LAYERS_VERSION,
+} from './semantic-layers.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -1338,15 +1348,27 @@ export async function processAtlasMessage(input, options = {}) {
   // ── Personal numerology engine (layered analysis; before short self-profile) ──
   // Follow-ups stay in numerology session — do not fall through to profile resolvers.
   // Multi-layer / convergence asks must not be monopolized by a solo engine.
+  // Semantic layers inform convergence — dream-primary without explicit combine
+  // keeps dream engine reachable.
+  const semanticLayers = healthSafety.active
+    ? detectSemanticLayers('')
+    : detectSemanticLayers(message, history);
   const synthesisIntentGate = healthSafety.active
-    ? { wantsSynthesis: false, layersRequested: [] }
-    : detectCrossLayerSynthesisIntent(message);
-  const preferConvergence =
-    synthesisIntentGate.wantsSynthesis === true &&
-    (synthesisIntentGate.layersRequested?.length >= 2 ||
-      /birlikte|sentez|yakınsama|yakinasma|karşılaştır|karsilastir|denklem|kesişim|kesisim/i.test(
-        message,
-      ));
+    ? { wantsSynthesis: false, layersRequested: [], combineExplicit: false, semantic: semanticLayers }
+    : detectCrossLayerSynthesisIntent(message, history);
+  const preferConvergence = shouldPreferConvergence(
+    synthesisIntentGate.semantic || semanticLayers,
+  );
+
+  pipelineDebug.semanticLayers = {
+    version: SEMANTIC_LAYERS_VERSION,
+    primary: semanticLayers.primaryLayer,
+    secondary: semanticLayers.secondaryLayers,
+    layers: semanticLayers.layers,
+    wantsSynthesis: semanticLayers.wantsSynthesis,
+    combineExplicit: semanticLayers.combineExplicit,
+    preferConvergence,
+  };
 
   if (!hasImage && !healthSafety.active && !preferConvergence) {
     requestTiming.start('numerology_engine');
@@ -1359,6 +1381,8 @@ export async function processAtlasMessage(input, options = {}) {
     });
     requestTiming.end('numerology_engine');
     if (numerologyFlow?.handled && numerologyFlow.reply) {
+      // When dream is primary, don't let numerology monopolize (secondary numbers stay for synthesis/dream).
+      if (!(semanticLayers.primaryLayer === 'dream' && numerologyFlow.intent === 'numerology:pattern_observe' && !semanticLayers.combineExplicit && semanticLayers.layers.includes('dream'))) {
       noteAssistantTurn(conversationId, {
         reply: numerologyFlow.reply,
         intent: numerologyFlow.intent,
@@ -1403,7 +1427,47 @@ export async function processAtlasMessage(input, options = {}) {
         },
         privacyGuardCtx,
       );
+      }
     }
+  }
+
+  // Ambiguous pattern-seeking — clarify without category menu
+  if (
+    !hasImage &&
+    !healthSafety.active &&
+    !preferConvergence &&
+    semanticLayers.ambiguousPattern &&
+    !semanticLayers.primaryLayer
+  ) {
+    noteAssistantTurn(conversationId, {
+      reply: AMBIGUOUS_PATTERN_CLARIFY_REPLY,
+      intent: 'pattern:clarify',
+      responseMode: 'clarify',
+    });
+    return applyPrivacyGuardToResult(
+      {
+        status: 'complete',
+        reply: AMBIGUOUS_PATTERN_CLARIFY_REPLY,
+        intent: 'pattern:clarify',
+        engine: 'semantic-layers',
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          conversationIntent: 'pattern:clarify',
+          responseMode: 'clarify',
+          semanticLayers: pipelineDebug.semanticLayers,
+          model: 'deterministic',
+          provider: 'atlas-semantic-layers',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+      },
+      privacyGuardCtx,
+    );
   }
 
   // ── Tarot interpretation engine (selection ≠ interpretation; depth guard) ──
@@ -1958,7 +2022,12 @@ export async function processAtlasMessage(input, options = {}) {
   if (!hasImage && !tarotIntent.active && !wantsPersonalAnalysis) {
     const synthesisIntentEarly = detectCrossLayerSynthesisIntent(message);
     // Fate refusal always wins — even over multi-layer synthesis requests.
-    const astrologyFlowEarly = tryAstrologyFlowReply({ message, history, userId });
+    const astrologyFlowEarly = tryAstrologyFlowReply({
+      message,
+      history,
+      userId,
+      conversationId,
+    });
     if (astrologyFlowEarly?.intent === 'fate_refusal') {
       return applyPrivacyGuardToResult(
         {
@@ -1983,7 +2052,8 @@ export async function processAtlasMessage(input, options = {}) {
       );
     }
 
-    // Multi-layer synthesis must not be short-circuited by astrology clarify prompts.
+    // Multi-layer synthesis / dream-primary must not be short-circuited by natal clarifies.
+    // Casual deterministic replies (greeting etc.) stay available unless synthesis owns the turn.
     if (!synthesisIntentEarly.wantsSynthesis) {
       // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
       const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
@@ -2066,47 +2136,53 @@ export async function processAtlasMessage(input, options = {}) {
           privacyGuardCtx,
         );
       }
+    }
 
-      if (astrologyFlowEarly) {
-        const styleDebug = buildStyleRuntimeDebug({
-          channel: input.channel,
-          userId,
-          founderSession,
-          conversationIntent: astrologyFlowEarly.intent,
-          responseMode: 'astrology-clarify',
-          maxTokens: 0,
-          profile: resolveChatProfile(mode),
-          tarotActive: false,
-        });
-        logStyleRuntimeDebug(styleDebug);
-        return applyPrivacyGuardToResult(
-          {
-            status: 'complete',
-            reply: astrologyFlowEarly.reply,
-            intent: `astrology:${astrologyFlowEarly.intent}`,
-            engine: astrologyFlowEarly.engine || 'astrology-flow',
-            memoryUpdated: false,
-            data: {
-              mode,
-              profile: resolveChatProfile(mode),
-              conversationIntent: astrologyFlowEarly.intent,
-              astrologyFlowVersion: ASTROLOGY_FLOW_VERSION,
-              founderSession: Boolean(founderSession),
-              founderId: founderSession?.knowledge.id ?? null,
-              pipelineDebug,
-              pipelineVersion: PIPELINE_VERSION,
-              styleDebug,
-              ...(astrologyFlowEarly.data ?? {}),
-              model: 'deterministic',
-              provider: 'atlas-astrology-flow',
-              tokensUsed: 0,
-              costUsd: 0,
-              latencyMs: 0,
-            },
+    const blockAstrologyShortCircuit =
+      semanticLayers.primaryLayer === 'dream' ||
+      semanticLayers.primaryLayer === 'symbol' ||
+      semanticLayers.primaryLayer === 'numerology' ||
+      synthesisIntentEarly.wantsSynthesis;
+
+    if (!blockAstrologyShortCircuit && astrologyFlowEarly) {
+      const styleDebug = buildStyleRuntimeDebug({
+        channel: input.channel,
+        userId,
+        founderSession,
+        conversationIntent: astrologyFlowEarly.intent,
+        responseMode: 'astrology-clarify',
+        maxTokens: 0,
+        profile: resolveChatProfile(mode),
+        tarotActive: false,
+      });
+      logStyleRuntimeDebug(styleDebug);
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: astrologyFlowEarly.reply,
+          intent: `astrology:${astrologyFlowEarly.intent}`,
+          engine: astrologyFlowEarly.engine || 'astrology-flow',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            conversationIntent: astrologyFlowEarly.intent,
+            astrologyFlowVersion: ASTROLOGY_FLOW_VERSION,
+            founderSession: Boolean(founderSession),
+            founderId: founderSession?.knowledge.id ?? null,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+            styleDebug,
+            ...(astrologyFlowEarly.data ?? {}),
+            model: 'deterministic',
+            provider: 'atlas-astrology-flow',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
           },
-          privacyGuardCtx,
-        );
-      }
+        },
+        privacyGuardCtx,
+      );
     }
   }
 
@@ -2230,7 +2306,11 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
-  const astrologyIntent = healthSafety.active ? null : detectAstrologyFlowIntent(message, history);
+  const astrologyIntent = healthSafety.active
+    ? null
+    : semanticLayers.primaryLayer === 'dream' && !semanticLayers.combineExplicit
+      ? null
+      : detectAstrologyFlowIntent(message, history, { conversationId });
   const synthesisIntentPre = healthSafety.active
     ? {
         wantsSynthesis: false,
@@ -2239,19 +2319,31 @@ export async function processAtlasMessage(input, options = {}) {
         isUserExample: false,
         skippedReason: 'health_safety',
       }
-    : detectCrossLayerSynthesisIntent(message);
+    : detectCrossLayerSynthesisIntent(message, history);
+  const symbolicPrimary =
+    semanticLayers.primaryLayer === 'symbol' ||
+    (semanticLayers.layers.includes('symbol') &&
+      semanticLayers.layers.includes('date_time') &&
+      semanticLayers.primaryLayer !== 'dream');
   const astrologyAnalysis =
-    isAstrologyAnalysisIntent(astrologyIntent) ||
-    (synthesisIntentPre.wantsSynthesis &&
-      synthesisIntentPre.layersRequested.includes('astrology'));
+    !symbolicPrimary &&
+    semanticLayers.primaryLayer !== 'dream' &&
+    (isAstrologyAnalysisIntent(astrologyIntent) ||
+      (synthesisIntentPre.wantsSynthesis &&
+        synthesisIntentPre.layersRequested.includes('astrology') &&
+        semanticLayers.primaryLayer === 'astrology'));
   const effectiveMode =
     astrologyAnalysis || synthesisIntentPre.wantsSynthesis
       ? synthesisIntentPre.wantsSynthesis
         ? 'meta-synthesis'
         : 'daily-guide'
-      : mode;
+      : symbolicPrimary
+        ? 'meta-synthesis'
+        : mode;
 
-  const conversationIntent = astrologyIntent ?? detectConversationIntent(message);
+  const conversationIntent = symbolicPrimary
+    ? 'symbolic_pattern'
+    : astrologyIntent ?? detectConversationIntent(message);
   const casualReflexBypass = isCasualReflexBypass(conversationIntent);
   const analyticStance = detectAnalyticStance(message, { conversationIntent });
   const promptBundle = buildAtlasPromptBundle(input, {
@@ -2266,6 +2358,39 @@ export async function processAtlasMessage(input, options = {}) {
   // Explicit detail requests must not inherit casual brevity defaults.
   if (conversationIntent === 'detail') {
     systemPrompt = `${systemPrompt}\n\n${buildDetailIntentRuntimeDirective(message)}`;
+  }
+
+  if (symbolicPrimary) {
+    systemPrompt = `${systemPrompt}
+
+[SYMBOLIC PATTERN ROUTING]
+Kullanıcı sembol / tekrar eden imge / tarih-sembol ilişkisi soruyor.
+Bu genel sohbet değildir. Bağlamı koru; sembol sözlüğü kehaneti üretme.
+Gözlem, yorum ve hipotezi ayır; kesin nedensellik iddia etme.
+Tespit edilen katmanlar: ${(semanticLayers.layers || []).join(', ') || 'symbol'}.`;
+    userPrompt = `${userPrompt}
+
+[ATLAS SEMANTIC LAYERS]
+primary=${semanticLayers.primaryLayer}
+secondary=${(semanticLayers.secondaryLayers || []).join('|') || 'none'}
+evidence=${(semanticLayers.evidence || []).join('|')}`;
+  }
+
+  const quranContextActive = isQuranContextActive(message, semanticLayers);
+  const needsQuranContentGuard =
+    !quranContextActive &&
+    (symbolicPrimary ||
+      synthesisIntentPre.wantsSynthesis ||
+      preferConvergence ||
+      (semanticLayers.combineExplicit && semanticLayers.layers.length >= 2) ||
+      semanticLayers.layers.includes('numerology') ||
+      semanticLayers.layers.includes('dream') ||
+      semanticLayers.layers.includes('date_time'));
+  if (needsQuranContentGuard) {
+    systemPrompt = `${systemPrompt}\n\n${buildNoSpontaneousQuranDirective()}`;
+  } else if (quranContextActive) {
+    // Belt-and-suspenders: multi-domain LLM paths must never invent verse/meal.
+    systemPrompt = `${systemPrompt}\n\n${buildQuranFailClosedDirective()}`;
   }
 
   // Stance hints only when not casual and clearly matched — never invent "analysis".
@@ -2287,7 +2412,6 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
-  
   if (!casualReflexBypass && symbolicContext.active) {
     const symbolicLock = buildSymbolicContextPromptLock(symbolicContext);
     if (symbolicLock) {
@@ -2313,8 +2437,12 @@ export async function processAtlasMessage(input, options = {}) {
       message,
       history,
       userId,
+      conversationId,
     });
     userPrompt = `${userPrompt}\n\n${astrologyContext.promptBlock}`;
+    if (astrologyContext.intent === 'date_specific_astrology') {
+      rememberSymbolicDomain(conversationId, 'astrology');
+    }
   }
 
   // ── Cross-layer synthesis (deterministic skeleton before LLM) — at most once ──
@@ -2342,6 +2470,25 @@ export async function processAtlasMessage(input, options = {}) {
     if (synthesisBridge.ran && synthesisBridge.promptBlock) {
       userPrompt = `${userPrompt}\n\n${synthesisBridge.promptBlock}`;
     }
+  }
+
+  // Free-input multi-layer: preserve layer map even when deterministic synthesis skeleton skips
+  if (
+    !synthesisBridge.ran &&
+    (preferConvergence ||
+      (semanticLayers.combineExplicit && semanticLayers.layers.length >= 2))
+  ) {
+    userPrompt = `${userPrompt}
+
+[ATLAS FREE-INPUT LAYERS]
+primary=${semanticLayers.primaryLayer}
+layers=${semanticLayers.layers.join('|')}
+numbers=${(semanticLayers.numbers || []).join(',')}
+instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözlem / yorum / hipotezi ayır.${
+      quranContextActive
+        ? ''
+        : ' Kur’an/sûre/âyet anma; HH:MM’yi sûre:âyet sanma.'
+    }`;
   }
 
   const modeTokenCap = resolveMaxTokensForResponseMode(
@@ -2537,6 +2684,11 @@ export async function processAtlasMessage(input, options = {}) {
       reply = surface.reply;
     }
 
+    if (astrologyAnalysis && astrologyIntent === 'date_specific_astrology') {
+      const astroGuard = applyAstrologyProphecyGuard(reply);
+      reply = astroGuard.reply;
+    }
+
     const authorVoiceGuard = applyPersonaGuards(reply, {
       tarotActive: tarotIntent.active,
     });
@@ -2561,27 +2713,37 @@ export async function processAtlasMessage(input, options = {}) {
       rememberSymbolicDomain(conversationId, symbolicContext.primaryDomain);
     }
 
+    const multiLayerFreeInput =
+      preferConvergence ||
+      (semanticLayers.combineExplicit && semanticLayers.layers.length >= 2);
+
     const engine = tarotIntent.active
       ? 'tarot'
       : synthesisBridge.ran
         ? 'cross-layer-synthesis'
-        : astrologyAnalysis
-          ? 'astrology-analysis'
-          : profile === 'meta-synthesis'
-            ? 'meta-synthesis'
-            : 'conversation';
+        : multiLayerFreeInput
+          ? 'cross-layer-synthesis'
+          : symbolicPrimary
+            ? 'symbolic-pattern'
+            : astrologyAnalysis
+              ? 'astrology-analysis'
+              : profile === 'meta-synthesis'
+                ? 'meta-synthesis'
+                : 'conversation';
 
     return applyPrivacyGuardToResult(
       {
         status: synthesisBridge.synthesis?.status === 'partial' ? 'complete' : 'complete',
         reply,
         intent: founderProfile
-          ? `${synthesisBridge.ran ? 'cross-layer-synthesis' : astrologyAnalysis ? `astrology:${astrologyIntent}` : intent}:founder`
-          : synthesisBridge.ran
+          ? `${synthesisBridge.ran || multiLayerFreeInput ? 'cross-layer-synthesis' : symbolicPrimary ? 'symbolic:pattern' : astrologyAnalysis ? `astrology:${astrologyIntent}` : intent}:founder`
+          : synthesisBridge.ran || multiLayerFreeInput
             ? 'cross-layer-synthesis'
-            : astrologyAnalysis
-              ? `astrology:${astrologyIntent}`
-              : intent,
+            : symbolicPrimary
+              ? 'symbolic:pattern'
+              : astrologyAnalysis
+                ? `astrology:${astrologyIntent}`
+                : intent,
         engine,
         memoryUpdated: false,
         data: {

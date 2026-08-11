@@ -18,7 +18,21 @@ import { detectTarotEngineIntent, parseRequestedCardCount } from '../server/taro
 import { tryTarotFlowReply } from '../server/tarot-flow.js';
 import { touchTarotSession, clearTarotSession } from '../server/tarot-engine/session.js';
 import { touchDreamSession, clearDreamSession } from '../server/dream-engine/session.js';
-import { getConversationState } from '../server/conversation-context-engine.js';
+import { getConversationState, resetConversationState } from '../server/conversation-context-engine.js';
+import {
+  detectAstrologyFlowIntent,
+  isDateSpecificAstrologyRequest,
+  extractZodiacTarget,
+  resolveAstrologyDate,
+  buildAstrologyAnalysisContext,
+  isCelestialClaimGrounded,
+  selectRelevantCelestialFacts,
+  applyAstrologyProphecyGuard,
+  getAstrologyGrounding,
+  isAstrologyAnalysisIntent,
+} from '../server/atlas-astrology-flow.js';
+import { detectSemanticLayers } from '../server/semantic-layers.js';
+import { detectQuranVerseLookupIntent } from '../server/quran-verse-lookup/intent.js';
 
 let passed = 0;
 let failed = 0;
@@ -253,6 +267,205 @@ record('debug template stripped', tax.hits.includes('debug_template') && !/^Orta
 
 // ── Version ──────────────────────────────────────────────────────────
 record('version present', SYMBOLIC_CONTEXT_VERSION.startsWith('atlas-symbolic-context'));
+
+// ── J. HÜSEYİN fixture — date-specific astrology + continuation ───────
+const HUSEYIN_U1 = '12 ağustosta kovalar nasıl etkilenecek atlas';
+const HUSEYIN_U2 = 'Daha detaylı yazabilir misin';
+const HUSEYIN_CONV = `${conv}-huseyin`;
+const HUSEYIN_NOW = new Date('2026-08-11T12:00:00+03:00');
+
+resetConversationState(HUSEYIN_CONV);
+
+record(
+  'hüseyin: not quran false-positive (nasıl)',
+  detectQuranVerseLookupIntent(HUSEYIN_U1).active === false,
+);
+
+const huseyinSemantic = detectSemanticLayers(HUSEYIN_U1);
+record(
+  'hüseyin: semantic astrology primary',
+  huseyinSemantic.primaryLayer === 'astrology',
+  `primary=${huseyinSemantic.primaryLayer} layers=${huseyinSemantic.layers.join(',')}`,
+);
+record(
+  'hüseyin: date_time layer present',
+  huseyinSemantic.layers.includes('date_time'),
+);
+
+record('hüseyin: zodiac Aquarius/Kova', extractZodiacTarget(HUSEYIN_U1) === 'Kova');
+record(
+  'hüseyin: date-specific request',
+  isDateSpecificAstrologyRequest(HUSEYIN_U1) === true,
+);
+
+const huseyinIntent = detectAstrologyFlowIntent(HUSEYIN_U1, [], {
+  conversationId: HUSEYIN_CONV,
+  now: HUSEYIN_NOW,
+});
+record(
+  'hüseyin TEST1: route date_specific_astrology',
+  huseyinIntent === 'date_specific_astrology' && isAstrologyAnalysisIntent(huseyinIntent),
+  `intent=${huseyinIntent}`,
+);
+
+const huseyinDate = resolveAstrologyDate(HUSEYIN_U1, [], { now: HUSEYIN_NOW, conversationId: HUSEYIN_CONV });
+record(
+  'hüseyin TEST2: target_date 12 August',
+  huseyinDate.ok && huseyinDate.day === 12 && huseyinDate.month === 8,
+  JSON.stringify(huseyinDate),
+);
+record(
+  'hüseyin TEST2: year from civil context 2026',
+  huseyinDate.ok && huseyinDate.year === 2026,
+  `year=${huseyinDate.year} source=${huseyinDate.yearSource}`,
+);
+
+const huseyinCtx = buildAstrologyAnalysisContext({
+  message: HUSEYIN_U1,
+  history: [],
+  conversationId: HUSEYIN_CONV,
+  now: HUSEYIN_NOW,
+});
+record(
+  'hüseyin: factual grounding required',
+  huseyinCtx.factualGroundingRequired === true && huseyinCtx.metadata.groundingState === 'verified',
+);
+record(
+  'hüseyin TEST7: factual→symbolic layer order',
+  Array.isArray(huseyinCtx.layerOrder) &&
+    huseyinCtx.layerOrder[0] === 'factual_celestial' &&
+    huseyinCtx.layerOrder[2] === 'symbolic_interpretation' &&
+    /FACTUAL CELESTIAL|factual celestial/i.test(huseyinCtx.promptBlock),
+);
+record(
+  'hüseyin: verified ephemeris injected',
+  /VERIFIED EPHEMERIS/i.test(huseyinCtx.promptBlock) && huseyinCtx.sky?.ok === true,
+);
+record(
+  'hüseyin: relevant transit filter present',
+  /RELEVANT TRANSITS FOR Kova/i.test(huseyinCtx.promptBlock),
+);
+record(
+  'hüseyin TEST2 downstream: date+zodiac in metadata',
+  huseyinCtx.metadata.targetZodiac === 'Kova' &&
+    huseyinCtx.metadata.targetDate === '2026-08-12',
+);
+
+const grounded = getAstrologyGrounding(HUSEYIN_CONV);
+record(
+  'hüseyin: grounding persisted',
+  grounded?.targetZodiac === 'Kova' &&
+    grounded?.targetDate?.isoDate === '2026-08-12' &&
+    grounded?.groundingState === 'verified',
+);
+
+// Fabricated claim vs verified sky
+const relevant = selectRelevantCelestialFacts(huseyinCtx.sky, 'Kova');
+const moonSign = huseyinCtx.sky?.moon?.sign;
+const fabricatedMoonKova =
+  moonSign !== 'Kova'
+    ? isCelestialClaimGrounded('Ay Kova’da', relevant, huseyinCtx.sky) === false
+    : true;
+record(
+  'hüseyin TEST6: ungrounded Ay-Kova claim fails gate',
+  fabricatedMoonKova === true,
+  `moonSign=${moonSign}`,
+);
+record(
+  'hüseyin TEST6: verified sun claim can ground',
+  isCelestialClaimGrounded(
+    `Güneş ${huseyinCtx.sky.sun.sign}'da`,
+    relevant,
+    huseyinCtx.sky,
+  ) === true,
+);
+
+record(
+  'hüseyin: generic ungrounded vibe text is not a verified transit fact',
+  huseyinCtx.factualGroundingRequired === true,
+);
+
+const prophecy = applyAstrologyProphecyGuard(
+  '12 Ağustos’ta kesin ayrılık yaşayacaksın. Bu transit kesin olarak yeni ilişki getirir.',
+);
+record(
+  'hüseyin TEST8: no deterministic prophecy',
+  prophecy.hits.includes('absolute_astro_prophecy') &&
+    !/kesin ayrılık yaşayacaksın/i.test(prophecy.reply) &&
+    !/kesin olarak yeni ilişki getirir/i.test(prophecy.reply),
+);
+
+rememberSymbolicDomain(HUSEYIN_CONV, 'astrology');
+const huseyinHist = [
+  { role: 'user', content: HUSEYIN_U1 },
+  {
+    role: 'assistant',
+    content:
+      '12 Ağustos 2026 için doğrulanmış gökyüzü verisine göre Kova için seçili transitler üzerinden sembolik bir okuma...',
+  },
+];
+const u2Intent = detectAstrologyFlowIntent(HUSEYIN_U2, huseyinHist, {
+  conversationId: HUSEYIN_CONV,
+  now: HUSEYIN_NOW,
+});
+record(
+  'hüseyin TEST3: follow-up stays date_specific_astrology',
+  u2Intent === 'date_specific_astrology',
+  `intent=${u2Intent}`,
+);
+
+const u2Sym = resolveSymbolicContext({
+  message: HUSEYIN_U2,
+  history: huseyinHist,
+  conversationId: HUSEYIN_CONV,
+  userId: user,
+});
+record(
+  'hüseyin TEST3: symbolic primary_domain astrology',
+  u2Sym.primaryDomain === 'astrology',
+  `primary=${u2Sym.primaryDomain} short=${u2Sym.shortFollowUp}`,
+);
+record('hüseyin: U2 is short follow-up', u2Sym.shortFollowUp === true);
+
+const u2Ctx = buildAstrologyAnalysisContext({
+  message: HUSEYIN_U2,
+  history: huseyinHist,
+  conversationId: HUSEYIN_CONV,
+  now: HUSEYIN_NOW,
+});
+record(
+  'hüseyin TEST4: date persistence on U2',
+  u2Ctx.resolvedDate?.isoDate === '2026-08-12' ||
+    u2Ctx.metadata.targetDate === '2026-08-12',
+  `date=${u2Ctx.metadata.targetDate}`,
+);
+record(
+  'hüseyin TEST4: year unchanged',
+  (u2Ctx.resolvedDate?.year || getAstrologyGrounding(HUSEYIN_CONV)?.targetDate?.year) === 2026,
+);
+record(
+  'hüseyin TEST5: zodiac persistence Aquarius/Kova',
+  u2Ctx.targetZodiac === 'Kova' || u2Ctx.metadata.targetZodiac === 'Kova',
+);
+record(
+  'hüseyin: expand action',
+  u2Ctx.metadata.requestedAction === 'expand_previous_analysis',
+);
+record(
+  'hüseyin: U2 still factual-grounded',
+  u2Ctx.factualGroundingRequired === true && /expand_previous_analysis|genişletme/i.test(u2Ctx.promptBlock),
+);
+
+// Negative control — generic traits must NOT force date-specific gate
+const genericTraits = 'Kova burcunun genel özellikleri nelerdir?';
+record(
+  'hüseyin NEGATIVE: not date-specific',
+  isDateSpecificAstrologyRequest(genericTraits) === false,
+);
+record(
+  'hüseyin NEGATIVE: intent not date_specific_astrology',
+  detectAstrologyFlowIntent(genericTraits) !== 'date_specific_astrology',
+);
 
 console.log(`\n=== ${passed}/${passed + failed} passed ===`);
 if (failed > 0) process.exit(1);

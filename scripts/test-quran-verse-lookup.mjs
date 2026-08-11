@@ -144,6 +144,20 @@ record(
   'intent not casual hello',
   detectQuranVerseLookupIntent('Merhaba Atlas nasılsın?').active === false,
 );
+record(
+  'intent not nasıl with date+zodiac (hüseyin FP)',
+  detectQuranVerseLookupIntent('12 ağustosta kovalar nasıl etkilenecek atlas').active === false,
+);
+record(
+  'intent FP clock 07:27 + okumak',
+  detectQuranVerseLookupIntent(
+    "Uyandığımda saate baktım, 07:27'ydi. Bunları birlikte okumak mümkün mü?",
+  ).active === false,
+);
+record(
+  'intent OK Bakara 2:255 oku',
+  detectQuranVerseLookupIntent("Bakara 2:255'i oku.").active === true,
+);
 
 // ── Enfal 8:8 regression (no store → fail-closed, correct parse) ──────
 {
@@ -303,6 +317,67 @@ for (const mode of ['unavailable', 'timeout', 'malformed']) {
   );
 }
 
+// ── Explicit solo Qur’an must short-circuit (not symbolic / meta) ─────
+{
+  const solos = [
+    'Kur’an’da 7:27 ne anlatıyor?',
+    'Araf 7:27’yi yorumla.',
+    'Bakara 2:255’i oku.',
+    'Bakara 255. ayeti açıkla.',
+    '7:27 ayetinin meali nedir?',
+  ];
+  for (const msg of solos) {
+    record(
+      `solo short-circuit: ${msg.slice(0, 28)}`,
+      shouldShortCircuitQuranVerseLookup(msg) === true,
+    );
+    const out = await processAtlasMessage(
+      {
+        message: msg,
+        channel: 'web',
+        conversationId: `quran-solo-${Math.random().toString(36).slice(2, 7)}`,
+        userId: null,
+        history: [],
+      },
+      {
+        callOpenAI: async () => ({
+          content: 'LLM UYDURMA Ayet: asla görünmemeli',
+          model: 'mock',
+          provider: 'test',
+          tokensUsed: 1,
+          costUsd: 0,
+          latencyMs: 1,
+        }),
+      },
+    );
+    record(
+      `solo engine lookup: ${msg.slice(0, 28)}`,
+      out.engine === 'quran-verse-lookup',
+      `engine=${out.engine}`,
+    );
+    record(
+      `solo no invented meal: ${msg.slice(0, 28)}`,
+      !/LLM UYDURMA/i.test(out.reply || ''),
+    );
+  }
+}
+
+// ── FP: clock / dream number must not short-circuit ───────────────────
+{
+  const fps = [
+    "Saat 07:27'ydi.",
+    '11:11 sürekli karşıma çıkıyor.',
+    'Rüyamda 2:255 gördüm.',
+    "07:27'yi rüyamla birlikte yorumla.",
+  ];
+  for (const msg of fps) {
+    record(
+      `fp no short-circuit: ${msg.slice(0, 28)}`,
+      shouldShortCircuitQuranVerseLookup(msg) === false,
+    );
+  }
+}
+
 // ── Other engines untouched (smoke) ───────────────────────────────────
 {
   let llmCalls = 0;
@@ -342,6 +417,104 @@ for (const key of keys) {
       got.arabic === expect.arabic &&
       got.translation === expect.translation,
   );
+}
+
+// ── Faz 1 VerseStore factory / production-safe defaults ───────────────
+{
+  const {
+    createVerseStore,
+    composeVerseStore,
+    loadQuranStoreConfig,
+    FIXTURE_TRANSLATION_SOURCE_LABEL,
+  } = await import('../server/quran-verse-lookup/store/index.js');
+  const { buildQuranLayer } = await import('../server/cross-layer-synthesis/quran-safety.js');
+
+  record(
+    'config default textEnabled false',
+    loadQuranStoreConfig({}).textEnabled === false,
+  );
+  record(
+    'config unset env textEnabled false',
+    loadQuranStoreConfig({ QURAN_VERSE_TEXT_ENABLED: '' }).textEnabled === false,
+  );
+  record(
+    'createVerseStore default null',
+    createVerseStore({ env: {}, nodeEnv: 'test' }) === null,
+  );
+  record(
+    'createVerseStore flag false → null',
+    createVerseStore({
+      env: { QURAN_VERSE_TEXT_ENABLED: 'false', QURAN_VERSE_STORE: 'off' },
+      nodeEnv: 'production',
+      textEnabled: false,
+      storeMode: 'off',
+    }) === null,
+  );
+
+  let prodFixtureThrew = false;
+  try {
+    createVerseStore({
+      forceFixture: true,
+      nodeEnv: 'production',
+      env: { NODE_ENV: 'production' },
+    });
+  } catch (e) {
+    prodFixtureThrew = /forbidden|production/i.test(String(e?.message ?? ''));
+  }
+  record('production fixture throws (no silent fallback)', prodFixtureThrew);
+
+  const fixtureStore = createVerseStore({
+    forceFixture: true,
+    nodeEnv: 'test',
+    env: { NODE_ENV: 'test' },
+  });
+  record('non-prod forceFixture returns store', fixtureStore != null && typeof fixtureStore.getVerse === 'function');
+
+  const syncRow = fixtureStore.getVerse('8:8');
+  record(
+    'fixture getVerse sync (quran-safety compatible)',
+    syncRow != null &&
+      typeof syncRow.arabic === 'string' &&
+      syncRow.translationSource === FIXTURE_TRANSLATION_SOURCE_LABEL,
+  );
+
+  const layerBuilt = buildQuranLayer({ reference: '8:8' }, fixtureStore);
+  record(
+    'quran-safety sync getVerse with composed store',
+    layerBuilt.layer != null &&
+      layerBuilt.rejectedFabrication === false &&
+      Boolean(layerBuilt.layer.normalizedFacts?.arabic || layerBuilt.layer.normalizedFacts?.translation),
+  );
+
+  // Production path: flag off + null store → fail-closed (API behaviour unchanged)
+  const prodPath = await tryDeterministicQuranVerseReply({
+    message: 'Bakara 2:255’i oku.',
+    verseStore: createVerseStore({
+      env: { QURAN_VERSE_TEXT_ENABLED: 'false' },
+      nodeEnv: 'production',
+    }),
+  });
+  record(
+    'prod path fail-closed with boot-null store',
+    prodPath.handled === true &&
+      prodPath.engine === 'quran-verse-lookup' &&
+      prodPath.data?.quranVerseLookup?.verified !== true &&
+      /doğrulayamadığım/i.test(prodPath.reply),
+  );
+
+  // Flag off even with fixture store (no allowTestStore) → still unavailable
+  const gated = await retrieveVerifiedVerse(
+    parseQuranVerseLookup('8:8'),
+    fixtureStore,
+    {},
+  );
+  record(
+    'flag false blocks fixture without allowTestStore',
+    gated.verified !== true && gated.error === 'source_unavailable',
+  );
+
+  const composed = composeVerseStore(null, null);
+  record('compose both null → null', composed === null);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
