@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import {
   discoveryQuestionToComposerText,
   getEmptyStateDiscoveryQuestions,
@@ -11,11 +13,9 @@ type Props = {
 };
 
 /**
- * Fixed empty-state composition (5 questions):
- *   top + bottom on center axis
- *   short sides for optical balance
- *   center anchor: “Bu tesadüf mü, yoksa bir tekrar mı?”
- * No chips, columns-as-FAQ, or random offsets.
+ * Fixed empty-state composition — 1 / 3 / 1:
+ *   row1 center · row2 left/center/right · row3 center
+ * Typography + spacing only. No chips, cards, or rotation.
  */
 export default function PatternGapTraces({ className, onSelect }: Props) {
   const questions = getEmptyStateDiscoveryQuestions();
@@ -24,64 +24,86 @@ export default function PatternGapTraces({ className, onSelect }: Props) {
     DiscoveryQuestion
   >;
 
-  const top = byId.date;
-  const left = byId.pattern;
-  const center = byId.repeat;
-  const right = byId.person;
-  const bottom = byId.contradiction;
+  const row1 = byId.repeat;
+  const midLeft = byId.date;
+  const midCenter = byId.pattern;
+  const midRight = byId.person;
+  const row3 = byId.contradiction;
 
-  if (!top || !left || !center || !right || !bottom) return null;
+  if (!row1 || !midLeft || !midCenter || !midRight || !row3) return null;
 
   return (
     <div
       className={cn(
-        'mx-auto w-full max-w-[21.5rem] px-1 pb-1 sm:max-w-md',
+        'mx-auto w-full max-w-[22rem] px-0.5 pb-1 sm:max-w-lg',
         className,
       )}
     >
       <ul
-        className="flex flex-col items-center gap-3 sm:gap-3.5"
+        className="flex w-full flex-col items-center gap-2.5 sm:gap-3"
         aria-label="Örnek sorular"
       >
-        <li className="w-full">
+        {/* ROW 1 — center */}
+        <li className="w-full text-center">
           <QuestionLink
-            question={top}
+            question={row1}
             onSelect={onSelect}
-            className="mx-auto block max-w-[19rem] text-center"
+            className="mx-auto max-w-[20rem]"
           />
         </li>
 
-        <li className="flex w-full items-baseline justify-between gap-2 px-0.5">
+        {/* ROW 2 — three questions; middle phrase locked to true center */}
+        <li className="grid w-full grid-cols-[1fr_auto_1fr] items-baseline gap-x-[0.43rem] sm:gap-x-[0.85rem]">
           <QuestionLink
-            question={left}
+            question={midLeft}
             onSelect={onSelect}
-            className="max-w-[36%] shrink-0 text-left"
+            className="justify-self-end text-center"
           />
           <QuestionLink
-            question={right}
+            question={midCenter}
             onSelect={onSelect}
-            className="max-w-[60%] text-right whitespace-normal sm:whitespace-nowrap"
+            className="justify-self-center px-0.5 text-center whitespace-nowrap"
           />
-        </li>
-
-        <li className="w-full">
           <QuestionLink
-            question={center}
+            question={midRight}
             onSelect={onSelect}
-            className="mx-auto block max-w-[19.5rem] text-center text-[#8b93a3]"
+            className="justify-self-start text-center"
           />
         </li>
 
-        <li className="w-full">
+        {/* ROW 3 — center */}
+        <li className="w-full text-center">
           <QuestionLink
-            question={bottom}
+            question={row3}
             onSelect={onSelect}
-            className="mx-auto block max-w-[19rem] text-center"
+            className="mx-auto max-w-[20rem]"
           />
         </li>
       </ul>
     </div>
   );
+}
+
+/** Display-only line breaks — composer still receives the full single-line copy. */
+function questionDisplay(question: DiscoveryQuestion): ReactNode {
+  switch (question.id) {
+    case 'date':
+      return (
+        <>
+          Bu tarih neden{' '}
+          <span className="block sm:inline">karşıma çıkıyor?</span>
+        </>
+      );
+    case 'person':
+      return (
+        <>
+          Bu kişi neden yeniden{' '}
+          <span className="block sm:inline">gündeme geldi?</span>
+        </>
+      );
+    default:
+      return discoveryQuestionToComposerText(question);
+  }
 }
 
 function QuestionLink({
@@ -100,14 +122,14 @@ function QuestionLink({
       type="button"
       onClick={() => onSelect?.(question, text)}
       className={cn(
-        'site-focus text-[12.5px] leading-[1.35] tracking-[-0.012em]',
+        'site-focus text-[12px] leading-[1.35] tracking-[-0.012em]',
         'text-[#7a8494]/92 transition-colors duration-200',
         'hover:text-[#c5ccd6] active:text-[#e8ecf2]',
-        'whitespace-nowrap sm:text-[13.5px] sm:leading-[1.4]',
+        'sm:text-[13.5px] sm:leading-[1.4]',
         className,
       )}
     >
-      {text}
+      {questionDisplay(question)}
     </button>
   );
 }

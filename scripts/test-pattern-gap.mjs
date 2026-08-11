@@ -114,7 +114,18 @@ record(
 );
 record(
   'PatternGapTraces center-axis composition',
-  /byId\.repeat/.test(tracesSrc) && /byId\.date/.test(tracesSrc) && /byId\.contradiction/.test(tracesSrc),
+  /byId\.repeat/.test(tracesSrc) &&
+    /byId\.pattern/.test(tracesSrc) &&
+    /byId\.contradiction/.test(tracesSrc) &&
+    /grid-cols-\[1fr_auto_1fr\]/.test(tracesSrc),
+);
+record(
+  'PatternGapTraces 1/3/1 row order',
+  /row1 = byId\.repeat/.test(tracesSrc) &&
+    /midLeft = byId\.date/.test(tracesSrc) &&
+    /midCenter = byId\.pattern/.test(tracesSrc) &&
+    /midRight = byId\.person/.test(tracesSrc) &&
+    /row3 = byId\.contradiction/.test(tracesSrc),
 );
 record(
   'no random offset stagger',
