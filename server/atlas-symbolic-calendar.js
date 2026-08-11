@@ -229,13 +229,28 @@ export function buildSymbolicCalendarContext(when = new Date(), timeZone = 'Euro
 
 /**
  * Format calendar facts for model injection (not user-facing dump).
+ * Symbolic Hijri month themes are traditional framing — only inject when explicitly allowed.
  * @param {ReturnType<typeof buildSymbolicCalendarContext>} ctx
+ * @param {{ allowSymbolicThemes?: boolean }} [opts]
  */
-export function formatCalendarDataBlock(ctx) {
+export function formatCalendarDataBlock(ctx, opts = {}) {
   if (!ctx?.ok) {
     return `## VERIFIED CALENDAR DATA
 Hicri tarih hesaplanamadı. Hicri tarih uydurma. Belirsizliği açıkça belirt.`;
   }
+
+  const allowSymbolicThemes = opts.allowSymbolicThemes === true;
+  const themeLine = allowSymbolicThemes
+    ? `Hicri ay sembolik teması (geleneksel çerçeve — etki iddiası değil): ${ctx.hijri.symbolicTheme ?? '—'}
+`
+    : '';
+
+  const themeRules = allowSymbolicThemes
+    ? `- Kullanıcı geleneksel/spiritüel yorum istedi: tema çerçeve olarak kullanılabilir; fiziksel/psikolojik mekanizma diye sunma.
+- Bu bölümlendirmeyi mutlak dini hüküm gibi sunma.`
+    : `- Hicri tarih yalnızca kronolojik bağlamdır.
+- Ay adından otomatik sadeleşme / arınma / ruhsal kapanış / iç düzen etkisi UYDURMA.
+- Geleneksel sembolik tema istenmedikçe Hicri ay “etkisi” üretme.`;
 
   return `## VERIFIED CALENDAR DATA (use only these dates)
 Miladi: ${ctx.gregorian.isoDate} (${ctx.gregorian.weekday})
@@ -243,11 +258,10 @@ Saat dilimi: ${ctx.timeZone}
 Hesaplanan Hicri: ${ctx.hijri.display}
 Hicri ay: ${ctx.hijri.monthName}
 Hicri ayın günü: ${ctx.hijri.day}
-Hicri ay bölümü (sembolik): ${ctx.hijri.sectionLabel}
-Hicri ay sembolik teması: ${ctx.hijri.symbolicTheme ?? '—'}
-Kaynak/yöntem: ${ctx.metadata.methodLabel}
+Hicri ay bölümü (kronolojik): ${ctx.hijri.sectionLabel}
+${themeLine}Kaynak/yöntem: ${ctx.metadata.methodLabel}
 Kurallar:
 - Hicri tarihi model hafızandan tahmin etme.
-- Bu bölümlendirmeyi mutlak dini hüküm gibi sunma; sembolik analiz amacıyla kullanıldığını belirt.
+${themeRules}
 - Dini ibadet veya resmî tarih için yerel resmî takvimin esas alınması gerektiğini gerektiğinde belirt.`;
 }

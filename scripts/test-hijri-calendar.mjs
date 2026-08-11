@@ -117,6 +117,14 @@ record(
 const block = formatCalendarDataBlock(cal);
 record('prompt block has verified Hijri', /16 Safer 1448/.test(block) && /VERIFIED CALENDAR/.test(block));
 record('prompt block does not say Receb', !/Receb/.test(block));
+record(
+  'default block does not auto-inject Safer spiritual theme',
+  !/sadeleşme ve iç düzen/i.test(block) && !/Hicri ay sembolik teması:/i.test(block),
+);
+record(
+  'spiritual opt-in may frame theme',
+  /sadeleşme ve iç düzen/i.test(formatCalendarDataBlock(cal, { allowSymbolicThemes: true })),
+);
 
 console.log('');
 console.log(`=== Hijri calendar: ${passed}/${passed + failed} passed ===`);

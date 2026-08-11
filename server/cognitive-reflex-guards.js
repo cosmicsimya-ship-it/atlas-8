@@ -9,6 +9,20 @@ import {
   scanCertaintyLanguage,
   sanitizeCertaintyLanguage,
 } from './cross-layer-synthesis/certainty-filter.js';
+import {
+  applyEvidenceMeaningPostGuard,
+  buildEvidenceMeaningPromptLock,
+  detectEvidenceMeaningSignals,
+} from './evidence-meaning-boundaries.js';
+
+export {
+  applyEvidenceMeaningPostGuard,
+  assessBridgePermission,
+  buildEvidenceMeaningPromptLock,
+  detectEvidenceMeaningSignals,
+  EVIDENCE_MEANING_VERSION,
+  replyViolatesEvidenceBoundary,
+} from './evidence-meaning-boundaries.js';
 
 const CASUAL_INTENTS = new Set([
   'greeting',
@@ -501,7 +515,13 @@ export function buildReflexStateFromSynthesis(synthesis, opts = {}) {
 /**
  * Short internal prompt lock — never instruct the model to narrate process.
  * @param {object} reflex
- * @param {{ stance?: string|null, epistemic?: ReturnType<typeof detectEpistemicLayers>|null }} [extra]
+ * @param {{
+ *   stance?: string|null,
+ *   epistemic?: ReturnType<typeof detectEpistemicLayers>|null,
+ *   evidenceMeaning?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
+ *   astrologyGrounded?: boolean,
+ *   referentialSufficient?: boolean,
+ * }} [extra]
  */
 export function buildReflexPromptLock(reflex, extra = {}) {
   if (!reflex) return '';
@@ -530,6 +550,13 @@ export function buildReflexPromptLock(reflex, extra = {}) {
           : '';
 
   const epistemicBlock = buildEpistemicSeparationPromptLock(extra.epistemic);
+  const evidenceMeaningBlock = buildEvidenceMeaningPromptLock(
+    extra.evidenceMeaning ?? null,
+    {
+      astrologyGrounded: extra.astrologyGrounded === true,
+      referentialSufficient: extra.referentialSufficient,
+    },
+  );
 
   return `
 ## COGNITIVE LOCKS (internal — do not narrate, do not print labels)
@@ -540,6 +567,7 @@ ${stanceLine ? `- stance hint: ${stanceLine}` : ''}
 - Never write process narration ("Önce ayıklıyorum", "İki işaret görüyorum", "Hipotezim…").
 - Never show H0/H1/H2/H3, advanceAllowed, or stance names to the user.
 ${epistemicBlock ? `\n${epistemicBlock}` : ''}
+${evidenceMeaningBlock ? `\n${evidenceMeaningBlock}` : ''}
 `.trim();
 }
 
@@ -657,6 +685,8 @@ function applyEpistemicPostSoftening(text, epistemic, hits) {
  *   advanceAllowed?: boolean,
  *   stance?: string|null,
  *   epistemic?: ReturnType<typeof detectEpistemicLayers>|null,
+ *   evidenceMeaning?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
+ *   message?: string,
  * }} [opts]
  */
 export function applyNarrowReflexPostGuard(reply, opts = {}) {
@@ -720,6 +750,18 @@ export function applyNarrowReflexPostGuard(reply, opts = {}) {
   }
 
   text = applyEpistemicPostSoftening(text, opts.epistemic ?? null, hits);
+
+  const evidenceSignals =
+    opts.evidenceMeaning ??
+    (opts.message ? detectEvidenceMeaningSignals(opts.message) : null);
+  const evidenceGuard = applyEvidenceMeaningPostGuard(text, {
+    casual: false,
+    signals: evidenceSignals,
+  });
+  if (evidenceGuard.hits.length) {
+    hits.push(...evidenceGuard.hits);
+    text = evidenceGuard.reply;
+  }
 
   return {
     reply: text,

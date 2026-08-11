@@ -55,7 +55,8 @@
     "grant:admin": "node server/scripts/grant-admin-role.mjs",
     "test:entitlements": "node scripts/test-entitlements.mjs",
     "test:billing": "node scripts/test-billing.mjs",
-    "test:cognitive-reflex": "node scripts/test-cognitive-reflex.mjs"
+    "test:cognitive-reflex": "node scripts/test-cognitive-reflex.mjs",
+    "test:evidence-meaning": "node scripts/test-evidence-meaning-boundaries.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",

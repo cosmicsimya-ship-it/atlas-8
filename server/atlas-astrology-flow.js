@@ -4,6 +4,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { buildSymbolicCalendarContext, formatCalendarDataBlock } from './atlas-symbolic-calendar.js';
+import { detectEvidenceMeaningSignals } from './evidence-meaning-boundaries.js';
 import { buildEphemerisSnapshot, formatEphemerisDataBlock, DEFAULT_SKY_LOCATION } from './atlas-ephemeris.js';
 import { formatNumerologyDataBlock, numerologyDayNumber } from './atlas-numerology.js';
 import { getUserMemory } from './user-memory.js';
@@ -322,7 +323,12 @@ export function isDateSpecificAstrologyRequest(message, history = [], opts = {})
   const zodiac = extractZodiacTarget(text) || grounding?.targetZodiac || extractZodiacFromHistory(history);
   const hasTime = DATE_SPECIFIC_TIME_RE.test(text) || Boolean(grounding?.targetDate);
   const asksEffect = ANALYSIS_ASK.test(normalizeTr(text)) || /nas[ıi]l\s+etkil|etki(?:si|lenecek)?/i.test(text);
-  return Boolean(zodiac && hasTime && asksEffect);
+  // Collective eclipse / dated celestial event: zodiac optional (humanity / general effects).
+  const collectiveDatedEvent =
+    hasTime &&
+    asksEffect &&
+    /\b(tutulma|g[uü]ne[sş]\s+tutul|ay\s+tutul|eclipse)/i.test(text);
+  return Boolean((zodiac || collectiveDatedEvent) && hasTime && asksEffect);
 }
 
 function extractZodiacFromHistory(history) {
@@ -383,20 +389,18 @@ export function rememberAstrologyGrounding(conversationId, grounding) {
 
 /**
  * Select only transits relevant to a sun-sign cohort (no full-sky dump).
+ * When zodiac is null/empty, return collective luminaries + retros only (eclipse/general dated asks).
  * @param {ReturnType<typeof buildEphemerisSnapshot>} sky
- * @param {string} zodiac
+ * @param {string|null|undefined} zodiac
  */
 export function selectRelevantCelestialFacts(sky, zodiac) {
   /** @type {{ key: string, kind: string, body?: string, detail: string, grounded: true }[]} */
   const facts = [];
-  if (!sky?.ok || !zodiac) {
+  if (!sky?.ok) {
     return { ok: false, facts: [], keys: [] };
   }
 
-  const signIndex = SIGNS_ORDER.indexOf(zodiac);
-  const opposite = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 6) % 12] : null;
-  const squareA = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 3) % 12] : null;
-  const squareB = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 9) % 12] : null;
+  const collective = !zodiac;
 
   if (sky.sun) {
     facts.push({
@@ -417,22 +421,33 @@ export function selectRelevantCelestialFacts(sky, zodiac) {
     });
   }
 
-  for (const p of Object.values(sky.planets || {})) {
-    if (!p?.sign) continue;
-    const inTarget = p.sign === zodiac;
-    const inOpp = p.sign === opposite;
-    const inSquare = p.sign === squareA || p.sign === squareB;
-    const isLuminary = p.body === 'Güneş' || p.body === 'Ay';
-    if (isLuminary) continue;
-    if (inTarget || inOpp || inSquare) {
-      const relation = inTarget ? `hedef burç (${zodiac})` : inOpp ? `karşıt (${opposite})` : 'kare ekseni';
-      facts.push({
-        key: `planet:${p.body}:${p.sign}`,
-        kind: 'transit_sign',
-        body: p.body,
-        detail: `${p.body} ${p.display} — ${relation}`,
-        grounded: true,
-      });
+  if (!collective) {
+    const signIndex = SIGNS_ORDER.indexOf(zodiac);
+    const opposite = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 6) % 12] : null;
+    const squareA = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 3) % 12] : null;
+    const squareB = signIndex >= 0 ? SIGNS_ORDER[(signIndex + 9) % 12] : null;
+
+    for (const p of Object.values(sky.planets || {})) {
+      if (!p?.sign) continue;
+      const inTarget = p.sign === zodiac;
+      const inOpp = p.sign === opposite;
+      const inSquare = p.sign === squareA || p.sign === squareB;
+      const isLuminary = p.body === 'Güneş' || p.body === 'Ay';
+      if (isLuminary) continue;
+      if (inTarget || inOpp || inSquare) {
+        const relation = inTarget
+          ? `hedef burç (${zodiac})`
+          : inOpp
+            ? `karşıt (${opposite})`
+            : 'kare ekseni';
+        facts.push({
+          key: `planet:${p.body}:${p.sign}`,
+          kind: 'transit_sign',
+          body: p.body,
+          detail: `${p.body} ${p.display} — ${relation}`,
+          grounded: true,
+        });
+      }
     }
   }
 
@@ -455,7 +470,7 @@ export function selectRelevantCelestialFacts(sky, zodiac) {
     unique.push(f);
   }
 
-  return { ok: true, facts: unique, keys: unique.map((f) => f.key) };
+  return { ok: unique.length > 0, facts: unique, keys: unique.map((f) => f.key) };
 }
 
 /**
@@ -888,6 +903,9 @@ export function buildAstrologyAnalysisContext(options = {}) {
 
   if (intent === 'date_specific_astrology' && targetZodiac) {
     relevant = selectRelevantCelestialFacts(sky, targetZodiac);
+  } else if (intent === 'date_specific_astrology' && !targetZodiac) {
+    // Collective dated event (e.g. eclipse effects) — still ground on ephemeris; no invented sign dump.
+    relevant = selectRelevantCelestialFacts(sky, null);
   }
 
   let numerologyBlock = '';
@@ -899,7 +917,6 @@ export function buildAstrologyAnalysisContext(options = {}) {
     expandFollowUp,
     intent,
   });
-  const includeHijri = intent === 'multi_layer_daily' || /hicr/i.test(options.message);
   const includeNumerology =
     intent === 'multi_layer_daily' || /numerol/i.test(options.message) || intent === 'general_daily';
 
@@ -915,17 +932,24 @@ export function buildAstrologyAnalysisContext(options = {}) {
     natalChart = calculateNatalFromMemory(options.userId);
   }
 
+  const evidenceSignals = detectEvidenceMeaningSignals(options.message || '', {
+    history: options.history,
+  });
+  const allowHijriSymbolicTheme = evidenceSignals.allowHijriSymbolicTheme === true;
+
   const structure =
     intent === 'date_specific_astrology'
-      ? `ZORUNLU SIRA (factual → symbolic):
+      ? `ZORUNLU SIRA (evidence → meaning):
 1) FACTUAL CELESTIAL LAYER — yalnızca aşağıdaki VERIFIED EPHEMERIS + RELEVANT TRANSITS bloklarından gezegen/burç/faz/retro iddiası.
-2) RELEVANCE — yalnızca hedef burç (${targetZodiac || '—'}) için seçilmiş transitler.
-3) SYMBOLIC INTERPRETATION — tematik/psikolojik yorum; kesin kader yok.
-Yasak: blok dışı “Ay X’te”, “Venüs karşıt”, “tutulma var”, “Mars retro” uydurmak.
+2) DOMAIN INTERPRETATION — geleneksel astrolojik temalar (kolektif tutulma veya burç teması); sözlük dökümü değil, ilgili transitlere bağla.
+3) CALIBRATED INFERENCE — psikolojik dil hipotez düzeyinde; “gerçeklik algısını bozar / depresif yapar” gibi klinik kesin iddia yok.
+4) OBSERVABLE SCENARIO — günlük hayatta nasıl görünebileceği: varsayımsal örnekler, kehanet değil.
+5) Hicri tarih varsa kronoloji; ruhsal etki ancak kullanıcı açıkça spiritüel/geleneksel çerçeve istediyse.
+Yasak: blok dışı “Ay X’te”, “Venüs karşıt”, “tutulma var”, “Mars retro” uydurmak; Hicri aydan otomatik arınma/sadeleşme etkisi.
 ${expandFollowUp ? 'Bu tur genişletme (expand_previous_analysis): aynı tarih + aynı burç + aynı doğrulanmış transit setini derinleştir; yeni celestial fact icat etme.' : ''}`
       : intent === 'personal_transit' || intent === 'natal_chart'
         ? `Yapı: doğrulanmış natal noktalar (aşağıdaki VERIFIED NATAL bloğu), transitler (ephemeris), etkilenen evler yalnızca natal blokta ev varsa, en güçlü 3 tema, destekleyici/zorlayıcı etkiler, uygulanabilir öneriler. Natal dereceleri yeniden hesaplama veya uydurma.`
-        : `Yapı: Miladi+Hicri tarih (istendiyse), Ay fazı/burcu, öne çıkan transitler, genel atmosfer, numeroloji (istendiyse), Hicri ay teması (istendiyse), ortak tema, dikkat alanı, pratik öneri.`;
+        : `Yapı: Miladi+Hicri tarih (istendiyse), Ay fazı/burcu, öne çıkan transitler, genel atmosfer, numeroloji (istendiyse), Hicri ay teması (yalnızca açık spiritüel/geleneksel istekte), ortak tema, dikkat alanı, pratik öneri.`;
 
   const lengthRule =
     length === 'short'
@@ -948,18 +972,18 @@ ${expandFollowUp ? 'Bu tur genişletme (expand_previous_analysis): aynı tarih +
 
   const groundingState =
     intent === 'date_specific_astrology'
-      ? sky.ok && resolvedDate?.ok && targetZodiac
+      ? sky.ok && resolvedDate?.ok && (targetZodiac || relevant?.ok)
         ? 'verified'
         : 'unavailable'
       : null;
 
   /** @type {AstrologyGroundingState|null} */
   let groundingRecord = null;
-  if (intent === 'date_specific_astrology' && resolvedDate?.ok && targetZodiac) {
+  if (intent === 'date_specific_astrology' && resolvedDate?.ok && (targetZodiac || relevant?.ok)) {
     groundingRecord = {
       requestType: 'date_specific_astrology',
-      targetZodiac,
-      targetZodiacEn: ZODIAC_EN[targetZodiac] || targetZodiac,
+      targetZodiac: targetZodiac || 'kolektif',
+      targetZodiacEn: targetZodiac ? ZODIAC_EN[targetZodiac] || targetZodiac : 'collective',
       targetDate: {
         year: resolvedDate.year,
         month: resolvedDate.month,
@@ -1041,7 +1065,7 @@ ${relevantBlock}
 
 ${formatEphemerisDataBlock(sky)}
 
-${includeHijri || intent === 'multi_layer_daily' || intent === 'general_daily' || intent === 'date_specific_astrology' ? formatCalendarDataBlock(calendar) : formatCalendarDataBlock(calendar)}
+${formatCalendarDataBlock(calendar, { allowSymbolicThemes: allowHijriSymbolicTheme })}
 
 ${includeNumerology ? numerologyBlock : ''}
 `.trim(),
@@ -1068,12 +1092,13 @@ ${includeNumerology ? numerologyBlock : ''}
 }
 
 function formatRelevantTransitBlock(relevant, zodiac, resolvedDate) {
+  const label = zodiac || 'KOLEKTİF / DATED EVENT';
   if (!relevant?.ok || !relevant.facts?.length) {
-    return `## RELEVANT TRANSITS FOR ${zodiac || 'TARGET'}
+    return `## RELEVANT TRANSITS FOR ${label}
 Doğrulanmış ilgili transit seçilemedi. Gezegen/burç/faz/retro iddiası UYDURMA.`;
   }
   const lines = relevant.facts.map((f) => `- [${f.kind}] ${f.detail}`);
-  return `## RELEVANT TRANSITS FOR ${zodiac} (${resolvedDate?.display || 'resolved date'})
+  return `## RELEVANT TRANSITS FOR ${label} (${resolvedDate?.display || 'resolved date'})
 Yalnızca bu liste + VERIFIED EPHEMERIS üzerinden factual claim yap.
 ${lines.join('\n')}
 Keys: ${relevant.keys.join(', ')}`;

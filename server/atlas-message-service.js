@@ -104,9 +104,11 @@ import {
 import {
   applyNarrowReflexPostGuard,
   buildEpistemicSeparationPromptLock,
+  buildEvidenceMeaningPromptLock,
   buildStancePromptHint,
   detectAnalyticStance,
   detectEpistemicLayers,
+  detectEvidenceMeaningSignals,
   isCasualReflexBypass,
 } from './cognitive-reflex-guards.js';
 import {
@@ -2495,6 +2497,27 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
     }
   }
 
+  const evidenceMeaningSignals = detectEvidenceMeaningSignals(message, {
+    history,
+    symbolicDomain: symbolicContext.primaryDomain || null,
+  });
+  pipelineDebug.evidenceMeaning = {
+    version: evidenceMeaningSignals.version,
+    needsLock: evidenceMeaningSignals.needsEvidenceMeaningLock,
+    spiritualMode: evidenceMeaningSignals.spiritualModeRequested,
+    directQ: evidenceMeaningSignals.directDomainQuestion,
+    coincidencePressure: evidenceMeaningSignals.coincidenceCausePressure,
+  };
+  if (!casualReflexBypass && evidenceMeaningSignals.needsEvidenceMeaningLock) {
+    const evidenceLock = buildEvidenceMeaningPromptLock(evidenceMeaningSignals, {
+      astrologyGrounded: astrologyIntent === 'date_specific_astrology',
+      referentialSufficient: sufficiency?.sufficient !== false,
+    });
+    if (evidenceLock) {
+      systemPrompt = `${systemPrompt}\n\n${evidenceLock}`;
+    }
+  }
+
   if (!casualReflexBypass && symbolicContext.active) {
     const symbolicLock = buildSymbolicContextPromptLock(symbolicContext);
     if (symbolicLock) {
@@ -2758,6 +2781,8 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
         advanceAllowed: synthesisBridge.synthesis?.reflex?.advanceAllowed === true,
         stance: analyticStance,
         epistemic: epistemicLayers,
+        evidenceMeaning: evidenceMeaningSignals,
+        message,
       });
       reply = reflexPost.reply;
     }
