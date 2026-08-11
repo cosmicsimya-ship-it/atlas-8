@@ -29,15 +29,17 @@ export const REFERENTIAL_SUFFICIENCY_VERSION = 'atlas-referential-sufficiency-v1
 export function isDirectKnowledgeQuestion(message) {
   const text = String(message || '').trim();
   if (!text) return false;
-  // Factual / definitional / traditional-meaning asks
+  // Bare deictic discovery starters are never "direct knowledge"
+  if (/^bu\s+(tesad[uü]f|tarih|ki[sş]i|sefer)/i.test(text)) return false;
+  if (/^as[ıi]l\s+[oö]r[uü]nt/i.test(text)) return false;
+  if (/^bunun\s+sebebi|^yine\s+ayn[ıi]\s+[sş]ey/i.test(text)) return false;
+
+  // Factual / definitional / traditional-meaning / general traits
   if (
-    /(?:ba[sş]kent|nedir|ne\s+demek|anlam[ıi]\s+nedir|geleneksel\s+olarak|numerolojideki|tarotta\s+\w+\s+kart|r[uü]yada\s+\w+\s+g[oö]rmek)/i.test(
+    /(?:ba[sş]kent|nedir|nelerdir|ne\s+demek|ne\s+anlama(?:ya)?\s+gelir|anlam[ıi]\s+nedir|temel\s+anlam|genel\s+[oö]zellik|geleneksel\s+olarak|numerolojideki|ne(?:yi)?\s+(?:simgeler|temsil\s+eder)|tarotta\s+\w+|kart(?:[ıi]n[ıi]n|in)?\s+(?:temel\s+)?anlam|r[uü]yada\s+\w+|burcunun\s+genel)/i.test(
       text,
     )
   ) {
-    // Still exclude bare deictic pattern starters
-    if (/^bu\s+(tesad[uü]f|tarih|ki[sş]i|sefer)/i.test(text)) return false;
-    if (/^as[ıi]l\s+[oö]r[uü]nt/i.test(text)) return false;
     return true;
   }
   return false;
@@ -208,6 +210,35 @@ export function detectUnsupportedCausalCompletion(reply) {
 }
 
 /**
+ * Soften unsupported causal framing when discovery ask lacked hard evidence.
+ * Does not invent a new answer — only strips mechanism claims.
+ * @param {string} reply
+ * @param {{ hungry?: boolean, hadPrior?: boolean }} [opts]
+ */
+export function applyUnsupportedCausalGuard(reply, opts = {}) {
+  const original = typeof reply === 'string' ? reply : '';
+  if (!original.trim()) {
+    return { reply: original, hits: [], changed: false };
+  }
+  // Only when the turn was discovery-shaped without prior observation evidence
+  if (!opts.hungry || opts.hadPrior) {
+    return { reply: original, hits: [], changed: false };
+  }
+  const hits = detectUnsupportedCausalCompletion(original);
+  if (!hits.length) {
+    return { reply: original, hits: [], changed: false };
+  }
+  let text = original
+    .replace(/bilin[cç]alt[ıi]m[ıi]zda\s+veya\s+[cç]evresel\s+fakt[oö]rlerde\s+benzer\s+frekanslar[ıi]\s+yakalad[ıi][gğ][ıi]nda\s+kendini\s+tekrarlar\.?/gi, '')
+    .replace(/benzer\s+frekanslar[ıi]\s+yakala\w*/gi, 'benzer durumlar tekrar edebilir')
+    .replace(/bilin[cç]alt[ıi].{0,30}çekiyor\s+olabilir\.?/gi, 'tekrarlayan bir tema olabilir')
+    .replace(/enerji(?:sel)?\s+olarak\s+/gi, 'sembolik olarak ')
+    .replace(/evrenden?\s+(gönderiliyor|gönderiyor|bir\s+mesaj)\w*/gi, 'tekrarlayan bir tema');
+  text = text.replace(/\s{2,}/g, ' ').trim();
+  return { reply: text || original, hits, changed: text !== original };
+}
+
+/**
  * Core decision: do we have enough referent/subject/event to answer specifically?
  *
  * @param {{
@@ -246,6 +277,9 @@ export function assessReferentialSufficiency(input) {
 
   if (!message) return base;
 
+  const conv = getConversationState(conversationId);
+  const storedDomain = conv?.symbolicDomain || null;
+
   // Over-clarification protection: direct knowledge / definitional
   if (isDirectKnowledgeQuestion(message)) {
     return {
@@ -269,12 +303,25 @@ export function assessReferentialSufficiency(input) {
     };
   }
 
-  // Tarot / dream / numerology / astrology short continuations with live domain
+  // Tarot / dream / astrology short continuations only when a live session or stored engine domain exists.
+  // Deictic "bu kişi…" discovery asks must NOT skip clarification via preserveActiveDomain alone.
+  const engineDomain =
+    ctx?.freshestSessionDomain ||
+    (ctx?.liveSessions && ctx.liveSessions[0]) ||
+    (['tarot', 'dream', 'astrology', 'numerology'].includes(ctx?.primaryDomain)
+      ? ctx.primaryDomain
+      : null) ||
+    (['tarot', 'dream', 'astrology', 'numerology'].includes(storedDomain) ? storedDomain : null);
+
   if (
     isShortSymbolicFollowUp(message) &&
-    (ctx?.freshestSessionDomain || ctx?.primaryDomain === 'tarot' || ctx?.primaryDomain === 'dream')
+    engineDomain &&
+    (ctx?.liveSessions?.length ||
+      ctx?.freshestSessionDomain ||
+      (storedDomain && ['tarot', 'dream', 'astrology', 'numerology'].includes(storedDomain)))
   ) {
-    if (ctx?.liveSessions?.length || ctx?.freshestSessionDomain) {
+    // Still block hungry discovery asks that lack bindable prior
+    if (!(isReferentHungryAsk(message) && !historyHasBindablePrior(history))) {
       return {
         ...base,
         intentKnown: true,
@@ -299,8 +346,6 @@ export function assessReferentialSufficiency(input) {
   const ambiguous = Boolean(layers?.ambiguousPattern && !layers?.primaryLayer);
   const deicticRefs = extractSymbolicReferents(message);
   const prior = historyHasBindablePrior(history);
-  const conv = getConversationState(conversationId);
-  const storedDomain = conv?.symbolicDomain || null;
 
   if ((hungry || deicticRefs.length > 0) && prior) {
     // Multiple people + unresolved "o"

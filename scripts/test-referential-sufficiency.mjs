@@ -8,6 +8,7 @@ import {
   isReferentHungryAsk,
   buildMinimumClarification,
   detectUnsupportedCausalCompletion,
+  applyUnsupportedCausalGuard,
   historyHasBindablePrior,
   REFERENTIAL_SUFFICIENCY_VERSION,
 } from '../server/referential-sufficiency.js';
@@ -199,12 +200,41 @@ record(
   'over-clarify: concrete observation alone',
   assess('17 sayısını dört gündür görüyorum.', []).sufficient === true,
 );
+record(
+  'over-clarify: Kova genel özellikler',
+  assess('Kova burcunun genel özellikleri nelerdir?', []).sufficient === true,
+);
+record(
+  'over-clarify: rüyada su',
+  assess('Rüyada su neyi simgeler?', []).sufficient === true,
+);
+record(
+  'over-clarify: Adalet kartı',
+  assess('Adalet kartı neyi temsil eder?', []).sufficient === true,
+);
+record(
+  'over-clarify: Kule temel anlam',
+  assess('Tarotta Kule kartının temel anlamı nedir?', []).sufficient === true,
+);
 
 // ── Minimum clarification: one question, not a form ──────────────────
 const q = buildMinimumClarification('event_missing', 'Bu tesadüf mü?');
 record(
   'min clarification single question',
   (q.match(/\?/g) || []).length <= 2 && !/1\)|2\)|3\)/.test(q),
+);
+record(
+  'min clarification info-gain shape',
+  /ki[sş]i|olay|tarih|say[ıi]|davran[ıi][sş]/i.test(q),
+);
+
+const softened = applyUnsupportedCausalGuard(badCompletion, {
+  hungry: true,
+  hadPrior: false,
+});
+record(
+  'causal guard softens without prior',
+  softened.hits.length >= 1 && !/benzer\s+frekanslar[ıi]\s+yakala/i.test(softened.reply),
 );
 
 // ── e2e via processAtlasMessage ──────────────────────────────────────

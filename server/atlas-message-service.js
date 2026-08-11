@@ -196,6 +196,9 @@ import {
 } from './semantic-layers.js';
 import {
   assessReferentialSufficiency,
+  applyUnsupportedCausalGuard,
+  isReferentHungryAsk,
+  historyHasBindablePrior,
   REFERENTIAL_SUFFICIENCY_VERSION,
 } from './referential-sufficiency.js';
 
@@ -2767,6 +2770,17 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
     if (astrologyAnalysis && astrologyIntent === 'date_specific_astrology') {
       const astroGuard = applyAstrologyProphecyGuard(reply);
       reply = astroGuard.reply;
+    }
+
+    // Discovery-shaped asks without prior: strip invented causal mechanisms if any leak through.
+    {
+      const hungry = isReferentHungryAsk(message);
+      const hadPrior = historyHasBindablePrior(history);
+      const causalGuard = applyUnsupportedCausalGuard(reply, { hungry, hadPrior });
+      if (causalGuard.hits.length) {
+        pipelineDebug.unsupportedCausalHits = causalGuard.hits;
+      }
+      reply = causalGuard.reply;
     }
 
     const authorVoiceGuard = applyPersonaGuards(reply, {
