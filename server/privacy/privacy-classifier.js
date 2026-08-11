@@ -17,17 +17,35 @@ const PUBLIC_PROFILE_RE = [
   /\bkim\s+(dir|dir\??)\s*lara\b/i,
   /\batlas'?[ıi]n\s+kurucusu\s+kim\b/i,
   /\bkurucusu\s+kim\b/i,
-  /\blara\s+ne\s+iş\s+yap/i,
-  /\blara\s+ne\s+is\s+yap/i,
+  /\blara\s+ne\s+[iı][sş]\s+yap/i,
+  /\blara\s+ne\s+yap[ıi]yor/i,
+  /\blara\s+neden\s+atlas/i,
+  /\batlas'?[ıi]\s+kim\s+(yapt[ıi]|geli[sş]tirdi|kurdu)/i,
+  /\batlas[''']?[ıiı]\s+kim\s+yapt/i,
+  /\bkim\s+(yapt[ıi]|geli[sş]tirdi|kurdu).{0,20}atlas\b/i,
+  /\bseni\s+kim\s+(yapt[ıi]|geli[sş]tirdi|yazd[ıi])/i,
+  /\bseni\s+yapan\s+kim\b/i,
+  /\barkan[ıi]zda\s+kim\b/i,
+  /\bbu\s+site\s+kimin\b/i,
+  /\batlas\s+kimin\s+proje/i,
+  /\bcosmicsimya\s+kimin\b/i,
+  /\bcosmic\s+simya\s+(nedir|kimin)/i,
+  /\bastrolojik\s+ak[ıi]l\s+nedir\b/i,
+  /\blara'?y[ıi]\s+tan[ıi]t/i,
+  /\blara\s+ile\s+atlas'?[ıi]n\s+ili[sş]kisi\b/i,
+  /\batlas\s+ile\s+lara'?n[ıi]n\s+ili[sş]kisi\b/i,
+  /\bkamu(ya)?\s+açık\b/i,
+  /\bpublic\s+profile\b/i,
+  /\bmesleki\s+rol\b/i,
   /\bcosmicsimya\.?com!?\s*.*kim\s+kur/i,
   /\bkim\s+kurdu\b/i,
   /\batlas\s+nasıl\s+ortaya\b/i,
   /\batlas\s+nasil\s+ortaya\b/i,
-  /\blara'?y[ıi]\s+tan[ıi]t/i,
-  /\bkamu(ya)?\s+açık\b/i,
-  /\bpublic\s+profile\b/i,
-  /\bmesleki\s+rol\b/i,
 ];
+
+/** Name alone inside dream/story — not a founder-profile question. */
+const INCIDENTAL_FOUNDER_NAME_RE =
+  /r[uü]yamda\s+.{0,40}lara|lara\s+isimli|ad[ıi]\s+lara\s+olan|isimli\s+(bir\s+)?(ki[sş]i|kad[ıi]n|adam).{0,20}lara|lara\s+ad[ıi]nda/i;
 
 const PRIVATE_DATA_RE = [
   /\bdo[gğ]um\s+tarih/i,
@@ -44,10 +62,12 @@ const PRIVATE_DATA_RE = [
   /\bnumeroloj[iy]/i,
   /\btarot\s*(açılım|acilim|gecmi[sş]|geçmiş)/i,
   /\banaliz\s*(sonuç|sonuc|geçmiş|gecmis)/i,
-  /\bbildi[gğ]in\s+her\s+[sş]ey/i,
   /\böze[l]\s+bilgi/i,
   /\bprivate\s+(data|info|life|memory)\b/i,
 ];
+
+const FOUNDER_DUMP_ASK_RE =
+  /\bbildi[gğ]in\s+her\s+[sş]ey|hakk[ıi]nda\s+(bildi[gğ]in\s+)?her\s+[sş]ey|tüm\s+bilgi(lerini)?|tum\s+bilgi|everything\s+you\s+know|her\s+[sş]eyi\s+d[oö]k/i;
 
 const MEMORY_ACCESS_RE = [
   /\bbelle[gğ]ini?\s*(göster|goster|yazdır|yazdir|ver|aç|ac)/i,
@@ -119,6 +139,9 @@ const CROSS_USER_MEMORY_RE = [
  */
 export function mentionsFounder(message) {
   const text = message ?? '';
+  if (INCIDENTAL_FOUNDER_NAME_RE.test(text) && !PUBLIC_PROFILE_RE.some((p) => p.test(text))) {
+    return false;
+  }
   return FOUNDER_NAME_RE.test(text) || (FOUNDER_ROLE_RE.test(text) && /atlas|cosmicsimya|kurucu|founder/i.test(text));
 }
 
@@ -217,8 +240,10 @@ export function classifyPrivacyIntent(message) {
     mentionsFounder(text) && !isSelfReferentialIdentityMessage(text);
 
   // Relationship / permission claims imply founder private access even without naming Lara.
+  // Creator / brand questions ("Atlas'ı kim yaptı?") are public-profile without naming Lara.
   const aboutFounder =
     founderMention ||
+    wantsPublic ||
     RELATIONSHIP_CLAIM_RE.some((p) => p.test(text)) ||
     (isInjectionAttempt && wantsPrivate);
 
@@ -266,6 +291,22 @@ export function classifyPrivacyIntent(message) {
     };
   }
 
+  // "Lara hakkında bildiğin her şeyi" — public summary only (not a private field dump).
+  if (aboutFounder && FOUNDER_DUMP_ASK_RE.test(text) && !wantsMemory && !wantsRelationship) {
+    const hasSpecificPrivateField =
+      /\b(do[gğ]um|sa[gğ]l[ıi]k|adres|telefon|e-?posta|evlilik|finans|maa[sş])\b/i.test(text);
+    if (!hasSpecificPrivateField) {
+      return {
+        aboutFounder: true,
+        requestType: 'mixed_public_private',
+        privacyLevel: PRIVACY_LEVELS.RESTRICTED,
+        isInjectionAttempt,
+        isMixed: true,
+        wantsPrivateData: true,
+      };
+    }
+  }
+
   if (wantsMemory) {
     return {
       aboutFounder: true,
@@ -300,16 +341,14 @@ export function classifyPrivacyIntent(message) {
   }
 
   if (wantsPublic || (aboutFounder && !wantsPrivate && !wantsMemory && !wantsRelationship)) {
-    // "Lara kim?" style — public; but "Lara hakkında bildiğin her şeyi" caught by private
-    // Vague founder mentions without private cues → public_profile
-    const vagueDump = /\bher\s+[sş]ey|tüm\s+bilgi|tum\s+bilgi|everything\s+you\s+know\b/i.test(text);
-    if (vagueDump) {
+    // Dump asks ("Lara hakkında bildiğin her şeyi") → public summary only, not private refuse-all.
+    if (FOUNDER_DUMP_ASK_RE.test(text)) {
       return {
         aboutFounder: true,
-        requestType: 'private_data',
+        requestType: 'mixed_public_private',
         privacyLevel: PRIVACY_LEVELS.RESTRICTED,
         isInjectionAttempt,
-        isMixed: false,
+        isMixed: true,
         wantsPrivateData: true,
       };
     }

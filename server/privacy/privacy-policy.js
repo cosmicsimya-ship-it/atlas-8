@@ -41,7 +41,7 @@ export const PROTECTED_CATEGORIES = Object.freeze([
 
 export const SAFE_RESPONSES = Object.freeze({
   PUBLIC_FOUNDER:
-    "Lara, Cosmicsimya.com!'un kurucusu ve Atlas'ın yaratıcı vizyonunun sahibidir. Astroloji, numeroloji, kader matrisi ve örüntü analizi gibi farklı sistemleri tek bir düşünce mimarisinde birleştiren çalışmalar üretir. Atlas, insan davranışlarındaki tekrarları, görünmeyen bağlantıları ve karar mekanizmalarını daha sistematik biçimde analiz etme fikrinden doğmuştur.",
+    "Lara, Cosmic Simya'nın arkasındaki yaratıcı isim ve Atlas'ı geliştiren kişidir. Çalışmaları yapay zekâ, sembolizm, astroloji, numeroloji ve örüntü okuma etrafında şekillenir. Atlas, farklı bilgi ve sembol katmanlarını tek konuşmada ilişkilendirmeyi hedefler.",
 
   PRIVACY:
     "Lara'nın özel bilgileri, kişisel belleği ve Atlas ile yaptığı konuşmalar gizlidir. Yalnızca kamuya açık mesleki rolü ve projeleri hakkında bilgi paylaşabilirim.",
@@ -56,7 +56,7 @@ export const SAFE_RESPONSES = Object.freeze({
     'Kullanıcı belleği ve özel konuşmalar üçüncü kişilerle paylaşılmaz. Başka bir kullanıcıya ait kayıtları gösteremem.',
 
   MIXED_PUBLIC_THEN_PRIVATE:
-    "Lara, Cosmicsimya.com!'un kurucusu ve Atlas'ın yaratıcı vizyonunun sahibidir. Astroloji, numeroloji, kader matrisi ve örüntü analizi gibi farklı sistemleri tek bir düşünce mimarisinde birleştiren çalışmalar üretir. Atlas, insan davranışlarındaki tekrarları, görünmeyen bağlantıları ve karar mekanizmalarını daha sistematik biçimde analiz etme fikrinden doğmuştur.\n\nLara'nın özel bilgileri, kişisel belleği ve Atlas ile yaptığı konuşmalar gizlidir. Yalnızca kamuya açık mesleki rolü ve projeleri hakkında bilgi paylaşabilirim.",
+    "Lara, Cosmic Simya'nın arkasındaki yaratıcı isim ve Atlas'ı geliştiren kişidir. Çalışmaları yapay zekâ, sembolizm, astroloji, numeroloji ve örüntü okuma etrafında şekillenir.\n\nLara'nın özel bilgileri, kişisel belleği ve Atlas ile yaptığı konuşmalar gizlidir. Yalnızca kamuya açık mesleki rolü ve projeleri hakkında bilgi paylaşabilirim.",
 });
 
 /** Actions the privacy engine may take */

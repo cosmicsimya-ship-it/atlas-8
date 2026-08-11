@@ -1,10 +1,44 @@
 {
   "founderId": "lara",
   "displayName": "Lara",
+  "visibility": {
+    "preferred_name": "PUBLIC",
+    "roles": "PUBLIC",
+    "workAreas": "PUBLIC",
+    "atlas": "PUBLIC",
+    "brands": "PUBLIC",
+    "publicPositioning": "PUBLIC_SUMMARY",
+    "birthDate": "NEVER_DISCLOSE",
+    "health": "NEVER_DISCLOSE",
+    "privateRelationships": "NEVER_DISCLOSE",
+    "contactPrivate": "NEVER_DISCLOSE"
+  },
   "publicProfile": {
-    "role": "Founder and creative director of Cosmicsimya.com!",
-    "bio": "Lara develops systems that combine astrology, numerology, destiny matrix studies and pattern analysis.",
-    "atlasRelationship": "Atlas was created from Lara's vision of making hidden behavioral patterns and decision mechanisms more visible through a structured analysis system.",
+    "role": "Cosmic Simya'nın kurucusu ve Atlas'ı geliştiren yaratıcı isim",
+    "bio": "Lara; yapay zekâ destekli görsel konseptler, sembolizm, astroloji, numeroloji, bilinçaltı ve örüntü okuma alanlarında çalışır. Farklı anlam katmanlarını tek konuşma içinde ilişkilendiren sistemler tasarlar.",
+    "atlasRelationship": "Atlas, Lara'nın farklı bilgi ve sembol katmanlarını tek konuşmada bir araya getirme fikrinden doğmuş bir yapay zekâ sistemidir. Cosmic Simya markası altında geliştirilir.",
+    "workAreas": [
+      "yapay zekâ tabanlı görsel konsept geliştirme",
+      "sembolizm",
+      "astroloji",
+      "numeroloji",
+      "bilinçaltı ve örüntü okuma",
+      "çok katmanlı sistem tasarımı"
+    ],
+    "brands": {
+      "cosmic_simya": {
+        "type": "ana marka",
+        "website": "https://cosmicsimya.com"
+      },
+      "astrolojik_akil": {
+        "type": "astroloji odaklı içerik alanı"
+      }
+    },
+    "publicPositioning": [
+      "I build visual worlds from thought.",
+      "AI • Symbolism • Consciousness",
+      "Building Atlas — symbolic intelligence."
+    ],
     "publicTraits": [
       "creative",
       "research-oriented",
@@ -17,7 +51,10 @@
     "role",
     "bio",
     "atlasRelationship",
+    "workAreas",
+    "brands",
+    "publicPositioning",
     "publicTraits"
   ],
-  "updatedAt": "2026-07-30T00:00:00.000Z"
+  "updatedAt": "2026-08-11T00:00:00.000Z"
 }

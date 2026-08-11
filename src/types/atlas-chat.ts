@@ -16,6 +16,15 @@ export interface AtlasChatTurn {
   content: string;
 }
 
+export interface AtlasSelectionPayload {
+  label?: string;
+  semanticTarget?: string;
+  semanticIntent?: string;
+  index?: number;
+  sourceMessageId?: string;
+  domain?: string;
+}
+
 export interface AtlasChatRequest {
   message: string;
   history?: AtlasChatTurn[];
@@ -25,6 +34,8 @@ export interface AtlasChatRequest {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  /** Structured payload when user clicks an Atlas-offered option */
+  selection?: AtlasSelectionPayload;
 }
 
 export interface AtlasChatResponse {

@@ -28,6 +28,7 @@ import {
   missingHintForSelfField,
   ASCENDANT_CALC_AVAILABLE,
 } from './self-profile-resolver.js';
+import { extractOfferedOptions } from './assistant-followup.js';
 
 export {
   detectSelfProfileQuery,
@@ -182,6 +183,7 @@ export function createEmptyConversationState() {
     lastExplicitSubject: null,
     lastReferencedSet: null,
     lastAssistantClaim: null,
+    lastOfferedOptions: [],
     lastCorrectionTarget: null,
     recentFactsStated: [],
     recentResponseIntents: [],
@@ -1040,6 +1042,13 @@ export function noteAssistantTurn(conversationId, info) {
     state.recentFactsStated = [info.factStated, ...(state.recentFactsStated || [])].slice(0, 8);
   }
   state.lastAssistantClaim = reply.slice(0, 240) || null;
+
+  // Persist assistant-offered options for ordinal / label follow-ups.
+  if (Array.isArray(info.offeredOptions) && info.offeredOptions.length) {
+    state.lastOfferedOptions = info.offeredOptions.slice(0, 8);
+  } else if (reply) {
+    state.lastOfferedOptions = extractOfferedOptions(reply);
+  }
 
   if (info.clearPendingSlot) state.pendingSlot = null;
   if (info.pendingSlot) state.pendingSlot = info.pendingSlot;

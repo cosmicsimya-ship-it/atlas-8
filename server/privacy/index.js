@@ -144,7 +144,7 @@ export function evaluatePrivacyRequest(input) {
       action: PRIVACY_ACTIONS.SANITIZE,
       reason: 'mixed_request_public_only',
       aboutFounder: true,
-      safeReply: SAFE_RESPONSES.MIXED_PUBLIC_THEN_PRIVATE,
+      safeReply: `${buildFounderPublicResponse()}\n\n${SAFE_RESPONSES.PRIVACY}`,
       classification,
     };
   }

@@ -164,7 +164,11 @@ console.log('\n=== 9–10 Mixed + raw JSON ===\n');
   assert('9. mixed → sanitize/public+deny', ev.requestType === 'mixed_public_private');
   assert(
     '9b. mixed reply has public + privacy',
-    Boolean(ev.safeReply?.includes('Cosmicsimya') && ev.safeReply?.includes('gizlidir')),
+    Boolean(
+      ev.safeReply &&
+        /cosmic\s*simya/i.test(ev.safeReply) &&
+        /gizlidir|kamuya açık/i.test(ev.safeReply),
+    ),
   );
 }
 
@@ -257,7 +261,11 @@ console.log('\n=== 15–16 Telegram + Web pipeline ===\n');
     displayName: 'Ali',
   });
   assert('15 telegram privacy evaluation', tgResult.engine === 'privacy');
-  assert('15b telegram public text', tgResult.reply === SAFE_RESPONSES.PUBLIC_FOUNDER);
+  assert(
+    '15b telegram public text',
+    tgResult.reply === SAFE_RESPONSES.PUBLIC_FOUNDER ||
+      tgResult.reply === buildFounderPublicResponse(),
+  );
 }
 
 console.log('\n=== 17 Owner memory still works ===\n');

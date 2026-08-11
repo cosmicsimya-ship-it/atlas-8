@@ -22,7 +22,7 @@ export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v1';
 /** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|null} SymbolicDomainId */
 
 const SHORT_FOLLOWUP_RE =
-  /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz)[.!?…]*$/iu;
+  /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz|mesela|mesel[aâ]|[oö]rnek(\s+ver)?|nas[ıi]l\s+yani|bunu\s+a[cç]|birinci(si)?|ikinci(si)?|üçüncü(sü)?|hangisi)[.!?…]*$/iu;
 
 const SYMBOLIC_FOLLOWUP_RE =
   /(?:a[cç][ıi]l[ıi]m|kart\s+a[cç]|kart\s+[cç]ek|yorumla|r[uü]ya|sembol|tarih|tekrar|devam|bir\s+daha|bu\s+ki[sş]i|bu\s+tarih|bu\s+sembol|bu\s+se[cç]im|yine\s+(?:yazd[ıi]|oldu|[cç][ıi]kt)|daha\s+detayl[ıi])/i;

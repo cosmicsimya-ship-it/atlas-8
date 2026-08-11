@@ -152,6 +152,9 @@ export function normalizeWebChatRequest(body) {
     displayName: body.displayName ? String(body.displayName) : undefined,
     metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
     context: body.context && typeof body.context === 'object' ? body.context : {},
+    ...(body.selection && typeof body.selection === 'object'
+      ? { selection: body.selection }
+      : {}),
   };
 }
 

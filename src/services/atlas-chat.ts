@@ -88,6 +88,7 @@ export class AtlasChatService {
         temperature: options.temperature,
         maxTokens: options.maxTokens,
         clientRequestId: options.requestId,
+        ...(options.selection ? { selection: options.selection } : {}),
       }),
     });
   }

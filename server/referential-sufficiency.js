@@ -17,6 +17,7 @@ import {
   AMBIGUOUS_PATTERN_CLARIFY_REPLY,
 } from './semantic-layers.js';
 import { getConversationState } from './conversation-context-engine.js';
+import { resolveAssistantFollowUp } from './assistant-followup.js';
 
 export const REFERENTIAL_SUFFICIENCY_VERSION = 'atlas-referential-sufficiency-v1';
 
@@ -279,6 +280,24 @@ export function assessReferentialSufficiency(input) {
 
   const conv = getConversationState(conversationId);
   const storedDomain = conv?.symbolicDomain || null;
+
+  // Assistant-anchored follow-up ("mesela", "ikincisi", "nasıl yani"…) —
+  // prior assistant claim/options are the referent; do not clarify.
+  const anchored = resolveAssistantFollowUp({
+    message,
+    history,
+    offeredOptions: conv?.lastOfferedOptions || null,
+    clientSelection: input.clientSelection || null,
+  });
+  if (anchored.resolved && anchored.sufficient) {
+    return {
+      ...base,
+      intentKnown: true,
+      referentKnown: true,
+      reason: anchored.reason || 'assistant_anchored_followup',
+      followUp: anchored,
+    };
+  }
 
   // Over-clarification protection: direct knowledge / definitional
   if (isDirectKnowledgeQuestion(message)) {

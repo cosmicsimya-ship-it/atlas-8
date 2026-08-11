@@ -203,6 +203,14 @@ import {
   historyHasBindablePrior,
   REFERENTIAL_SUFFICIENCY_VERSION,
 } from './referential-sufficiency.js';
+import {
+  resolveAssistantFollowUp,
+  ASSISTANT_FOLLOWUP_VERSION,
+} from './assistant-followup.js';
+import {
+  buildFounderPublicResponse,
+  getApprovedPublicFields,
+} from './privacy/founder-privacy.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -1025,8 +1033,137 @@ export async function processAtlasMessage(input, options = {}) {
   }
   const skipResolvers = Boolean(activation.skipResolvers);
 
+  const originalUserMessage = String(message || '').trim();
+  const history = input.history ?? [];
+  const convStateEarly = getConversationState(conversationIdEarly);
+  const clientSelection =
+    input.selection ||
+    input.clientSelection ||
+    options.selection ||
+    input.metadata?.selection ||
+    null;
+
+  const followUpResolution = resolveAssistantFollowUp({
+    message: originalUserMessage,
+    history,
+    offeredOptions: convStateEarly.lastOfferedOptions || null,
+    clientSelection,
+    lastAssistantIntent: convStateEarly.recentResponseIntents?.[0] || null,
+  });
+
+  const lastIntent = String(convStateEarly.recentResponseIntents?.[0] || '');
+  const founderFollowUpIntent =
+    /privacy:public_profile|privacy:mixed|privacy:public_profile_example/.test(lastIntent);
+
+  if (!skipResolvers && followUpResolution.resolved && founderFollowUpIntent) {
+    if (followUpResolution.kind === 'example') {
+      const fields = getApprovedPublicFields();
+      const work = Array.isArray(fields.workAreas) ? fields.workAreas : [];
+      const offeredOptions = work.map((label, i) => ({
+        index: i + 1,
+        label: String(label),
+        semanticTarget: String(label)
+          .toLocaleLowerCase('tr-TR')
+          .replace(/\s+/g, '_')
+          .slice(0, 64),
+        semanticIntent: 'expand_owner_work_area',
+      }));
+      const exampleReply = buildFounderPublicResponse({ mode: 'examples' });
+      noteAssistantTurn(conversationIdEarly, {
+        reply: exampleReply,
+        intent: 'privacy:public_profile_example',
+        responseMode: 'direct',
+        offeredOptions,
+      });
+      const founderExamplePrivacy = evaluatePrivacyRequest({
+        message: originalUserMessage,
+        requesterContext,
+        targetUserId: userId,
+      });
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: exampleReply,
+          intent: 'privacy:public_profile_example',
+          engine: 'privacy',
+          memoryUpdated: false,
+          data: {
+            followUp: followUpResolution,
+            assistantFollowupVersion: ASSISTANT_FOLLOWUP_VERSION,
+            pipelineVersion: PIPELINE_VERSION,
+            model: 'deterministic',
+            provider: 'atlas-founder-public-followup',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        {
+          requesterContext,
+          evaluation: founderExamplePrivacy,
+          channel: input.channel ?? 'api',
+          originalMessage: originalUserMessage,
+          speakerGuard: null,
+          timing: requestTiming,
+        },
+      );
+    }
+
+    if (
+      (followUpResolution.kind === 'ordinal' ||
+        followUpResolution.kind === 'label_match' ||
+        followUpResolution.kind === 'client_selection') &&
+      followUpResolution.selectedOption
+    ) {
+      const selected = followUpResolution.selectedOption;
+      const expandReply = `${selected.label} tarafında Lara kamuya açık olarak bu katmanı Atlas ve Cosmic Simya çalışmalarında kullanıyor; özel / doğrulanmamış ayrıntı paylaşmam.`;
+      noteAssistantTurn(conversationIdEarly, {
+        reply: expandReply,
+        intent: 'privacy:public_profile_example',
+        responseMode: 'direct',
+      });
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: expandReply,
+          intent: 'privacy:public_profile_example',
+          engine: 'privacy',
+          memoryUpdated: false,
+          data: {
+            followUp: followUpResolution,
+            assistantFollowupVersion: ASSISTANT_FOLLOWUP_VERSION,
+            pipelineVersion: PIPELINE_VERSION,
+            model: 'deterministic',
+            provider: 'atlas-founder-public-ordinal',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+          },
+        },
+        {
+          requesterContext,
+          evaluation: evaluatePrivacyRequest({
+            message: originalUserMessage,
+            requesterContext,
+            targetUserId: userId,
+          }),
+          channel: input.channel ?? 'api',
+          originalMessage: originalUserMessage,
+          speakerGuard: null,
+          timing: requestTiming,
+        },
+      );
+    }
+  }
+
+  let continuityDirective = followUpResolution.continuityDirective || null;
+  if (followUpResolution.resolved && followUpResolution.rewriteMessage) {
+    message = followUpResolution.rewriteMessage;
+  }
+
+  // Privacy classification uses the original user utterance (not rewritten follow-up text).
   const privacyEvaluation = evaluatePrivacyRequest({
-    message,
+    message: originalUserMessage,
     requesterContext,
     targetUserId: userId,
   });
@@ -1035,13 +1172,12 @@ export async function processAtlasMessage(input, options = {}) {
     requesterContext,
     evaluation: privacyEvaluation,
     channel: input.channel ?? 'api',
-    originalMessage: message,
+    originalMessage: originalUserMessage,
     speakerGuard: null,
     timing: requestTiming,
   };
 
-  const history = input.history ?? [];
-  const mode = options.mode ?? detectAnalysisMode(message);
+  const mode = options.mode ?? detectAnalysisMode(originalUserMessage);
   const founderSession =
     userId &&
     userId !== 'web:anonymous' &&
@@ -1384,11 +1520,12 @@ export async function processAtlasMessage(input, options = {}) {
   const sufficiency = healthSafety.active
     ? { sufficient: true, reason: 'health_bypass' }
     : assessReferentialSufficiency({
-        message,
+        message: originalUserMessage,
         history,
         symbolicContext,
         semanticLayers,
         conversationId,
+        clientSelection,
       });
   pipelineDebug.referentialSufficiency = {
     version: REFERENTIAL_SUFFICIENCY_VERSION,
@@ -1397,6 +1534,13 @@ export async function processAtlasMessage(input, options = {}) {
     referentKnown: sufficiency.referentKnown === true,
     ambiguityType: sufficiency.ambiguityType || null,
     reason: sufficiency.reason || null,
+  };
+  pipelineDebug.assistantFollowUp = {
+    version: ASSISTANT_FOLLOWUP_VERSION,
+    resolved: followUpResolution.resolved === true,
+    kind: followUpResolution.kind || null,
+    reason: followUpResolution.reason || null,
+    selectedOption: followUpResolution.selectedOption || null,
   };
 
   if (
@@ -2077,11 +2221,38 @@ export async function processAtlasMessage(input, options = {}) {
       // logging must not break chat
     }
 
+    const privacyIntent = `privacy:${privacyEvaluation.requestType}`;
+    /** @type {import('./assistant-followup.js').OfferedOption[]|undefined} */
+    let founderOffered;
+    if (
+      privacyEvaluation.requestType === 'public_profile' ||
+      privacyEvaluation.requestType === 'mixed_public_private'
+    ) {
+      const work = getApprovedPublicFields().workAreas;
+      if (Array.isArray(work) && work.length) {
+        founderOffered = work.map((label, i) => ({
+          index: i + 1,
+          label: String(label),
+          semanticTarget: String(label)
+            .toLocaleLowerCase('tr-TR')
+            .replace(/\s+/g, '_')
+            .slice(0, 64),
+          semanticIntent: 'expand_owner_work_area',
+        }));
+      }
+    }
+    noteAssistantTurn(conversationId, {
+      reply: privacyEvaluation.safeReply,
+      intent: privacyIntent,
+      responseMode: 'direct',
+      offeredOptions: founderOffered,
+    });
+
     return applyPrivacyGuardToResult(
       {
         status: 'complete',
         reply: privacyEvaluation.safeReply,
-        intent: `privacy:${privacyEvaluation.requestType}`,
+        intent: privacyIntent,
         engine: 'privacy',
         memoryUpdated: false,
         data: {
@@ -2431,14 +2602,22 @@ export async function processAtlasMessage(input, options = {}) {
     : astrologyIntent ?? detectConversationIntent(message);
   const casualReflexBypass = isCasualReflexBypass(conversationIntent);
   const analyticStance = detectAnalyticStance(message, { conversationIntent });
+  const continuityBlock = continuityDirective
+    ? `${contextResolution.contextBlock || ''}\n\n${continuityDirective}`.trim()
+    : contextResolution.contextBlock || null;
+
   const promptBundle = buildAtlasPromptBundle(input, {
     mode: effectiveMode,
     requesterContext,
     privacyEvaluation,
     atlasBotVerified: options.atlasBotVerified,
-    conversationContextBlock: contextResolution.contextBlock || null,
+    conversationContextBlock: continuityBlock,
   });
   let { systemPrompt, userPrompt, profile, founderProfile } = promptBundle;
+
+  if (continuityDirective) {
+    systemPrompt = `${systemPrompt}\n\n${continuityDirective}`;
+  }
 
   // Explicit detail requests must not inherit casual brevity defaults.
   if (conversationIntent === 'detail') {
