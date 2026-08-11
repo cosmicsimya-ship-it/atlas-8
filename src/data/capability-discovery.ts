@@ -114,7 +114,8 @@ export function resolveDiscoveredModules(
 
 export const discoveryCopy = {
   emptyInvite: {
-    line1: 'Ben Atlas.',
-    line2: 'Hazırsan başlayabiliriz.',
+    line1: 'Neye bakıyoruz?',
   },
 } as const;
+
+export const DEFAULT_COMPOSER_PLACEHOLDER = 'Aklındakini anlat…';

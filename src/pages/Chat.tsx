@@ -7,13 +7,13 @@ import CapabilityDiscovery, {
   isCapabilityDiscoveryEnabled,
 } from '../components/cosmic/CapabilityDiscovery';
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
-import ChatInvitations, {
-  type ChatInvitation,
-} from '../components/cosmic/ChatInvitations';
+import PatternGapTraces from '../components/cosmic/PatternGapTraces';
 import CosmicShell from '../components/cosmic/CosmicShell';
 import { discoveryCopy } from '../data/capability-discovery';
+import { PATTERN_GAP_PLACEHOLDER } from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
 import { ensureAtlasSession } from '../utils/atlas-session';
+import { trackDiscoverability } from '../utils/discoverability-events';
 import { prefersReducedMotion } from '../utils/scroll-section';
 import type { AtlasChatMessage } from '../types/atlas-chat';
 
@@ -41,6 +41,9 @@ export default function Chat() {
   const abortRef = useRef<AbortController | null>(null);
   /** Guards against applying a late response after a newer turn started. */
   const activeTurnRef = useRef<string | null>(null);
+  const emptyStateSeenRef = useRef(false);
+  const firstMessageTrackedRef = useRef(false);
+  const discoveryUsedRef = useRef(false);
 
   const isEmpty = messages.length === 0;
 
@@ -53,6 +56,12 @@ export default function Chat() {
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isEmpty || emptyStateSeenRef.current) return;
+    emptyStateSeenRef.current = true;
+    trackDiscoverability('empty_state_seen');
+  }, [isEmpty]);
 
   useEffect(() => {
     if (!isEmpty) {
@@ -229,8 +238,21 @@ export default function Chat() {
   );
 
   const send = useCallback(async () => {
-    await sendTurn(input);
-  }, [input, sendTurn]);
+    const payload = input.trim();
+    if (!payload) return;
+
+    if (!firstMessageTrackedRef.current && messages.length === 0) {
+      firstMessageTrackedRef.current = true;
+      const usedDiscovery = discoveryUsedRef.current;
+      trackDiscoverability('first_message_sent', { usedDiscovery });
+      trackDiscoverability(
+        usedDiscovery ? 'first_message_with_discovery' : 'first_message_without_discovery',
+        { usedDiscovery },
+      );
+    }
+
+    await sendTurn(payload);
+  }, [input, messages.length, sendTurn]);
 
   /** Retry the failed turn in place — keep the user bubble, new requestId. */
   const retryLast = useCallback(() => {
@@ -266,13 +288,6 @@ export default function Chat() {
     }
   };
 
-  const handleInvitation = (invitation: ChatInvitation) => {
-    if (invitation.prompt) {
-      setInput(invitation.prompt);
-    }
-    textareaRef.current?.focus();
-  };
-
   return (
     <CosmicShell showBackground={false} transparentNav chatMode>
       <ChatAtmosphere />
@@ -291,17 +306,27 @@ export default function Chat() {
           aria-label="Konuşma"
         >
           {isEmpty ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center gap-0 pb-2 pt-2 text-center">
-              <AtlasCorePresence state={loading ? 'thinking' : 'idle'} />
-              <p className="mt-8 max-w-[16rem] text-[16px] leading-[1.7] tracking-[-0.01em] text-[#c5ccd6] sm:mt-9 sm:max-w-sm sm:text-[17px]">
+            <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col items-center justify-end gap-0 overflow-y-auto pb-2 pt-6 text-center sm:justify-center sm:pt-2">
+              <p className="max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/92 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
                 {discoveryCopy.emptyInvite.line1}
-                <br />
-                <span className="text-[#e8ecf2]/90">{discoveryCopy.emptyInvite.line2}</span>
               </p>
               {backendReady !== false && (
-                <ChatInvitations
-                  onSelect={handleInvitation}
-                  className="mt-8 max-w-xl sm:mt-9"
+                <PatternGapTraces
+                  className="mt-5 mb-1 sm:mt-6 sm:mb-2"
+                  onSelect={(question, composerText) => {
+                    discoveryUsedRef.current = true;
+                    setInput(composerText);
+                    trackDiscoverability('discovery_question_selected', {
+                      id: question.id,
+                    });
+                    requestAnimationFrame(() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      el.focus();
+                      const len = composerText.length;
+                      el.setSelectionRange(len, len);
+                    });
+                  }}
                 />
               )}
             </div>
@@ -386,11 +411,11 @@ export default function Chat() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isEmpty ? 'Buradan yazmaya başla…' : 'Ne üzerinde düşünelim?'}
-                disabled={loading || backendReady === false}
+                placeholder={PATTERN_GAP_PLACEHOLDER}
+                disabled={backendReady === false}
                 rows={isEmpty ? 2 : 1}
                 aria-label="Mesaj"
-                className="atlas-field atlas-field-hero flex-1 resize-none overflow-y-auto disabled:opacity-40"
+                className="atlas-field atlas-field-hero min-w-0 flex-1 resize-none overflow-y-auto disabled:opacity-40"
               />
               <button
                 type="button"
