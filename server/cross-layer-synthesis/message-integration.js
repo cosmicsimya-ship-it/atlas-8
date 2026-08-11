@@ -420,7 +420,10 @@ export function buildSynthesisPromptBlock(synthesisResult, opts = {}) {
   };
 
   const reflexLock = synthesisResult.reflex
-    ? `\n${buildReflexPromptLock(synthesisResult.reflex, { stance: opts.stance ?? null })}\n`
+    ? `\n${buildReflexPromptLock(synthesisResult.reflex, {
+        stance: opts.stance ?? null,
+        epistemic: opts.epistemic ?? null,
+      })}\n`
     : '';
 
   return `
@@ -550,6 +553,7 @@ export function runMessageCrossLayerSynthesis(opts) {
 
   let promptBlock = buildSynthesisPromptBlock(synthesis, {
     stance: opts.stance ?? null,
+    epistemic: opts.epistemic ?? null,
   });
   if (opts._userExampleAnalysis) {
     promptBlock += `

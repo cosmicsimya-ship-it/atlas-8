@@ -8,9 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 import {
   applyNarrowReflexPostGuard,
+  buildEpistemicSeparationPromptLock,
   buildEvidenceSet,
   buildReflexStateFromSynthesis,
   detectAnalyticStance,
+  detectEpistemicLayers,
   isCasualReflexBypass,
   mapHypothesisBand,
   resolveAdvanceAllowed,
@@ -371,8 +373,122 @@ record(
   'wired',
   /preferConvergence/.test(msgSvc) &&
     /detectAnalyticStance/.test(msgSvc) &&
+    /detectEpistemicLayers/.test(msgSvc) &&
+    /buildEpistemicSeparationPromptLock/.test(msgSvc) &&
     /applyNarrowReflexPostGuard/.test(msgSvc) &&
     !/Cognitive Reflex Engine/.test(msgSvc),
+);
+
+// ── Cross-domain epistemic reflex (Hüseyin regression) ───────────────
+const HUSEYIN_MSG =
+  'Ailemde kuşaklar boyunca böbrek kanseri ve böbrek yetmezliği var. İsimler ve huylar da aktarılıyor. Bu bir karma mı? Bilinçli seçimle bu döngüyü kırabilir miyiz?';
+
+const huseyinEpistemic = detectEpistemicLayers(HUSEYIN_MSG);
+record(
+  'Hüseyin: genetik+karma → epistemik ayrışma',
+  'biological+symbolic+familial; crossDomain',
+  JSON.stringify(huseyinEpistemic.layers),
+  huseyinEpistemic.layers.includes('biological') &&
+    huseyinEpistemic.layers.includes('symbolic') &&
+    huseyinEpistemic.layers.includes('familial_pattern') &&
+    huseyinEpistemic.hasCrossDomainRisk === true &&
+    huseyinEpistemic.hasSeriousIrreversible === true,
+);
+
+const huseyinBad =
+  'Bilinçli seçimlerle bu karma döngüsünü kırmak mümkün. Karma genetik hastalığın nedenidir.';
+const huseyinGuard = applyNarrowReflexPostGuard(huseyinBad, {
+  casual: false,
+  epistemic: huseyinEpistemic,
+});
+record(
+  'Hüseyin: bilinçli seçimle kırılır garantisi YOK',
+  'cycle_break softened',
+  huseyinGuard.reply.slice(0, 120),
+  huseyinGuard.hits.includes('cycle_break_guarantee') &&
+    !/kırmak mümkün/i.test(huseyinGuard.reply),
+);
+
+const huseyinLock = buildEpistemicSeparationPromptLock(huseyinEpistemic);
+record(
+  'Hüseyin: sembolik çerçeve korunur',
+  'preserve symbolic; no blanket reject',
+  huseyinLock.slice(0, 100),
+  /preserve|sembolik|symbolic/i.test(huseyinLock) &&
+    !/karma\s+yasak|reddet|konuşma/i.test(huseyinLock) &&
+    /Do not present one layer as the causal mechanism/i.test(huseyinLock),
+);
+
+const corr = applyNarrowReflexPostGuard(
+  'Bunun nedeni kesinlikle budur; ilişki olduğu için nedenidir.',
+  { casual: false, epistemic: huseyinEpistemic },
+);
+record(
+  'Korelasyon ≠ nedensellik',
+  'correlation softened',
+  corr.reply.slice(0, 100),
+  corr.hits.includes('correlation_as_causation') &&
+    !/nedeni kesinlikle|için nedenidir/i.test(corr.reply),
+);
+
+const mind = applyNarrowReflexPostGuard(
+  'Kesinlikle niyeti budur; aslında ne düşündüğünü biliyorum.',
+  { casual: false, epistemic: { hasCrossDomainRisk: true } },
+);
+record(
+  'Davranış örüntüsü ≠ kesin niyet okuma',
+  'mind_reading softened',
+  mind.reply.slice(0, 120),
+  mind.hits.includes('mind_reading_certainty') &&
+    !/Kesinlikle niyeti|ne düşündüğünü biliyorum/i.test(mind.reply) &&
+    /çıkaramayız|olası/i.test(mind.reply),
+);
+
+const verdict = applyNarrowReflexPostGuard('Bu tartışmasız ve kesin budur.', {
+  casual: false,
+  epistemic: huseyinEpistemic,
+});
+record(
+  'Belirsiz veri → calibrated hypothesis',
+  'overconfident verdict softened',
+  verdict.reply,
+  verdict.hits.includes('overconfident_verdict') &&
+    !/tartışmasız|kesin budur/i.test(verdict.reply),
+);
+
+const symbolicOnly = detectEpistemicLayers('Bu rüyadaki yılan bir karma işareti mi?');
+const symbolicLock = buildEpistemicSeparationPromptLock(symbolicOnly);
+record(
+  'Salt sembolik soru → gereksiz red yok',
+  'no hard-layer reject lock',
+  `layers=${symbolicOnly.layers.join(',')} lockEmpty=${!symbolicLock}`,
+  symbolicOnly.symbolicFrameActive === true &&
+    symbolicOnly.factualHardLayer === false &&
+    symbolicOnly.hasCrossDomainRisk === false,
+);
+
+const paraphraseBreak = applyNarrowReflexPostGuard(
+  'Farkındalıkla bu aile örüntüsünü aşabilirsiniz; niyetinizle döngü sona erer.',
+  { casual: false, epistemic: huseyinEpistemic },
+);
+record(
+  'Parafraz cycle-break de yumuşar',
+  'cycle_break hit on paraphrase',
+  paraphraseBreak.reply.slice(0, 120),
+  paraphraseBreak.hits.includes('cycle_break_guarantee') &&
+    !/aşabilirsiniz|sona erer/i.test(paraphraseBreak.reply),
+);
+
+const obsCause = applyNarrowReflexPostGuard(
+  'Gözlemlediğimiz ilişki olduğu için nedenidir.',
+  { casual: false, epistemic: huseyinEpistemic },
+);
+record(
+  'Gözlem ≠ nedensellik',
+  'correlation/observation softened',
+  obsCause.reply.slice(0, 120),
+  obsCause.hits.includes('correlation_as_causation') &&
+    !/için nedenidir/i.test(obsCause.reply),
 );
 
 console.log('\n=== MATRIX ===');

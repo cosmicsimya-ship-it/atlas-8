@@ -102,8 +102,10 @@ import {
 } from './cross-layer-synthesis/message-integration.js';
 import {
   applyNarrowReflexPostGuard,
+  buildEpistemicSeparationPromptLock,
   buildStancePromptHint,
   detectAnalyticStance,
+  detectEpistemicLayers,
   isCasualReflexBypass,
 } from './cognitive-reflex-guards.js';
 import {
@@ -2240,6 +2242,17 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
+  const epistemicLayers = detectEpistemicLayers(message);
+  if (
+    !casualReflexBypass &&
+    (epistemicLayers.hasCrossDomainRisk || epistemicLayers.hasSeriousIrreversible)
+  ) {
+    const epistemicLock = buildEpistemicSeparationPromptLock(epistemicLayers);
+    if (epistemicLock) {
+      systemPrompt = `${systemPrompt}\n\n${epistemicLock}`;
+    }
+  }
+
   const trustedSpeakerRuntime = resolveTrustedSpeakerForPrompt(input, {
     atlasBotVerified: options.atlasBotVerified,
   });
@@ -2282,6 +2295,7 @@ export async function processAtlasMessage(input, options = {}) {
       intentInfo: synthesisIntent,
       casual: casualReflexBypass,
       stance: analyticStance,
+      epistemic: epistemicLayers,
     });
     if (synthesisBridge.ran && synthesisBridge.promptBlock) {
       userPrompt = `${userPrompt}\n\n${synthesisBridge.promptBlock}`;
@@ -2471,6 +2485,7 @@ export async function processAtlasMessage(input, options = {}) {
         casual: false,
         advanceAllowed: synthesisBridge.synthesis?.reflex?.advanceAllowed === true,
         stance: analyticStance,
+        epistemic: epistemicLayers,
       });
       reply = reflexPost.reply;
     }

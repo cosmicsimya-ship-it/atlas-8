@@ -54,7 +54,8 @@
     "provision:founder": "node server/scripts/provision-founder-account.mjs",
     "grant:admin": "node server/scripts/grant-admin-role.mjs",
     "test:entitlements": "node scripts/test-entitlements.mjs",
-    "test:billing": "node scripts/test-billing.mjs"
+    "test:billing": "node scripts/test-billing.mjs",
+    "test:cognitive-reflex": "node scripts/test-cognitive-reflex.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
