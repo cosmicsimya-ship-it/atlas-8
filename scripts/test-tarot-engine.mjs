@@ -24,8 +24,14 @@ import {
   getCardByName,
   clearTarotSession,
   _resetAllTarotSessions,
+  parseRequestedCardCount,
+  resolveSpreadIntention,
+  extractIntention,
 } from '../server/tarot-engine/index.js';
+import { detectTarotSpreadIntent } from '../server/symbolic-synthesis.js';
 import { processAtlasMessage } from '../server/atlas-message-service.js';
+import { detectAudioIntent } from '../server/audio-studio/audio-intent.js';
+import { shouldConsiderAudioStudio } from '../server/audio-studio-flow.js';
 
 let passed = 0;
 let failed = 0;
@@ -119,8 +125,15 @@ record('test1 engine', t1?.engine === 'tarot-engine');
 record('test1 flow version', t1?.data?.tarotFlowVersion === TAROT_FLOW_VERSION);
 const r1 = t1?.reply || '';
 record('test1 default is short prose', !/##\s*Açılım/i.test(r1));
-record('test1 names cards', /kart|niyet|açılım/i.test(r1) || Boolean(t1?.data?.cards?.length));
-record('test1 has structure cue', /çizgi|hat|gerilim|ortak|öne çıkan/i.test(r1));
+record('test1 names cards', /kart|niyet|açılım|geldi/i.test(r1) || Boolean(t1?.data?.cards?.length));
+record(
+  'test1 natural synthesis cue',
+  /daha çok|kombinasyon|sorusuna|geldi/i.test(r1),
+);
+record(
+  'test1 no debug template labels',
+  !/Ortak çizgi|Öne çıkan yapı|büyük arkana ağırlığı|birlikte kurulan örüntü/i.test(r1),
+);
 record('test1 symbolic boundary', /sembolik|olas[ıi]l[ıi]k|kehanet\s+de[gğ]il|zihin\s+okuma/i.test(r1));
 record('test1 not report dump', (r1.match(/^##\s+/gm) || []).length === 0);
 record('test1 not dictionary', looksLikeCardDictionary(r1) === false);
@@ -559,6 +572,154 @@ record(
 // ── Engine version ────────────────────────────────────────────────────
 record('engine version', TAROT_ENGINE_VERSION === 'atlas-tarot-engine-v1');
 record('focus seed handled', Boolean(focusSeed?.handled));
+
+// ── Prod regression: context persistence + contamination + natural synth ─
+_resetAllTarotSessions();
+const energyHist = [{ role: 'user', content: 'Aklımdaki kişinin enerjisi' }];
+const kartAcIntent = detectTarotSpreadIntent('Kart aç', energyHist);
+record(
+  'energy→Kart aç stays tarot',
+  kartAcIntent.active === true && kartAcIntent.intent === 'spread',
+);
+const energyDraw = tryTarotFlowReply({
+  message: 'Kart aç',
+  history: energyHist,
+  conversationId: 'tarot-energy',
+  userId: 'u-energy',
+});
+record('energy→Kart aç executes tarot', energyDraw?.engine === 'tarot-engine' && energyDraw?.handled === true);
+record(
+  'energy→Kart aç inherits intention',
+  /enerji|ki[sş]i/i.test(energyDraw?.data?.intention || energyDraw?.reply || ''),
+  `intention=${energyDraw?.data?.intention || ''}`,
+);
+record(
+  'energy follow-up context preserved',
+  detectTarotEngineIntent('Kart aç', energyHist, { sessionActive: false }).active === true,
+);
+
+_resetAllTarotSessions();
+const three = tryTarotFlowReply({
+  message: '3 kart aç',
+  conversationId: 'tarot-3count',
+  userId: 'u-3',
+});
+record('3 kart → exactly 3 cards', three?.data?.cards?.length === 3, `n=${three?.data?.cards?.length}`);
+record('parse 3 kart', parseRequestedCardCount('3 kart aç') === 3);
+record('parse 1 kart', parseRequestedCardCount('1 kart çek') === 1);
+
+_resetAllTarotSessions();
+const one = tryTarotFlowReply({
+  message: '1 kart aç',
+  conversationId: 'tarot-1count',
+  userId: 'u-1',
+});
+record('1 kart → exactly 1 card', one?.data?.cards?.length === 1, `n=${one?.data?.cards?.length}`);
+
+const rejectAudio = 'Ben yorum istemedim açılım yapmalısın 3 kart';
+const audioFalse = detectAudioIntent(rejectAudio, []);
+record(
+  'istemedim ≠ stem audio false positive',
+  audioFalse.active !== true || audioFalse.intent !== 'separate_stems',
+  `intent=${audioFalse.intent}`,
+);
+record(
+  'tarot beats audio gate on reject-yorum draw',
+  shouldConsiderAudioStudio(rejectAudio, []) === false,
+);
+_resetAllTarotSessions();
+const rejectDraw = tryTarotFlowReply({
+  message: rejectAudio,
+  conversationId: 'tarot-reject',
+  userId: 'u-reject',
+});
+record(
+  'yorum istemedim → tarot 3 cards',
+  rejectDraw?.engine === 'tarot-engine' && rejectDraw?.data?.cards?.length === 3,
+);
+record(
+  'no audio/telegram contamination copy',
+  !/(mix|mastering|stem|telegram|ses\s+dosya|aranje)/i.test(rejectDraw?.reply || ''),
+);
+
+_resetAllTarotSessions();
+const natural = tryTarotFlowReply({
+  message: 'Tarot aç 3 kart',
+  conversationId: 'tarot-natural',
+  userId: 'u-nat',
+});
+record(
+  'natural synthesis no debug labels',
+  Boolean(natural?.reply) &&
+    !/Ortak çizgi|Öne çıkan yapı|büyük arkana ağırlığı|birlikte kurulan örüntü/i.test(
+      natural.reply,
+    ),
+);
+record(
+  'natural synthesis names cards',
+  (natural?.data?.cards || []).every((c) => (natural.reply || '').includes(c.name)),
+);
+record(
+  'epistemic: no absolute mind-reading',
+  !/kesin(likle)?\s+(düşünüyor|niyeti|aklından)|zihnini\s+okud/i.test(natural?.reply || ''),
+);
+record(
+  'taxonomy marker not user-visible',
+  !/\[kişi\]|\[dönem\]|\[seçim\]/i.test(natural?.reply || ''),
+);
+
+const inherit = resolveSpreadIntention('Kart aç', [
+  { role: 'user', content: 'Aklımdaki kişinin enerjisi' },
+]);
+record(
+  'resolveSpreadIntention inherits energy preamble',
+  /enerji/i.test(inherit),
+  inherit,
+);
+record(
+  'extractIntention strips draw verbs',
+  extractIntention('yorum istemedim açılım yapmalısın 3 kart') === 'genel durum' ||
+    extractIntention('yorum istemedim açılım yapmalısın 3 kart').length < 8,
+);
+
+// e2e via message service — contamination path
+_resetAllTarotSessions();
+const e2eReject = await processAtlasMessage(
+  {
+    channel: 'web',
+    userId: 'web:tarot-reject',
+    conversationId: 'web:tarot-reject',
+    message: rejectAudio,
+    history: [],
+  },
+  { trustedUserId: 'web:tarot-reject', roles: ['user'] },
+);
+record(
+  'e2e reject-yorum stays tarot engine',
+  e2eReject.engine === 'tarot-engine' || e2eReject.data?.provider === 'atlas-tarot-engine',
+  `engine=${e2eReject.engine}`,
+);
+record(
+  'e2e reject-yorum not audio studio',
+  e2eReject.engine !== 'audio-studio' && !/mastering|stem separation/i.test(e2eReject.reply || ''),
+);
+
+_resetAllTarotSessions();
+const e2eFollow = await processAtlasMessage(
+  {
+    channel: 'web',
+    userId: 'web:tarot-follow',
+    conversationId: 'web:tarot-follow',
+    message: 'Kart aç',
+    history: [{ role: 'user', content: 'Aklımdaki kişinin enerjisi' }],
+  },
+  { trustedUserId: 'web:tarot-follow', roles: ['user'] },
+);
+record(
+  'e2e energy→Kart aç tarot',
+  e2eFollow.engine === 'tarot-engine' || e2eFollow.data?.provider === 'atlas-tarot-engine',
+  `engine=${e2eFollow.engine}`,
+);
 
 // Summary
 console.log('\n=== Summary ===');

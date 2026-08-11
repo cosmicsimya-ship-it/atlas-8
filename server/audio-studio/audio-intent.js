@@ -51,7 +51,7 @@ const VOCAL_CUES = /vokal|sesimi|s[oö]yleyece[gğ]im|s[oö]yl[uü]yorum|[sş]ar
 const INSTRUMENT_CUES =
   /ba[gğ]lama|gitar|piyano|keman|davul|enstr[uü]man|saz|ud|kanun|ney/i;
 const NOISE_CUES = /g[uü]r[uü]lt[uü]|temizle|noise|de-?noise|hum|t[ıi]klama/i;
-const STEM_CUES = /stem|ay[ıi]r|izol[ae]|vokal[ıi]\s+[oö]ne|ba[gğ]lamay[ıi]\s+[oö]ne/i;
+const STEM_CUES = /\bstem\b|ay[ıi]r|izol[ae]|vokal[ıi]\s+[oö]ne|ba[gğ]lamay[ıi]\s+[oö]ne/i;
 const TUNE_CUES = /tune|perde|auto-?tune|pitch|vokal[ıi]\s+d[uü]zelt/i;
 const FORMAT_CUES = /mp3['’]?\s*[eé]|wav['’]?\s*[eé]|d[oö]n[uü][sş]t[uü]r|format\s+[cç]evir/i;
 const VIDEO_AUDIO_CUES = /videodaki\s+ses|videodan\s+ses|sesi\s+[cç][ıi]kar/i;
@@ -243,7 +243,7 @@ export function detectAudioIntent(message, history = [], opts = {}) {
     confidence = 0.85;
     cues.push('format');
   } else if (STEM_CUES.test(text)) {
-    intent = /ay[ıi]r|stem|izol/i.test(text) ? 'separate_stems' : 'mix_vocal_and_instrument';
+    intent = /ay[ıi]r|\bstem\b|izol/i.test(text) ? 'separate_stems' : 'mix_vocal_and_instrument';
     confidence = 0.82;
     cues.push('stem_or_balance');
   } else if (TUNE_CUES.test(text)) {
@@ -306,7 +306,7 @@ export function detectAudioIntent(message, history = [], opts = {}) {
     const currentHasOps =
       STUDIO_CUES.test(text) ||
       SEND_AND_DO.test(text) ||
-      /d[uü]zenle|temizle|mix|master|stem|aranje/i.test(text) ||
+      /d[uü]zenle|temizle|mix|master|\bstem\b|aranje/i.test(text) ||
       AUDIO_DOMAIN.test(text);
     if (
       currentHasOps &&

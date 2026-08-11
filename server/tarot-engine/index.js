@@ -59,6 +59,9 @@ export {
 
 export {
   extractIntention,
+  parseRequestedCardCount,
+  isPrimarilyDrawCommand,
+  resolveSpreadIntention,
   detectTarotEngineIntent,
   focusFromTarotIntent,
   TAROT_SESSION_REQUIRED_INTENTS,

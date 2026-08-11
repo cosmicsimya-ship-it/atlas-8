@@ -52,6 +52,7 @@ export const TAROT_SESSION_REQUIRED_INTENTS = new Set([
 
 /**
  * Extract a short intention phrase from the user message.
+ * Turkish-safe: avoid `\b` around stems like "aç" (breaks on ç).
  * @param {string} message
  */
 export function extractIntention(message) {
@@ -59,11 +60,93 @@ export function extractIntention(message) {
   if (!text) return 'genel durum';
   const cleaned = text
     .replace(/^(tarot|classic\s+tarot)\s*/i, '')
-    .replace(/\b(üç|3)\s*kart\b/gi, '')
-    .replace(/\b(açılım\s+yap|tarot\s+aç|kart\s+[cç]ek|a[cç])\b/gi, '')
+    .replace(/\b(\d{1,2}|bir|iki|üç|u[cç]|d[oö]rt|be[sş])\s*kart(?:l[ıi]k)?\b/gi, '')
+    .replace(/yorum\s+istemedim[,.]?\s*/gi, '')
+    .replace(
+      /a[cç][ıi]l[ıi]m(?:[ıi])?\s+yap(?:mal[ıi]s[ıi]n)?|tarot\s+a[cç]|kart\s+a[cç]|kart(?:lar)?\s+[cç]ek|tekrar\s+kart\s+[cç]ek|bir\s+kart\s+daha\s+[cç]ek|kartlar[ıi]\s+se[cç]/gi,
+      '',
+    )
+    .replace(/(?:^|\s)a[cç](?:\s|$)/gi, ' ')
     .replace(/[.!?…]+$/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
-  return cleaned || text.slice(0, 120);
+  return cleaned || 'genel durum';
+}
+
+/**
+ * Parse explicit requested card count from the message.
+ * @param {string} message
+ * @returns {number|null}
+ */
+export function parseRequestedCardCount(message) {
+  const text = String(message || '');
+  const digit = text.match(/\b(\d{1,2})\s*kart(?:l[ıi]k)?\b/i);
+  if (digit) {
+    const n = Number(digit[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 10) return n;
+  }
+  if (/\b(üç|u[cç])\s*kart(?:l[ıi]k)?\b/i.test(text)) return 3;
+  if (/\bbir\s*kart\b/i.test(text)) return 1;
+  if (/\biki\s*kart\b/i.test(text)) return 2;
+  return null;
+}
+
+/**
+ * True when the message is primarily a draw / open command with little topical content.
+ * @param {string} message
+ */
+export function isPrimarilyDrawCommand(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  const hasDraw =
+    /kart\s+a[cç]|tarot\s+a[cç]|a[cç][ıi]l[ıi]m(?:[ıi])?\s+yap|kart(?:lar)?\s+[cç]ek|tekrar\s+kart|bir\s+kart\s+daha|\d+\s*kart|üç\s*kart|^a[cç]$|^a[cç]\s/i.test(
+      text,
+    );
+  if (!hasDraw) return false;
+  const rest = extractIntention(text);
+  return !rest || rest === 'genel durum' || rest.length < 10;
+}
+
+/**
+ * Prefer prior-turn topical intention when the current message is draw-only.
+ * @param {string} message
+ * @param {{ role: string, content: string }[]} [history]
+ * @param {{ intention?: string|null, topic?: string|null }|null} [session]
+ */
+export function resolveSpreadIntention(message, history = [], session = null) {
+  const fromMsg = extractIntention(message);
+  const drawOnly = isPrimarilyDrawCommand(message);
+
+  if (!drawOnly && fromMsg && fromMsg !== 'genel durum' && fromMsg.length >= 8) {
+    return fromMsg;
+  }
+
+  for (let i = (history || []).length - 1; i >= 0; i -= 1) {
+    const turn = history[i];
+    if (!turn || turn.role !== 'user') continue;
+    if (isPrimarilyDrawCommand(turn.content)) continue;
+    const prev = extractIntention(turn.content);
+    if (prev && prev !== 'genel durum' && prev.length >= 6) {
+      return prev;
+    }
+    // Natural preamble without explicit draw verbs (e.g. "Aklımdaki kişinin enerjisi")
+    const raw = String(turn.content || '').trim();
+    if (
+      raw.length >= 8 &&
+      /(enerji|ki[sş]i|duygu|ili[sş]ki|niyet|alan)/i.test(raw) &&
+      !/mix|master|st[uü]dyo|\bstem\b/i.test(raw)
+    ) {
+      return raw.replace(/[.!?…]+$/g, '').trim().slice(0, 120);
+    }
+  }
+
+  if (session?.intention && String(session.intention).trim()) {
+    return String(session.intention).trim();
+  }
+  if (session?.topic && String(session.topic).trim()) {
+    return String(session.topic).trim();
+  }
+  return fromMsg || 'genel durum';
 }
 
 /**

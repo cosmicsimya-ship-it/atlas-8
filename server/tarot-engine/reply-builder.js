@@ -82,49 +82,85 @@ function buildRevealReply(analysis) {
   return out.join('\n');
 }
 
-function buildShortReply(analysis) {
-  const cards = (analysis.placed || []).map((p) => p.card.name).filter(Boolean);
-  const themeRaw = String(
-    analysis.combinations?.commonTheme || analysis.synthesis || '',
-  )
-    .replace(/^Ortak tema:\s*/i, '')
+function sanitizeUserFacingTarotText(text) {
+  return String(text || '')
+    .replace(/\[(?:kişi|donem|dönem|seçim|secim)\]/gi, '')
+    .replace(/\s{2,}/g, ' ')
     .trim();
-  const tensionRaw = String(
+}
+
+function softenInternalTheme(text) {
+  return String(text || '')
+    .replace(/^Ortak tema:\s*/i, '')
+    .replace(/^Ortak çizgi:\s*/i, '')
+    .replace(/^Öne çıkan yapı:\s*/i, '')
+    .replace(/\bbüyük\s+arkana\s+ağırlığı\b/gi, 'güçlü bir ana tema')
+    .replace(/\bbirlikte\s+kurulan\s+örüntü\b/gi, 'kartların birlikte verdiği yön')
+    .trim();
+}
+
+function decapitalizeTr(text) {
+  const s = String(text || '').trim();
+  if (!s) return s;
+  return s.charAt(0).toLocaleLowerCase('tr-TR') + s.slice(1);
+}
+
+function buildShortReply(analysis) {
+  const placed = analysis.placed || [];
+  const intention = sanitizeUserFacingTarotText(analysis.intention || '');
+  const themeRaw = softenInternalTheme(
+    analysis.combinations?.commonTheme || analysis.synthesis || '',
+  );
+  const tensionRaw = softenInternalTheme(
     analysis.contradictions?.tensions?.[0]?.reading || '',
-  ).trim();
-  const emphasisRaw = String(analysis.strongMessage || '').trim();
+  );
 
   const theme = clipWords(themeRaw, 42);
   const tension = clipWords(tensionRaw, 32);
-  const emphasis = clipWords(emphasisRaw, 32);
 
-  // One short prose block — no ## report walls, no card dictionary dump.
+  // Natural prose — cards + roles, then synthesis toward the question.
+  // Avoid engine/debug labels ("Ortak çizgi", "Öne çıkan yapı", …).
   const sentences = [];
-  if (cards.length) {
-    sentences.push(`Açılımda ${cards.join(', ')} geldi.`);
+  if (placed.length) {
+    const named = placed.map((p) => {
+      const name = p.card?.name;
+      if (!name) return null;
+      const role = p.position?.label || null;
+      return role ? `${name} (${role})` : name;
+    }).filter(Boolean);
+    sentences.push(`Açılımda ${named.join(', ')} geldi.`);
   } else {
     sentences.push('Açılım kuruldu.');
   }
 
-  if (theme) {
-    sentences.push(`Ortak çizgi: ${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`);
-  }
-  if (emphasis && emphasis !== theme) {
-    sentences.push(`Öne çıkan yapı: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
-  } else if (!theme && emphasis) {
-    sentences.push(`Öne çıkan yapı: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+  if (intention && intention !== 'genel durum') {
+    if (theme) {
+      sentences.push(
+        `«${intention}» sorusuna bakınca bu kombinasyon daha çok ${decapitalizeTr(theme)}${/[.!?…]$/.test(theme) ? '' : '.'}`,
+      );
+    } else {
+      sentences.push(
+        `«${intention}» sorusuna bu kartlar birlikte bir yön veriyor; tek karttan kesin hüküm çıkmaz.`,
+      );
+    }
+  } else if (theme) {
+    sentences.push(
+      `Bu kombinasyon daha çok ${decapitalizeTr(theme)}${/[.!?…]$/.test(theme) ? '' : '.'}`,
+    );
   }
 
   if (tension) {
-    sentences.push(`Bir gerilim de var: ${tension}${/[.!?…]$/.test(tension) ? '' : '.'}`);
+    sentences.push(
+      `Bir yandan da ${decapitalizeTr(tension)}${/[.!?…]$/.test(tension) ? '' : '.'}`,
+    );
   }
 
   sentences.push(
-    'Tek karttan hüküm çıkmaz; bu okuma yön ve olasılık verir.',
+    'Bu, birinin kesin olarak ne düşündüğünü göstermez; sembolik bir okuma.',
   );
-  sentences.push('İstersen bir katmanı veya gerilimi detaylı açabiliriz.');
+  sentences.push('İstersen bir kartı veya katmanı daha açabiliriz.');
 
-  const body = sentences.join(' ');
+  const body = sanitizeUserFacingTarotText(sentences.join(' '));
   return `${body}\n\n${SYMBOLIC_UNCERTAINTY_LINE}`;
 }
 

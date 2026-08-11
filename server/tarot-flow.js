@@ -10,7 +10,8 @@ import {
   DEPTH_LEVEL,
   detectTarotEngineIntent,
   focusFromTarotIntent,
-  extractIntention,
+  resolveSpreadIntention,
+  parseRequestedCardCount,
   resolveTarotDepth,
   resolveSpreadKind,
   runTarotAnalysis,
@@ -97,16 +98,18 @@ export function tryTarotFlowReply(input) {
 
   if (detected.intent === 'continue') {
     // H1: new cards OK; preserve prior intention/topic; only focus/kind from message.
-    intention = session.intention || session.topic || extractIntention(input.message);
+    intention = session.intention || session.topic || resolveSpreadIntention(input.message, history, session);
     topic = session.topic || session.intention || intention;
     spreadKindOverride = resolveSpreadKind(input.message);
   } else if (isNewDraw) {
-    intention = extractIntention(input.message);
+    intention = resolveSpreadIntention(input.message, history, session);
     topic = intention;
   } else {
-    intention = session.intention || extractIntention(input.message);
+    intention = session.intention || resolveSpreadIntention(input.message, history, session);
     topic = session.topic || session.intention || intention;
   }
+
+  const requestedCount = parseRequestedCardCount(input.message);
 
   const spreadIndex =
     detected.intent === 'continue'
@@ -131,6 +134,7 @@ export function tryTarotFlowReply(input) {
     conversationId,
     userId,
     spreadIndex,
+    ...(isNewDraw && requestedCount ? { cardCount: requestedCount } : {}),
   });
 
   if (!result.ok) {

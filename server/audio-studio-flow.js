@@ -18,6 +18,7 @@ import {
   filterHistoryForSenderScope,
   logTelegramIntentTrace,
 } from './telegram-turn-intent.js';
+import { detectTarotSpreadIntent } from './symbolic-synthesis.js';
 
 export const AUDIO_STUDIO_FLOW_VERSION = 'atlas-audio-studio-flow-v1';
 
@@ -39,6 +40,18 @@ export function shouldConsiderAudioStudio(message, history = [], opts = {}) {
   const turn = opts.turnIntent;
   if (turn && turn.allowAudioStudio === false) {
     return false;
+  }
+
+  // Tarot draw / follow-up commands must not fall into audio (istemedim≠stem, etc.).
+  const tarot = detectTarotSpreadIntent(message, history);
+  if (tarot.active) {
+    const text = String(message || '');
+    const clearAudioProduction =
+      /\b(mix(?:ing)?|master(?:ing)?|st[uü]dyo|\bstem\b|mp3|wav|m4a)\b/i.test(text) &&
+      !/(tarot|kart\s+a[cç]|a[cç][ıi]l[ıi]m|\d+\s*kart|üç\s*kart|kart\s+[cç]ek)/i.test(text);
+    if (!clearAudioProduction) {
+      return false;
+    }
   }
 
   const key = contextKey({

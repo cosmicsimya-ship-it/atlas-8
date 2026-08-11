@@ -77,10 +77,16 @@ export function compactConversationHistory(history, opts = {}) {
 const TAROT_EXPLICIT_COMMANDS = [
   'açılım yap',
   'açılımı başlat',
+  'açılım yapmalısın',
   'tarot aç',
+  'kart aç',
   'üç kart aç',
   '3 kart aç',
+  'üç kartlık açılım',
+  '3 kartlık açılım',
   'kart çek',
+  'tekrar kart çek',
+  'bir kart daha çek',
   'bana kart çek',
   'aklımdaki kişi için aç',
   'duygularına bak',
@@ -105,11 +111,15 @@ const TAROT_CONTEXT_MARKERS = [
   'açılım',
   'classic tarot',
   'kart çek',
+  'kart aç',
   'üç kart',
   '3 kart',
   'deste',
   'kartları seç',
   'kart yorum',
+  'aklımdaki kişi',
+  'kişinin enerji',
+  'enerjisi',
 ];
 
 /**

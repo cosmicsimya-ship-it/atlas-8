@@ -318,11 +318,19 @@ function buildBlindSpot(placed, contradictions, intention) {
 function buildStrongMessage(placed, combinations, intention) {
   const names = placed.map((p) => p.card.name).join(' + ');
   return (
-    `Güçlü mesaj (${names}): ${combinations.commonTheme} ` +
+    `Güçlü mesaj (${names}): ${softenTheme(combinations.commonTheme)} ` +
     (intention
-      ? `Bu, «${intention}» sorusuna kart sözlüğüyle değil, birlikte kurulan örüntüyle cevap verir.`
-      : 'Tekil kart anlamı değil, örüntü cevaptır.')
+      ? `Bu, «${intention}» sorusuna tek kart ezberiyle değil, kartların birlikte verdiği yönle yanıt verir.`
+      : 'Tekil kart anlamı değil; kartların birlikte verdiği yön cevaptır.')
   );
+}
+
+function softenTheme(theme) {
+  return String(theme || '')
+    .replace(/^Ortak tema:\s*/i, '')
+    .replace(/\bbüyük\s+arkana\s+ağırlığı\b/gi, 'güçlü bir ana tema')
+    .replace(/\bbirlikte\s+kurulan\s+örüntü\b/gi, 'kartların birlikte verdiği yön')
+    .trim();
 }
 
 function buildGrowth(placed, contradictions) {

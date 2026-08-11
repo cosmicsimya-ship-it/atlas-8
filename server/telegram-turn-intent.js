@@ -12,7 +12,7 @@ const ANNOUNCEMENT_RE =
   /(?:art[ıi]k\s+(?:web|canl[ıi]|kullan[ıi]labiliyor)|https?:\/\/\S+|cosmicsimya\.com|geri\s+bildirim|duyuru|selam\s+arkada[sş]lar|deneyebilir|payla[sş]abilirsiniz|lansman|yay[ıi]nda)/i;
 
 const OPERATIONAL_AUDIO_RE =
-  /(?:st[uü]dyo|mix(?:ing)?|master(?:ing)?|stem|aranje|aranjman|ses\s+(?:d[uü]zenle|temizle|iyile[sş]tir)|kayd[ıi]\s+(?:d[uü]zenle|temizle)|noise|de-?noise|transkri|yaz[ıi]ya\s+[cç]evir|mp3|wav|m4a|mikrofon|enstr[uü]man|ba[gğ]lama|vokal)/i;
+  /(?:st[uü]dyo|mix(?:ing)?|master(?:ing)?|\bstem\b|aranje|aranjman|ses\s+(?:d[uü]zenle|temizle|iyile[sş]tir)|kayd[ıi]\s+(?:d[uü]zenle|temizle)|noise|de-?noise|transkri|yaz[ıi]ya\s+[cç]evir|mp3|wav|m4a|mikrofon|enstr[uü]man|ba[gğ]lama|vokal)/i;
 
 /**
  * Build a scoped history key for Telegram (chat + optional topic).
