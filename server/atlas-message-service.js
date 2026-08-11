@@ -194,6 +194,10 @@ import {
   AMBIGUOUS_PATTERN_CLARIFY_REPLY,
   SEMANTIC_LAYERS_VERSION,
 } from './semantic-layers.js';
+import {
+  assessReferentialSufficiency,
+  REFERENTIAL_SUFFICIENCY_VERSION,
+} from './referential-sufficiency.js';
 
 const ERROR_REPLIES = {
   BACKEND_UNAVAILABLE: 'Atlas backend şu an kullanılamıyor.',
@@ -1370,6 +1374,80 @@ export async function processAtlasMessage(input, options = {}) {
     preferConvergence,
   };
 
+  // Referential sufficiency — UNDERSTANDABLE ≠ ANSWERABLE.
+  // Intent may be clear while subject/event/referent is missing; do not invent premises.
+  const sufficiency = healthSafety.active
+    ? { sufficient: true, reason: 'health_bypass' }
+    : assessReferentialSufficiency({
+        message,
+        history,
+        symbolicContext,
+        semanticLayers,
+        conversationId,
+      });
+  pipelineDebug.referentialSufficiency = {
+    version: REFERENTIAL_SUFFICIENCY_VERSION,
+    sufficient: sufficiency.sufficient !== false,
+    intentKnown: sufficiency.intentKnown === true,
+    referentKnown: sufficiency.referentKnown === true,
+    ambiguityType: sufficiency.ambiguityType || null,
+    reason: sufficiency.reason || null,
+  };
+
+  if (
+    !hasImage &&
+    !healthSafety.active &&
+    !preferConvergence &&
+    sufficiency.sufficient === false &&
+    sufficiency.question
+  ) {
+    const clarifyReply = sufficiency.question;
+    const clarifyIntent =
+      sufficiency.ambiguityType === 'ambiguous_pattern'
+        ? 'pattern:clarify'
+        : 'referent:clarify';
+    const clarifyEngine =
+      sufficiency.ambiguityType === 'ambiguous_pattern'
+        ? 'semantic-layers'
+        : 'referential-sufficiency';
+    noteAssistantTurn(conversationId, {
+      reply: clarifyReply,
+      intent: clarifyIntent,
+      responseMode: 'clarify',
+      symbolicDomain: symbolicContext.primaryDomain || 'pattern',
+    });
+    return applyPrivacyGuardToResult(
+      {
+        status: 'complete',
+        reply: clarifyReply,
+        intent: clarifyIntent,
+        engine: clarifyEngine,
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          conversationIntent: clarifyIntent,
+          responseMode: 'clarify',
+          ambiguityType: sufficiency.ambiguityType,
+          sufficiencyReason: sufficiency.reason,
+          semanticLayers: pipelineDebug.semanticLayers,
+          referentialSufficiency: pipelineDebug.referentialSufficiency,
+          model: 'deterministic',
+          provider:
+            clarifyEngine === 'semantic-layers'
+              ? 'atlas-semantic-layers'
+              : 'atlas-referential-sufficiency',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+      },
+      privacyGuardCtx,
+    );
+  }
+
   if (!hasImage && !healthSafety.active && !preferConvergence) {
     requestTiming.start('numerology_engine');
     const numerologyFlow = tryNumerologyFlowReply({
@@ -1432,12 +1510,14 @@ export async function processAtlasMessage(input, options = {}) {
   }
 
   // Ambiguous pattern-seeking — clarify without category menu
+  // (belt-and-suspenders; primary gate is referential sufficiency above)
   if (
     !hasImage &&
     !healthSafety.active &&
     !preferConvergence &&
     semanticLayers.ambiguousPattern &&
-    !semanticLayers.primaryLayer
+    !semanticLayers.primaryLayer &&
+    sufficiency.sufficient !== false
   ) {
     noteAssistantTurn(conversationId, {
       reply: AMBIGUOUS_PATTERN_CLARIFY_REPLY,
