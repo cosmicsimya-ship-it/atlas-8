@@ -19,6 +19,10 @@ import {
   logTelegramIntentTrace,
 } from './telegram-turn-intent.js';
 import { detectTarotSpreadIntent } from './symbolic-synthesis.js';
+import {
+  resolveSymbolicContext,
+  shouldBlockUnrelatedCapability,
+} from './symbolic-context.js';
 
 export const AUDIO_STUDIO_FLOW_VERSION = 'atlas-audio-studio-flow-v1';
 
@@ -34,11 +38,25 @@ export const AUDIO_STUDIO_FLOW_VERSION = 'atlas-audio-studio-flow-v1';
  *   conversationId?: string|null,
  *   messageThreadId?: string|number|null,
  *   turnIntent?: object|null,
+ *   symbolicContext?: object|null,
  * }} [opts]
  */
 export function shouldConsiderAudioStudio(message, history = [], opts = {}) {
   const turn = opts.turnIntent;
   if (turn && turn.allowAudioStudio === false) {
+    return false;
+  }
+
+  // Shared symbolic context (tarot/dream/symbol/pattern) blocks unrelated studio routes.
+  const symbolicCtx =
+    opts.symbolicContext ||
+    resolveSymbolicContext({
+      message,
+      history,
+      conversationId: opts.conversationId || opts.chatId || 'default',
+      userId: opts.userId,
+    });
+  if (shouldBlockUnrelatedCapability(symbolicCtx, message)) {
     return false;
   }
 
@@ -162,6 +180,7 @@ export async function tryAudioStudioFlowReply(input) {
       conversationId: input.conversationId,
       messageThreadId: input.messageThreadId,
       turnIntent,
+      symbolicContext: input.symbolicContext || null,
     })
   ) {
     return null;

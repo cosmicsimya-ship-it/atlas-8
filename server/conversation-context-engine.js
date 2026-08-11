@@ -50,6 +50,7 @@ export const CONVERSATION_CONTEXT_VERSION = 'conversation-context-engine-v1';
 /**
  * @typedef {{
  *   activeTopic: string|null,
+ *   symbolicDomain?: string|null,
  *   currentQuestion: string|null,
  *   expectedAnswerType: string|null,
  *   expectedSubject: { displayName?: string|null, userId?: string|null }|null,
@@ -172,6 +173,7 @@ export function foldTr(text) {
 export function createEmptyConversationState() {
   return {
     activeTopic: null,
+    symbolicDomain: null,
     currentQuestion: null,
     expectedAnswerType: null,
     expectedSubject: null,
@@ -1016,6 +1018,7 @@ export function noteInboundTurn(conversationId, info) {
  *   factStated?: string|null,
  *   pendingSlot?: ConversationState['pendingSlot'],
  *   clearPendingSlot?: boolean,
+ *   symbolicDomain?: string|null,
  * }} info
  */
 export function noteAssistantTurn(conversationId, info) {
@@ -1026,6 +1029,10 @@ export function noteAssistantTurn(conversationId, info) {
   }
   if (info.intent) {
     state.recentResponseIntents = [info.intent, ...(state.recentResponseIntents || [])].slice(0, 8);
+  }
+  if (info.symbolicDomain) {
+    state.symbolicDomain = info.symbolicDomain;
+    if (!state.activeTopic) state.activeTopic = info.symbolicDomain;
   }
   if (info.factStated) {
     state.recentFactsStated = [info.factStated, ...(state.recentFactsStated || [])].slice(0, 8);

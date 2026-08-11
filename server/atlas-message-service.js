@@ -109,6 +109,13 @@ import {
   isCasualReflexBypass,
 } from './cognitive-reflex-guards.js';
 import {
+  resolveSymbolicContext,
+  buildSymbolicContextPromptLock,
+  applySymbolicSurfaceGuard,
+  rememberSymbolicDomain,
+  SYMBOLIC_CONTEXT_VERSION,
+} from './symbolic-context.js';
+import {
   analyzeIdentityClaim,
   buildAmbiguousIdentityClarifyReply,
   buildConversationAddressAck,
@@ -1236,6 +1243,22 @@ export async function processAtlasMessage(input, options = {}) {
 
   // ── Audio Studio (capability-honest; before numerology / LLM) ──
   // Never let the LLM invent "gönder, düzenlerim" for studio production.
+  // Shared symbolic context blocks studio on short symbolic follow-ups.
+  const symbolicContext = resolveSymbolicContext({
+    message,
+    history,
+    conversationId,
+    userId,
+  });
+  pipelineDebug.symbolicContext = {
+    version: SYMBOLIC_CONTEXT_VERSION,
+    primary: symbolicContext.primaryDomain,
+    secondary: symbolicContext.secondaryDomains,
+    shortFollowUp: symbolicContext.shortFollowUp,
+    preserve: symbolicContext.preserveActiveDomain,
+    referents: symbolicContext.referents.map((r) => r.kind),
+  };
+
   if (!hasImage && !healthSafety.active) {
     requestTiming.start('audio_studio');
     const meta = input.metadata && typeof input.metadata === 'object' ? input.metadata : {};
@@ -1263,6 +1286,7 @@ export async function processAtlasMessage(input, options = {}) {
       activationReason: meta.activationReason ?? null,
       conversationId,
       media: audioStudioMedia,
+      symbolicContext,
     });
     requestTiming.end('audio_studio');
     if (audioStudioFlow?.handled && audioStudioFlow.reply) {
@@ -1339,7 +1363,9 @@ export async function processAtlasMessage(input, options = {}) {
         reply: numerologyFlow.reply,
         intent: numerologyFlow.intent,
         responseMode: 'numerology_analysis',
+        symbolicDomain: 'numerology',
       });
+      rememberSymbolicDomain(conversationId, 'numerology');
       const styleDebug = buildStyleRuntimeDebug({
         channel: input.channel,
         userId,
@@ -1394,11 +1420,15 @@ export async function processAtlasMessage(input, options = {}) {
     });
     requestTiming.end('tarot_engine');
     if (tarotFlow?.handled && tarotFlow.reply) {
+      const tarotSurface = applySymbolicSurfaceGuard(tarotFlow.reply, { symbolic: true });
+      const tarotReply = tarotSurface.reply;
       noteAssistantTurn(conversationId, {
-        reply: tarotFlow.reply,
+        reply: tarotReply,
         intent: tarotFlow.intent,
         responseMode: 'tarot_analysis',
+        symbolicDomain: 'tarot',
       });
+      rememberSymbolicDomain(conversationId, 'tarot');
       const styleDebug = buildStyleRuntimeDebug({
         channel: input.channel,
         userId,
@@ -1413,7 +1443,7 @@ export async function processAtlasMessage(input, options = {}) {
       return applyPrivacyGuardToResult(
         {
           status: 'complete',
-          reply: tarotFlow.reply,
+          reply: tarotReply,
           intent: tarotFlow.intent,
           engine: tarotFlow.engine || 'tarot-engine',
           memoryUpdated: false,
@@ -1507,11 +1537,15 @@ export async function processAtlasMessage(input, options = {}) {
     });
     requestTiming.end('dream_engine');
     if (dreamFlow?.handled && dreamFlow.reply) {
+      const dreamSurface = applySymbolicSurfaceGuard(dreamFlow.reply, { symbolic: true });
+      const dreamReply = dreamSurface.reply;
       noteAssistantTurn(conversationId, {
-        reply: dreamFlow.reply,
+        reply: dreamReply,
         intent: dreamFlow.intent,
         responseMode: 'dream_analysis',
+        symbolicDomain: 'dream',
       });
+      rememberSymbolicDomain(conversationId, 'dream');
       const styleDebug = buildStyleRuntimeDebug({
         channel: input.channel,
         userId,
@@ -1526,7 +1560,7 @@ export async function processAtlasMessage(input, options = {}) {
       return applyPrivacyGuardToResult(
         {
           status: 'complete',
-          reply: dreamFlow.reply,
+          reply: dreamReply,
           intent: dreamFlow.intent,
           engine: dreamFlow.engine || 'dream-engine',
           memoryUpdated: false,
@@ -2253,6 +2287,14 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
+  
+  if (!casualReflexBypass && symbolicContext.active) {
+    const symbolicLock = buildSymbolicContextPromptLock(symbolicContext);
+    if (symbolicLock) {
+      systemPrompt = `${systemPrompt}\n\n${symbolicLock}`;
+    }
+  }
+
   const trustedSpeakerRuntime = resolveTrustedSpeakerForPrompt(input, {
     atlasBotVerified: options.atlasBotVerified,
   });
@@ -2490,6 +2532,11 @@ export async function processAtlasMessage(input, options = {}) {
       reply = reflexPost.reply;
     }
 
+    if (symbolicContext.active || tarotIntent.active) {
+      const surface = applySymbolicSurfaceGuard(reply, { symbolic: true });
+      reply = surface.reply;
+    }
+
     const authorVoiceGuard = applyPersonaGuards(reply, {
       tarotActive: tarotIntent.active,
     });
@@ -2508,7 +2555,11 @@ export async function processAtlasMessage(input, options = {}) {
       reply,
       intent: conversationIntent,
       responseMode: contextResolution.responseMode || 'other',
+      symbolicDomain: symbolicContext.primaryDomain || undefined,
     });
+    if (symbolicContext.primaryDomain) {
+      rememberSymbolicDomain(conversationId, symbolicContext.primaryDomain);
+    }
 
     const engine = tarotIntent.active
       ? 'tarot'

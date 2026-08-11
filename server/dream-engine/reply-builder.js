@@ -108,15 +108,19 @@ function buildShortReply(analysis) {
   }
 
   if (theme) {
-    sentences.push(`Ortak çizgi: ${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`);
+    sentences.push(
+      `${theme}${/[.!?…]$/.test(theme) ? '' : '.'}`.replace(/^(Ortak\s+[cç]izgi|Ortak\s+tema)\s*:\s*/i, ''),
+    );
   } else if (emphasis) {
-    sentences.push(`Asıl vurgu: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+    sentences.push(`${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
   }
 
   if (tension && tension !== theme) {
-    sentences.push(`Bir gerilim de var: ${tension}${/[.!?…]$/.test(tension) ? '' : '.'}`);
+    sentences.push(
+      `Bir gerilim de var: ${tension}${/[.!?…]$/.test(tension) ? '' : '.'}`,
+    );
   } else if (emphasis && theme && emphasis !== theme) {
-    sentences.push(`Asıl vurgu: ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
+    sentences.push(`Asıl vurgu ${emphasis}${/[.!?…]$/.test(emphasis) ? '' : '.'}`);
   }
 
   sentences.push('Tek imgeden kesin hüküm çıkmaz; bu okuma yön ve olasılık verir.');

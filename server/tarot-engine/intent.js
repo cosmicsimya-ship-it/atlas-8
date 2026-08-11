@@ -180,8 +180,10 @@ export function detectTarotEngineIntent(message, history = [], opts = {}) {
 
   const protocol = detectTarotSpreadIntent(message, history);
 
-  // Follow-up phrases are message-driven; session gate lives in tarot-flow.
-  // Do NOT use shared history markers — that leaks group context across users.
+  // Tarot-specific follow-ups may activate without a session so tarot-flow can
+  // return the canonical "no active spread" reply (group isolation).
+  // Generic "devam et" alone must NOT claim the turn without a live session —
+  // that starves dream/symbol short follow-ups.
   if (FOLLOWUP_BLIND.test(lower)) {
     return {
       active: true,
@@ -223,6 +225,7 @@ export function detectTarotEngineIntent(message, history = [], opts = {}) {
     };
   }
   if (
+    opts.sessionActive &&
     FOLLOWUP_DEEPER.test(lower) &&
     !/bir\s+de|şimdi\s+de|eylem|duygu|alan/i.test(lower)
   ) {
