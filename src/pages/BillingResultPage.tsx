@@ -1,42 +1,103 @@
 /**
  * Safe billing result surface — no tokens/secrets in UI.
+ * Query status is UX hint only. Premium = server entitlements.
  */
 
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import CosmicShell from '../components/cosmic/CosmicShell';
+import {
+  fetchEntitlementsWithRetry,
+  isPremiumPlan,
+  type AtlasEntitlementsPayload,
+} from '../services/atlas-entitlements';
+import { ensureAtlasSession } from '../utils/atlas-session';
+
+type ViewKey = 'loading' | 'active' | 'pending' | 'failed' | 'canceled' | 'invalid' | 'error';
 
 const COPY: Record<
-  string,
-  { title: string; body: string; tone: 'ok' | 'bad' | 'neutral' }
+  Exclude<ViewKey, 'loading'>,
+  { title: string; body: string }
 > = {
-  success: {
-    title: 'Ödeme doğrulandı',
-    body: 'Atlas Premium hesabınıza tanımlandı. Lara Voice ve Premium özellikler aktif.',
-    tone: 'ok',
+  active: {
+    title: 'Premium aktif',
+    body: 'Sunucu üyeliğinizi doğruladı. Lara Voice ve Premium özellikler hesabınızda açık.',
+  },
+  pending: {
+    title: 'Ödeme işleniyor',
+    body: 'Ödeme doğrulaması henüz Premium’u açmadı. Kısa süre sonra yenileyin veya Atlas’a dönüp hesabınızı kontrol edin.',
   },
   failed: {
     title: 'Ödeme doğrulanamadı',
     body: 'Ödeme tamamlanamadı veya sunucu doğrulaması başarısız. Premium açılmadı.',
-    tone: 'bad',
   },
   canceled: {
     title: 'Ödeme iptal edildi',
     body: 'İşlem iptal edildi. Hesap planınız değişmedi.',
-    tone: 'neutral',
   },
   invalid: {
     title: 'Geçersiz ödeme oturumu',
     body: 'Checkout oturumu bulunamadı veya eşleşmedi. Premium açılmadı.',
-    tone: 'bad',
+  },
+  error: {
+    title: 'Durum kontrol edilemedi',
+    body: 'Üyelik durumu sunucudan alınamadı. Giriş yaptığınızdan emin olup tekrar deneyin.',
   },
 };
 
+function hintFromQuery(status: string): 'failed' | 'canceled' | 'invalid' | 'pending' {
+  if (status === 'canceled' || status === 'cancelled') return 'canceled';
+  if (status === 'failed') return 'failed';
+  if (status === 'invalid') return 'invalid';
+  // status=success is NOT authority — treat as pending until entitlements confirm.
+  if (status === 'success') return 'pending';
+  return 'invalid';
+}
+
 export default function BillingResultPage() {
   const [params] = useSearchParams();
-  const status = String(params.get('status') || 'invalid').toLowerCase();
+  const queryStatus = String(params.get('status') || 'invalid').toLowerCase();
   const code = String(params.get('code') || '').slice(0, 64);
-  const view = COPY[status] || COPY.invalid;
+  const [view, setView] = useState<ViewKey>('loading');
+  const [entitlements, setEntitlements] = useState<AtlasEntitlementsPayload | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const preferPremium = queryStatus === 'success';
+
+    (async () => {
+      try {
+        await ensureAtlasSession();
+        const data = await fetchEntitlementsWithRetry({
+          attempts: 3,
+          delayMs: 400,
+          preferPremium,
+        });
+        if (cancelled) return;
+        setEntitlements(data);
+        if (isPremiumPlan(data)) {
+          setView('active');
+          return;
+        }
+        // Never promote query success to Premium without server plan.
+        setView(hintFromQuery(queryStatus));
+      } catch {
+        if (cancelled) return;
+        // Query alone still cannot show Premium.
+        setView(queryStatus === 'success' ? 'error' : hintFromQuery(queryStatus));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [queryStatus]);
+
+  const copy =
+    view === 'loading'
+      ? { title: 'Üyelik kontrol ediliyor…', body: 'Sunucu doğrulaması bekleniyor.' }
+      : COPY[view];
 
   return (
     <CosmicShell>
@@ -45,9 +106,17 @@ export default function BillingResultPage() {
           Atlas Premium
         </p>
         <h1 className="mt-4 font-display text-[clamp(1.6rem,4vw,2.2rem)] font-medium tracking-[-0.02em] text-[#e8ecf2]">
-          {view.title}
+          {copy.title}
         </h1>
-        <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/68">{view.body}</p>
+        <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/68">{copy.body}</p>
+        {entitlements?.plan ? (
+          <p className="mt-3 text-[11px] tracking-wide text-[#8b93a3]">
+            Sunucu planı: {entitlements.plan}
+            {entitlements.subscriptionStatus
+              ? ` · ${entitlements.subscriptionStatus}`
+              : ''}
+          </p>
+        ) : null}
         {code ? (
           <p className="mt-3 text-[11px] tracking-wide text-[#8b93a3]">Kod: {code}</p>
         ) : null}

@@ -32,6 +32,38 @@ export type AtlasBillingSubscriptionPayload = AtlasBillingConfig & {
   entitlements?: AtlasEntitlementsPayload | null;
 };
 
+export type AtlasCheckoutResult = {
+  ok: boolean;
+  dryRun?: boolean;
+  liveCheckoutEnabled?: boolean;
+  paymentPageUrl?: string | null;
+  checkoutId?: string | null;
+  token?: string | null;
+  message?: string | null;
+  product?: AtlasBillingConfig['product'];
+  features?: string[];
+  error?: { code?: string; message?: string } | null;
+};
+
+/** Allow only https provider payment URLs (plus http localhost for sandbox tooling). */
+export function isSafePaymentPageUrl(url: string | null | undefined): boolean {
+  const raw = String(url || '').trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === 'https:') return true;
+    if (
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchBillingConfig(): Promise<AtlasBillingConfig> {
   const res = await apiRequest<{ ok: boolean; data: AtlasBillingConfig }>('/api/billing/config', {
     method: 'GET',
@@ -47,21 +79,19 @@ export async function fetchBillingSubscription(): Promise<AtlasBillingSubscripti
   return res.data;
 }
 
-export async function startPremiumCheckout(): Promise<{
-  ok: boolean;
-  dryRun?: boolean;
-  liveCheckoutEnabled?: boolean;
-  message?: string | null;
-  product?: AtlasBillingConfig['product'];
-  features?: string[];
-  error?: { code?: string; message?: string } | null;
-}> {
+/**
+ * Starts Premium checkout. Body is always empty — server owns price/currency/plan.
+ */
+export async function startPremiumCheckout(): Promise<AtlasCheckoutResult> {
   try {
     const res = await apiRequest<{
       ok: boolean;
       data: {
         dryRun?: boolean;
         liveCheckoutEnabled?: boolean;
+        paymentPageUrl?: string | null;
+        checkoutId?: string | null;
+        token?: string | null;
         message?: string | null;
         product?: AtlasBillingConfig['product'];
         features?: string[];
@@ -70,7 +100,14 @@ export async function startPremiumCheckout(): Promise<{
     }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({}) });
     return {
       ok: res.ok,
-      ...res.data,
+      dryRun: res.data?.dryRun,
+      liveCheckoutEnabled: res.data?.liveCheckoutEnabled,
+      paymentPageUrl: res.data?.paymentPageUrl ?? null,
+      checkoutId: res.data?.checkoutId ?? null,
+      token: res.data?.token ?? null,
+      message: res.data?.message ?? null,
+      product: res.data?.product,
+      features: res.data?.features,
       error: res.error ?? null,
     };
   } catch (e) {
@@ -79,6 +116,7 @@ export async function startPremiumCheckout(): Promise<{
         data?: {
           dryRun?: boolean;
           liveCheckoutEnabled?: boolean;
+          paymentPageUrl?: string | null;
           product?: AtlasBillingConfig['product'];
           features?: string[];
         };
@@ -88,6 +126,7 @@ export async function startPremiumCheckout(): Promise<{
         ok: false,
         dryRun: body?.data?.dryRun,
         liveCheckoutEnabled: body?.data?.liveCheckoutEnabled,
+        paymentPageUrl: body?.data?.paymentPageUrl ?? null,
         product: body?.data?.product,
         features: body?.data?.features,
         error: body?.error || { message: e.message },

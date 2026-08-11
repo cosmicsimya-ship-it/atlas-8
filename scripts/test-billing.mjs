@@ -803,6 +803,310 @@ ok('manual bank transfer disabled', getManualBankTransferOffer().enabled === fal
   setBillingProviderForTests(null);
 }
 
+// Fail-closed amount/currency + three-way canonical + client tamper ignore
+{
+  resetCheckoutSessionStoreForTests();
+  resetSubscriptionStoreForTests();
+  resetBillingEventStoreForTests();
+
+  const missingAmtSession = createCheckoutSession({
+    token: 'tok_miss_amt',
+    userId: 'web:miss-amt',
+    amount: 299,
+    currency: 'TRY',
+  });
+  void missingAmtSession;
+  setBillingProviderForTests(
+    createIyzicoBillingProvider({
+      dryRun: false,
+      liveCheckoutEnabled: true,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+      fetch: mockFetchFactory(async () =>
+        jsonResponse({
+          status: 'success',
+          paymentStatus: 'SUCCESS',
+          paymentId: 'pay_miss_amt',
+          // paidPrice intentionally omitted
+          currency: 'TRY',
+          basketId: 'web:miss-amt',
+        }),
+      ),
+    }),
+  );
+  const missAmt = await verifyClientPaymentClaim({
+    userId: 'web:miss-amt',
+    body: { token: 'tok_miss_amt', amount: 299 },
+  });
+  ok(
+    'missing provider amount rejected',
+    !missAmt.granted && missAmt.error === BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+  );
+  ok(
+    'missing amount user still free',
+    resolveEntitlements({
+      authenticated: true,
+      userId: 'web:miss-amt',
+      isAnonymous: false,
+    }).plan === ATLAS_PLANS.FREE,
+  );
+
+  createCheckoutSession({
+    token: 'tok_miss_cur',
+    userId: 'web:miss-cur',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(
+    createIyzicoBillingProvider({
+      dryRun: false,
+      liveCheckoutEnabled: true,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+      fetch: mockFetchFactory(async () =>
+        jsonResponse({
+          status: 'success',
+          paymentStatus: 'SUCCESS',
+          paymentId: 'pay_miss_cur',
+          paidPrice: '299.00',
+          // currency omitted
+          basketId: 'web:miss-cur',
+        }),
+      ),
+    }),
+  );
+  const missCur = await verifyClientPaymentClaim({
+    userId: 'web:miss-cur',
+    body: { token: 'tok_miss_cur', currency: 'TRY' },
+  });
+  ok(
+    'missing provider currency rejected',
+    !missCur.granted && missCur.error === BILLING_ERROR_CODES.CURRENCY_MISMATCH,
+  );
+
+  createCheckoutSession({
+    token: 'tok_stale_session',
+    userId: 'web:stale',
+    amount: 100,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(
+    createIyzicoBillingProvider({
+      dryRun: false,
+      liveCheckoutEnabled: true,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+      fetch: mockFetchFactory(async () =>
+        jsonResponse({
+          status: 'success',
+          paymentStatus: 'SUCCESS',
+          paymentId: 'pay_stale',
+          paidPrice: '100.00',
+          currency: 'TRY',
+          basketId: 'web:stale',
+        }),
+      ),
+    }),
+  );
+  const stale = await verifyClientPaymentClaim({
+    userId: 'web:stale',
+    body: { token: 'tok_stale_session' },
+  });
+  ok(
+    'session vs canonical amount mismatch rejected',
+    !stale.granted && stale.error === BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+  );
+
+  // Client amount/currency/tier on checkout body ignored — session stores canonical 299 TRY
+  setBillingProviderForTests(
+    createIyzicoBillingProvider({
+      dryRun: true,
+      liveCheckoutEnabled: false,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+    }),
+  );
+  const checkoutTamper = await startCheckout({
+    userId: 'web:price-tamper',
+    email: 'tamper@example.com',
+    // @ts-expect-error intentional tamper fields (ignored by service)
+    amount: 1,
+    currency: 'USD',
+    tier: 'premium',
+    premium: true,
+  });
+  ok('checkout ok despite client amount tamper', checkoutTamper.ok === true);
+  const tamperSession = getCheckoutSession(checkoutTamper.token);
+  ok(
+    'checkout session amount remains canonical 299',
+    tamperSession && Number(tamperSession.amount) === 299,
+  );
+  ok(
+    'checkout session currency remains TRY',
+    tamperSession && String(tamperSession.currency).toUpperCase() === 'TRY',
+  );
+  ok(
+    'checkout does not grant via tamper fields',
+    resolveEntitlements({
+      authenticated: true,
+      userId: 'web:price-tamper',
+      isAnonymous: false,
+    }).plan === ATLAS_PLANS.FREE,
+  );
+
+  // HTTP: client amount/currency/tier in JSON body still ignored
+  {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.auth = {
+        authenticated: true,
+        isAnonymous: false,
+        userId: 'web:http-price',
+        email: 'http-price@example.com',
+      };
+      next();
+    });
+    app.use(
+      '/api/billing',
+      createBillingRouter({
+        requireAuth: (_req, _res, next) => next(),
+        requireCsrf: (_req, _res, next) => next(),
+      }),
+    );
+    const server = app.listen(0);
+    const port = server.address().port;
+    const res = await fetch(`http://127.0.0.1:${port}/api/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: 1,
+        price: 1,
+        currency: 'USD',
+        tier: 'premium',
+        entitlement: true,
+        plan: 'premium',
+      }),
+    });
+    const json = await res.json();
+    server.close();
+    ok('http checkout ignores client price fields', res.status === 200 && json.ok === true);
+    const httpSession = getCheckoutSession(json.data?.token);
+    ok(
+      'http checkout session canonical 299 TRY',
+      httpSession &&
+        Number(httpSession.amount) === 299 &&
+        String(httpSession.currency).toUpperCase() === 'TRY',
+    );
+  }
+
+  // Cancelled callback path
+  createCheckoutSession({
+    token: 'tok_cancel_hint',
+    userId: 'web:cancel-hint',
+    amount: 299,
+    currency: 'TRY',
+  });
+  const canceled = await handleIyzicoCheckoutCallback({
+    token: 'tok_cancel_hint',
+    cancelHint: true,
+  });
+  ok('cancelled callback no grant', canceled.status === 'canceled' && !canceled.granted);
+  ok(
+    'cancelled user still free',
+    resolveEntitlements({
+      authenticated: true,
+      userId: 'web:cancel-hint',
+      isAnonymous: false,
+    }).plan === ATLAS_PLANS.FREE,
+  );
+
+  // Fake result URL status alone never creates premium
+  ok(
+    'fake result success query does not imply store premium',
+    resolveEntitlements({
+      authenticated: true,
+      userId: 'web:never-paid',
+      isAnonymous: false,
+    }).plan === ATLAS_PLANS.FREE,
+  );
+
+  // Client source contracts (no FE runner): paymentPageUrl + entitlement authority
+  {
+    const panelSrc = readFileSync(
+      join(root, 'src/components/cosmic/PremiumPlanPanel.tsx'),
+      'utf8',
+    );
+    const billingSrc = readFileSync(join(root, 'src/services/atlas-billing.ts'), 'utf8');
+    const resultSrc = readFileSync(join(root, 'src/pages/BillingResultPage.tsx'), 'utf8');
+    const entSrc = readFileSync(join(root, 'src/services/atlas-entitlements.ts'), 'utf8');
+    ok(
+      'sandbox paymentPageUrl consumed in panel',
+      panelSrc.includes('paymentPageUrl') && panelSrc.includes('location.assign'),
+    );
+    ok(
+      'live missing paymentPageUrl fails visibly',
+      panelSrc.includes('paymentPageUrl') && panelSrc.includes('Ödeme sayfası alınamadı'),
+    );
+    ok(
+      'dry-run path does not assign payment url',
+      panelSrc.includes('dry-run') &&
+        panelSrc.includes('liveCheckoutEnabled') &&
+        /dryRun[\s\S]*liveCheckoutEnabled[\s\S]*setPanelState\('dry-run'\)/.test(panelSrc),
+    );
+    ok(
+      'double-click checkout guard present',
+      panelSrc.includes('checkoutLock') && panelSrc.includes('disabled={busy}'),
+    );
+    ok(
+      'checkout client sends empty body',
+      billingSrc.includes('JSON.stringify({})') && billingSrc.includes('paymentPageUrl'),
+    );
+    ok(
+      'result page entitlement refresh',
+      resultSrc.includes('fetchEntitlementsWithRetry') && resultSrc.includes('isPremiumPlan'),
+    );
+    ok(
+      'fake result success not authority',
+      resultSrc.includes('status === \'success\'') &&
+        resultSrc.includes('pending') &&
+        resultSrc.includes('isPremiumPlan'),
+    );
+    ok(
+      'return retry bounded',
+      entSrc.includes('fetchEntitlementsWithRetry') &&
+        entSrc.includes('attempts') &&
+        /Math\.min\(opts\?\.attempts \?\? 3, 5\)/.test(entSrc),
+    );
+    ok(
+      'no automatic renewal copy in panel',
+      !/otomatik yenilen|kendiliğinden yenilen|Subscription active/i.test(panelSrc),
+    );
+  }
+
+  // Production gate still enforced on checkout
+  {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const blocked = await startCheckout({ userId: 'web:prod-block' });
+    process.env.NODE_ENV = prevEnv;
+    ok(
+      'production gate preserved on checkout',
+      !blocked.ok && blocked.error === BILLING_ERROR_CODES.PRODUCTION_BLOCKED && !blocked.granted,
+    );
+  }
+
+  setBillingProviderForTests(null);
+}
+
 // Secret / IBAN client scan
 {
   function walk(dir, out = []) {

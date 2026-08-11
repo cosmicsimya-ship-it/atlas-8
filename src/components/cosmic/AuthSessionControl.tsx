@@ -363,6 +363,10 @@ export default function AuthSessionControl({
                   plan={session?.plan}
                   hasLara={Boolean(session?.entitlements?.['voice.lara'])}
                   onClose={() => setPremiumOpen(false)}
+                  onEntitlementsChange={async () => {
+                    const next = await ensureAtlasSession();
+                    setSession(next);
+                  }}
                 />
               </div>
             </div>,

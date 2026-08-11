@@ -1,30 +1,38 @@
 /**
  * Minimal Atlas Premium panel — uses Cosmic Simya visual language.
  * Does not start live payment unless server reports liveCheckoutEnabled.
+ * Live sandbox: navigates to provider paymentPageUrl (no iframe invention).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   fetchBillingConfig,
+  isSafePaymentPageUrl,
   startPremiumCheckout,
   type AtlasBillingConfig,
 } from '../../services/atlas-billing';
-import { fetchEntitlements } from '../../services/atlas-entitlements';
+import { ensureAtlasSession } from '../../utils/atlas-session';
+
+type PanelState = 'idle' | 'initializing' | 'redirecting' | 'dry-run' | 'error';
 
 export default function PremiumPlanPanel({
   plan,
   hasLara,
   onClose,
+  onEntitlementsChange,
 }: {
   plan?: string | null;
   hasLara?: boolean;
   onClose?: () => void;
+  onEntitlementsChange?: () => void | Promise<void>;
 }) {
   const [config, setConfig] = useState<AtlasBillingConfig | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [panelState, setPanelState] = useState<PanelState>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const checkoutLock = useRef(false);
   const isPremium = plan === 'premium';
+  const busy = panelState === 'initializing' || panelState === 'redirecting';
 
   useEffect(() => {
     let cancelled = false;
@@ -44,34 +52,68 @@ export default function PremiumPlanPanel({
     ? `${config.product.displayPrice} / ay`
     : null;
 
+  async function refreshLocalAuth() {
+    try {
+      await ensureAtlasSession();
+      await onEntitlementsChange?.();
+    } catch {
+      /* ignore — result page / next session load will refresh */
+    }
+  }
+
   async function onCheckout() {
-    setBusy(true);
+    if (checkoutLock.current || busy || isPremium) return;
+    checkoutLock.current = true;
+    setPanelState('initializing');
     setError(null);
     setMessage(null);
     try {
+      // Empty body only — never send amount/currency/tier from client.
       const result = await startPremiumCheckout();
       if (!result.ok) {
+        setPanelState('error');
         setError(result.error?.message || 'Checkout başlatılamadı.');
+        checkoutLock.current = false;
         return;
       }
+
       if (result.dryRun || !result.liveCheckoutEnabled) {
+        setPanelState('dry-run');
         setMessage(
-          'Premium ödeme altyapısı hazır (test/dry-run). Canlı ücretlendirme bu ortamda kapalı.',
+          'Premium ödeme altyapısı hazır (test/dry-run). Canlı sandbox ücreti bu ortamda kapalı.',
         );
+        await refreshLocalAuth();
+        checkoutLock.current = false;
         return;
       }
-      setMessage(result.message || 'Ödeme sayfasına yönlendiriliyorsunuz…');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Checkout hatası.');
-    } finally {
-      setBusy(false);
-      try {
-        await fetchEntitlements();
-      } catch {
-        /* ignore */
+
+      const url = result.paymentPageUrl;
+      if (!isSafePaymentPageUrl(url)) {
+        setPanelState('error');
+        setError(
+          'Ödeme sayfası alınamadı. Canlı checkout yanıtında güvenli paymentPageUrl yok.',
+        );
+        checkoutLock.current = false;
+        return;
       }
+
+      setPanelState('redirecting');
+      setMessage('Ödeme sayfasına yönlendiriliyorsunuz…');
+      // Keep lock through navigation; page unload clears it.
+      window.location.assign(String(url));
+    } catch (e) {
+      setPanelState('error');
+      setError(e instanceof Error ? e.message : 'Checkout hatası.');
+      checkoutLock.current = false;
     }
   }
+
+  const buttonLabel =
+    panelState === 'initializing'
+      ? 'Hazırlanıyor…'
+      : panelState === 'redirecting'
+        ? 'Yönlendiriliyor…'
+        : "Premium'a Geç";
 
   return (
     <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-left">
@@ -119,7 +161,7 @@ export default function PremiumPlanPanel({
           Plan: Premium
           {hasLara ? ' · Lara Voice' : ''}
           {' · '}
-          Subscription active
+          Dönem aktif
         </p>
       ) : (
         <button
@@ -128,7 +170,7 @@ export default function PremiumPlanPanel({
           onClick={onCheckout}
           className="mt-3 w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs text-[#e8ecf2] transition hover:bg-white/10 disabled:opacity-50"
         >
-          {busy ? 'Hazırlanıyor…' : "Premium'a Geç"}
+          {buttonLabel}
         </button>
       )}
 

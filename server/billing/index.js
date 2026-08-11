@@ -13,6 +13,9 @@ export {
   setBillingProviderForTests,
   getManualBankTransferExtensionPoint,
   handleIyzicoCheckoutCallback,
+  assertCheckoutPriceInvariant,
+  parseRequiredAmount,
+  parseRequiredCurrency,
 } from './service.js';
 export {
   getBillingConfig,

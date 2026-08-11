@@ -42,3 +42,42 @@ export function hasEntitlement(
 ): boolean {
   return Boolean(payload?.entitlements?.[capability]);
 }
+
+export function isPremiumPlan(payload: AtlasEntitlementsPayload | null | undefined): boolean {
+  return payload?.plan === 'premium';
+}
+
+/**
+ * Bounded entitlement refresh for payment-return race (server grant vs UI load).
+ * Does not poll forever — fixed short attempts only.
+ */
+export async function fetchEntitlementsWithRetry(opts?: {
+  attempts?: number;
+  delayMs?: number;
+  preferPremium?: boolean;
+}): Promise<AtlasEntitlementsPayload> {
+  const attempts = Math.max(1, Math.min(opts?.attempts ?? 3, 5));
+  const delayMs = Math.max(0, opts?.delayMs ?? 400);
+  const preferPremium = Boolean(opts?.preferPremium);
+
+  let last: AtlasEntitlementsPayload | null = null;
+  let lastError: unknown = null;
+
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const data = await fetchEntitlements();
+      last = data;
+      if (!preferPremium || isPremiumPlan(data)) {
+        return data;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+    if (i < attempts - 1 && delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  if (last) return last;
+  throw lastError instanceof Error ? lastError : new Error('Entitlement refresh failed');
+}

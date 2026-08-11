@@ -124,7 +124,8 @@ export function createBillingRouter(deps = {}) {
         });
       }
 
-      // Ignore client plan / paymentSuccess tampering
+      // Ignore client amount/price/currency/plan/entitlement/paymentSuccess tampering.
+      // Canonical premium price comes only from server pricing config.
       const forwarded = req.headers?.['x-forwarded-for'];
       const clientIp =
         (typeof forwarded === 'string' && forwarded) ||
@@ -133,7 +134,7 @@ export function createBillingRouter(deps = {}) {
         null;
       const result = await startCheckout({
         userId: req.auth.userId,
-        email: req.auth.email || req.body?.email || null,
+        email: req.auth.email || null,
         displayName: req.auth.displayName || null,
         clientIp,
       });

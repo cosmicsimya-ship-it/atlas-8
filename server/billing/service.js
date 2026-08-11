@@ -43,6 +43,113 @@ function amountsEqual(a, b) {
 }
 
 /**
+ * Fail-closed amount parse — null/undefined/''/NaN/non-finite → null.
+ * @param {unknown} value
+ * @returns {number|null}
+ */
+export function parseRequiredAmount(value) {
+  if (value == null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+/**
+ * Fail-closed currency parse — missing/empty → null.
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function parseRequiredCurrency(value) {
+  const c = String(value ?? '')
+    .trim()
+    .toUpperCase();
+  return c || null;
+}
+
+/**
+ * Three-way amount + currency gate before entitlement grant.
+ * provider == session == canonical; any missing/mismatch → reject.
+ * @param {{
+ *   providerAmount: unknown,
+ *   providerCurrency: unknown,
+ *   sessionAmount: unknown,
+ *   sessionCurrency: unknown,
+ *   canonicalAmount: unknown,
+ *   canonicalCurrency?: unknown,
+ * }} input
+ * @returns {{ ok: true } | { ok: false, error: string, message: string }}
+ */
+export function assertCheckoutPriceInvariant(input) {
+  const canonicalAmount = parseRequiredAmount(input.canonicalAmount);
+  const canonicalCurrency = parseRequiredCurrency(input.canonicalCurrency ?? 'TRY');
+  const sessionAmount = parseRequiredAmount(input.sessionAmount);
+  const sessionCurrency = parseRequiredCurrency(input.sessionCurrency);
+  const providerAmount = parseRequiredAmount(input.providerAmount);
+  const providerCurrency = parseRequiredCurrency(input.providerCurrency);
+
+  if (canonicalAmount == null || !canonicalCurrency) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.NOT_CONFIGURED,
+      message: 'Premium fiyat yapılandırılmamış.',
+    };
+  }
+
+  if (sessionAmount == null || !amountsEqual(sessionAmount, canonicalAmount)) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+      message: 'Checkout oturumu tutarı kanonik fiyat ile eşleşmiyor.',
+    };
+  }
+
+  if (!sessionCurrency || sessionCurrency !== canonicalCurrency) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.CURRENCY_MISMATCH,
+      message: 'Checkout oturumu para birimi kanonik değer ile eşleşmiyor.',
+    };
+  }
+
+  if (providerAmount == null) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+      message: 'Sağlayıcı ödeme tutarı eksik.',
+    };
+  }
+
+  if (
+    !amountsEqual(providerAmount, sessionAmount) ||
+    !amountsEqual(providerAmount, canonicalAmount)
+  ) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+      message: 'Ödeme tutarı eşleşmiyor.',
+    };
+  }
+
+  if (!providerCurrency) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.CURRENCY_MISMATCH,
+      message: 'Sağlayıcı para birimi eksik.',
+    };
+  }
+
+  if (providerCurrency !== sessionCurrency || providerCurrency !== canonicalCurrency) {
+    return {
+      ok: false,
+      error: BILLING_ERROR_CODES.CURRENCY_MISMATCH,
+      message: 'Ödeme para birimi eşleşmiyor.',
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
  * Apply a verified payment / subscription event to canonical subscription store.
  * @param {{
  *   userId: string,
@@ -175,11 +282,12 @@ export async function startCheckout(account) {
   const publicCfg = getPublicBillingConfig();
 
   if (result.ok && result.token) {
+    // Session always stores server-canonical price — never provider/client overrides.
     createCheckoutSession({
       token: result.token,
       userId,
-      amount: Number(result.meta?.amount ?? amount),
-      currency: String(result.meta?.currency || currency).toUpperCase(),
+      amount: Number(amount),
+      currency: String(currency).toUpperCase(),
       conversationId: result.meta?.conversationId || userId,
       status: 'pending',
     });
@@ -220,19 +328,29 @@ export async function startCheckout(account) {
 }
 
 /**
- * Server-side verify — ignores client paymentSuccess/paid.
- * Requires pending checkout session + provider retrieve SUCCESS + amount/currency/user match.
+ * Server-side verify — ignores client paymentSuccess/paid/amount/currency/tier.
+ * Requires pending checkout session + provider retrieve SUCCESS +
+ * fail-closed three-way amount/currency (provider == session == canonical) + user match.
  * @param {{ userId: string, body: object }} input
  */
 export async function verifyClientPaymentClaim(input) {
   const userId = String(input.userId || '').trim();
   const bodyIn = input.body && typeof input.body === 'object' ? input.body : {};
 
-  // Completely ignore client-claimed success flags
+  // Completely ignore client-claimed success / price / entitlement fields
   const body = { ...bodyIn };
   delete body.paymentSuccess;
   delete body.paid;
   delete body.success;
+  delete body.amount;
+  delete body.price;
+  delete body.currency;
+  delete body.tier;
+  delete body.plan;
+  delete body.premium;
+  delete body.entitlement;
+  delete body.entitlements;
+  delete body.subscription;
 
   const token = String(body.token || '').trim();
 
@@ -285,9 +403,7 @@ export async function verifyClientPaymentClaim(input) {
     raw: {
       ...body,
       userId,
-      // Pass expected amount for fixture tests; real retrieve supplies its own
-      amount: body.amount,
-      currency: body.currency,
+      // Client amount/currency intentionally omitted — provider retrieve is authoritative.
     },
   });
 
@@ -313,28 +429,24 @@ export async function verifyClientPaymentClaim(input) {
     };
   }
 
-  if (verified.amount != null && !amountsEqual(verified.amount, session.amount)) {
-    updateCheckoutSession(token, { status: 'failed' });
-    return {
-      ok: false,
-      paid: false,
-      granted: false,
-      error: BILLING_ERROR_CODES.AMOUNT_MISMATCH,
-      message: 'Ödeme tutarı eşleşmiyor.',
-    };
-  }
+  const cfg = getBillingConfig();
+  const priceGate = assertCheckoutPriceInvariant({
+    providerAmount: verified.amount,
+    providerCurrency: verified.currency,
+    sessionAmount: session.amount,
+    sessionCurrency: session.currency,
+    canonicalAmount: cfg.pricing.monthlyPrice,
+    canonicalCurrency: cfg.pricing.currency || 'TRY',
+  });
 
-  if (
-    verified.currency &&
-    String(verified.currency).toUpperCase() !== String(session.currency).toUpperCase()
-  ) {
+  if (!priceGate.ok) {
     updateCheckoutSession(token, { status: 'failed' });
     return {
       ok: false,
       paid: false,
       granted: false,
-      error: BILLING_ERROR_CODES.CURRENCY_MISMATCH,
-      message: 'Ödeme para birimi eşleşmiyor.',
+      error: priceGate.error,
+      message: priceGate.message,
     };
   }
 
