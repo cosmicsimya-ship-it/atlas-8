@@ -21,6 +21,7 @@ export {
   buildEvidenceMeaningPromptLock,
   detectEvidenceMeaningSignals,
   EVIDENCE_MEANING_VERSION,
+  replyHasUnsupportedMotiveAttribution,
   replyViolatesEvidenceBoundary,
 } from './evidence-meaning-boundaries.js';
 
@@ -757,6 +758,7 @@ export function applyNarrowReflexPostGuard(reply, opts = {}) {
   const evidenceGuard = applyEvidenceMeaningPostGuard(text, {
     casual: false,
     signals: evidenceSignals,
+    message: opts.message || '',
   });
   if (evidenceGuard.hits.length) {
     hits.push(...evidenceGuard.hits);

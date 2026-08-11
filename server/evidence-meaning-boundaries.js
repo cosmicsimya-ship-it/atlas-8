@@ -6,9 +6,10 @@
  *
  * Chain: SOURCE EVIDENCE → DOMAIN INTERPRETATION → INFERENCE → OBSERVABLE SCENARIO
  * Shared theme allowed; unsupported shared cause not.
+ * Relationship specialization: OBSERVED BEHAVIOR ≠ INTERNAL MOTIVE.
  */
 
-export const EVIDENCE_MEANING_VERSION = 'atlas-evidence-meaning-v1';
+export const EVIDENCE_MEANING_VERSION = 'atlas-evidence-meaning-v1.1';
 
 /** Explicit request for traditional / spiritual / symbolic framing. */
 const SPIRITUAL_MODE_RE =
@@ -42,6 +43,8 @@ const PSYCH_OVERCLAIM_RES = [
   /\b(nept[uü]n|pl[uü]ton|sat[uü]rn|uran[uü]s|tutulma).{0,50}(ger[cç]eklik\s+alg[ıi]s[ıi]|alg[ıi]s[ıi]nda\s+bulan|depresif\s+yapar|psikoz|bozukluk|klinik)/i,
   /\bger[cç]eklik\s+alg[ıi]s[ıi](nda|n[ıi])?\s+(bulan[ıi]kla[sş]t[ıi]r|bozar|yok\s+eder)/i,
   /\b(transit|astroloj).{0,40}(depresyon\s+yap|ruhsal\s+hastal|klinik\s+tan)/i,
+  /\b(ven[uü]s.?sat[uü]rn|sat[uü]rn.?ven[uü]s|ven[uü]s\s*[-–]\s*sat[uü]rn).{0,60}(ba[gğ]lanma\s+kork|ba[gğ]lanmaktan\s+kork|korkuyor)/i,
+  /\b(transit|astroloj).{0,50}(ba[gğ]lanma\s+korkusunu\s+g[oö]ster|ba[gğ]lanmaktan\s+kork(uyor|tu[gğ]unu))/i,
 ];
 
 /** Tarot / symbol → other person's actual mind as fact. */
@@ -49,6 +52,8 @@ const TAROT_MIND_FACT_RES = [
   /\b(kart|tarot).{0,40}(onu\s+d[uü][sş][uü]nd[uü][gğ][uü]n[uü]|seni\s+d[uü][sş][uü]n[uü]yor|geri\s+d[oö]nece[gğ]ini)\s+(kan[ıi]tl|g[oö]ster|ispat)/i,
   /\b(evet[,.]?\s+)?(seni\s+d[uü][sş][uü]n[uü]yor|onu\s+d[uü][sş][uü]n[uü]yor)\b(?!.{0,20}(olabilir|tema|yorum))/i,
   /\bkart\s+.{0,30}(zihnini|niyetini)\s+(okur|g[oö]sterir|kan[ıi]tlar)/i,
+  /\b(kupa\s+alt[ıi]l|tarot|kart).{0,80}(unutam[ıi]yor|unutamad[ıi][gğ][ıi])\b/i,
+  /\b(demek|yani)\s+beni\s+unutam[ıi]yor\b/i,
 ];
 
 /** Dream → deterministic future event. */
@@ -56,7 +61,99 @@ const DREAM_PROPHECY_RES = [
   /\br[uü]ya.{0,40}(kesin(likle)?\s+)?(yeni\s+d[oö]neme?\s+gir|gelecekte\s+\w+\s+olacak|kehanet)/i,
   /\bkap[ıi].{0,30}(kesin(likle)?\s+)?(yeni\s+d[oö]nem|gelecek\s+olay)/i,
   /\br[uü]ya\s+tek\s+ba[sş][ıi]na.{0,20}(g[oö]sterir|kan[ıi]tlar)\s+ki/i,
+  /\br[uü]ya(mda|nda)?.{0,50}(o\s+da\s+seni\s+d[uü][sş][uü]n|seni\s+d[uü][sş][uü]nd[uü][gğ][uü]n[uü]\s+g[oö]ster)/i,
+  /\br[uü]yada\s+g[oö]rmen.{0,40}(d[uü][sş][uü]nd[uü][gğ][uü]n[uü]|d[uü][sş][uü]n[uü]yor)/i,
 ];
+
+/** Observable relationship behavior (not internal motive). */
+const RELATIONSHIP_BEHAVIOR_RE =
+  /\b(uzakla[sş]|geri\s+(gel|d[oö]n|yaz)|yeniden\s+(ileti[sş]im|temas|yaz)|yakla[sş]ma\s*[-–]?\s*uzakla[sş]|mesaj(ımı|ini|i)?\s+g[oö]r|hik[aâ]ye(lerimi|lerini)?\s+(izle|bak)|cevap\s+verm|temas\s+(yok|kes|d[uü][sş])|gidip\s+(gidip\s+)?geri|bir\s+g[uü]n\s+s[ıi]cak|so[gğ]uk\s+bir\s+g[uü]n|tekrar\s+(uzak|yaz|d[oö]n)|d[oö]ng[uü]sel\s+(mesafe|temas|ileti[sş]im)|ileti[sş]im\s+kurdu)\b/i;
+
+/** User asks for motive / feeling / certainty from behavior. */
+const MOTIVE_ATTRIBUTION_ASK_RE =
+  /\b(neden\s+(geri|uzak|yap[ıi]yor|yaz[ıi]yor)|niye\s+(yap|geri|yaz|gid)|ne\s+hissediyor|k[ıi]skan[ıi]yor\s*mu|unutamad[ıi][gğ][ıi]\s+kesin|en\s+g[uü][cç]l[uü]\s+ihtimal|ba[gğ]lanma\s+korkusu\s*mu|ba[gğ]lanmaktan\s+kork|beni\s+istemese|ba[gğ][ıi]n[ıi]n\s+g[uü][cç]l[uü]|duygusu\s+var\s+demek|gurur\s+mu\s+yap|beni\s+d[uü][sş][uü]nmese|korkuyor\s+olabilir\s*m[ıiuü]|kaybetmek\s+istemedi[gğ]i|sence\s+.{0,40}(neden|niye|kork|k[ıi]skan|hiss|unut)|demek\s+beni\s+unut|geri\s+geliyor\s+sence)\b/i;
+
+/** Pattern-detection asks (strong pattern OK; motive not). */
+const RELATIONSHIP_PATTERN_ASK_RE =
+  /\b([oö]r[uü]nt[uü]\s+var\s*m[ıi]|ger[cç]ekten\s+bir\s+[oö]r[uü]nt[uü]|tekrarlayan\s+(davran[ıi][sş]|[oö]r[uü]nt[uü])|davran[ıi][sş]\s+[oö]r[uü]nt)/i;
+
+/** Direct reported motive / causal statement from the other person. */
+const DIRECT_MOTIVE_EVIDENCE_RE =
+  /([oö]zledi[gğ]im\s+i[cç]in\s+yazd[ıi]m|yaln[ıi]z\s+kald[ıi][gğ][ıi]mda.{0,20}yaz|yak[ıi]nl[ıi]k\s+beni\s+korkutuyor|o\s+y[uü]zden\s+ka[cç][ıi]yorum)/i;
+
+const DIRECT_MOTIVE_REPORT_FRAME_RE =
+  /\b(diyor|s[oö]yl[uü]yor|demi[sş]|yazd[ıi]\s+ki|ifade\s+edi)/i;
+
+/**
+ * Unsupported internal-motive language commonly invented from behavior alone.
+ * Not a blacklist gate by itself — used with structural checks.
+ */
+const UNSUPPORTED_MOTIVE_LANG_RES = [
+  /\bi[cç]sel\s+(bir\s+)?[cç]ekim\b/i,
+  /\b[cç][oö]z[uü]lmemi[sş]\s+(bir\s+)?ihtiya[cç]/i,
+  /\bg[uü]ven\s+aray[ıi][sş][ıi]?\b/i,
+  /\bs[ıi]n[ıi]r(lar([ıi]n[ıi])?)?\s+test\b/i,
+  /\bba[gğ]l[ıi]l[ıi]k\s+karma[sş]/i,
+  /\bba[gğ]lanma\s+korku/i,
+  /\bba[gğ]lanmaktan\s+kork/i,
+  /\bba[gğ][ıi]n[ıi]\s+s[uü]rd[uü]rme\s+iste/i,
+  /\bi[cç](sel|indeki)\s+karars[ıi]zl[ıi]k/i,
+  /\bseni\s+b[ıi]rakam[ıi]yor\b/i,
+  /\bseni\s+b[ıi]rakamad/i,
+  /\bseni\s+[oö]zl[uü]yor\b/i,
+  /\bk[ıi]skan[ıi]yor\b/i,
+  /\bseni\s+test\s+ediyor\b/i,
+  /\bgurur\s+yap[ıi]yor\b/i,
+  /\bkaybetmek\s+istemiyor\b/i,
+  /\bseni\s+merak\s+ediyor\b/i,
+  /\bbilin[cç]sizce\s+.{0,20}[cç]ekiliyor\b/i,
+  /\bduygular[ıi]ndan\s+korkuyor\b/i,
+  /\breddedilmekten\s+korkuyor\b/i,
+  /\bkontrol[uü]\s+kaybetmek\s+istemiyor\b/i,
+  /\bunutamad[ıi][gğ][ıi]\s+(kesin|bell[ií]|[cç]ok\s+bell)/i,
+  /\bh[aâ]l[aâ]\s+duygusu\s+var\b/i,
+  /\bseni\s+unutam[ıi]yor\b/i,
+  /\basl[ıi]nda\s+seni\s+([cç]ok\s+)?(seviyor|istiyor)\b/i,
+  /\bseni\s+[cç]ok\s+seviyor\s+ama\s+korkuyor\b/i,
+  /\bbilin[cç]li\s+ya\s+da\s+bilin[cç]siz\s+bir\s+ihtiya[cç]/i,
+];
+
+/** Certainty / strongest-motive pressure language in replies. */
+const MOTIVE_CERTAINTY_RES = [
+  /\b(unutamad[ıi][gğ][ıi]|b[ıi]rakamad[ıi][gğ][ıi]|[oö]zledi[gğ]i)\s+(kesin|bell[ií]|[cç]ok\s+a[cç][ıi]k)/i,
+  /\bkesin(likle)?\s+(seni\s+)?(unutam[ıi]yor|b[ıi]rakam[ıi]yor|[oö]zl[uü]yor|k[ıi]skan[ıi]yor)/i,
+  /\ben\s+(g[uü][cç]l[uü]|y[uü]ksek)\s+(ihtimal|olas[ıi]l[ıi]k).{0,40}(ba[gğ]lanma|korku|[oö]zlem|b[ıi]rakama)/i,
+  /\ben\s+g[uü][cç]l[uü]\s+ihtimal\s+.+\s+i[cç]in\s+geri\s+geliyor/i,
+];
+
+const CALIBRATED_MOTIVE_FRAME_RE =
+  /\b(birkaç\s+(olas[ıi]l[ıi]k|a[cç][ıi]klama)|birden\s+fazla|gibi\s+birkaç|se[cç]emeyiz|kesin(likle)?\s+(belirlenemez|[cç][ıi]karamay[ıi]z|bilemeyiz)|tek\s+ba[sş][ıi]na\s+bu\s+(davran[ıi][sş]|[oö]r[uü]nt[uü]).{0,30}(se[cç]emey|g[oö]stermez|kan[ıi]tlamaz)|ay[ıi]rt\s+(edici|etmek)|mevcut\s+(veri|bilgi).{0,40}(se[cç]emey|belirlenemez))\b/i;
+
+const MOTIVE_REPAIR_REPLY =
+  ' Burada gördüğümüz şey tekrarlayan bir yaklaşma–uzaklaşma davranışı; örüntü davranış düzeyinde okunabilir. Ama bunun nedenini yalnızca bu davranıştan tek bir iç motivasyona bağlayamayız. İlgi veya merakın sürmesi, kararsızlık, alışkanlık, yalnızlık ya da ilişkiyi tamamen koparmama gibi birkaç açıklama mümkün. Dönüşte ne söylediği ve sonrasında davranışının nasıl sürdüğü bunları ayırt etmek için daha güçlü veri olur.';
+
+const FEELING_REPAIR_REPLY =
+  ' Bu davranış temasın tamamen kesilmediğini gösterebilir ama tek başına ne hissettiğini söylemez. Merak, alışkanlık, mesafeyi koruyarak takip etme veya başka nedenler olabilir; bunları ayırt etmek için daha fazla gözlenebilir veri gerekir.';
+
+function thirdPartyFeelingInReply(text) {
+  return /\b(k[ıi]skan[ıi]yor|ne\s+hissediyor|gurur\s+yap[ıi]yor|ba[gğ]lanma\s+kork|seni\s+unutam|seni\s+[oö]zl[uü]yor)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function pickMotiveRepairReply(signals, message = '') {
+  const ask = String(message || '');
+  if (/\b(ne\s+hissediyor|hik[aâ]ye|cevap\s+verm|k[ıi]skan[ıi]yor|gurur\s+mu)/i.test(ask)) {
+    return FEELING_REPAIR_REPLY;
+  }
+  if (
+    signals?.relationshipBehaviorPresent &&
+    !/\b(uzakla[sş]|geri\s+(gel|d[oö]n)|yakla[sş]ma)/i.test(ask)
+  ) {
+    // Still OK to use approach-distance frame if corpus had it; default repair is fine.
+  }
+  return MOTIVE_REPAIR_REPLY;
+}
 
 /** Numerology / repetition → universe metaphysical causation. */
 const META_CAUSE_RES = [
@@ -104,6 +201,22 @@ export function detectEvidenceMeaningSignals(message, opts = {}) {
     (/\b(tarot|kart).{0,40}(yak[ıi]nla[sş]|ba[gğ])/i.test(text) &&
       /\b(reddet|istemiyor|istemedi|temas\s+yok)/i.test(corpus));
 
+  const relationshipBehaviorPresent = RELATIONSHIP_BEHAVIOR_RE.test(corpus);
+  const motiveAttributionPressure =
+    MOTIVE_ATTRIBUTION_ASK_RE.test(text) || RELATIONSHIP_PATTERN_ASK_RE.test(text);
+  const directMotiveEvidencePresent =
+    DIRECT_MOTIVE_EVIDENCE_RE.test(corpus) && DIRECT_MOTIVE_REPORT_FRAME_RE.test(corpus);
+  const thirdPartyFeelingAsk =
+    /\b(ne\s+hissediyor|k[ıi]skan[ıi]yor\s*m[uü]|gurur\s+mu\s+yap|ba[gğ]lanmaktan\s+korkuyor|beni\s+unutam|duygusu\s+var\s+demek)/i.test(
+      text,
+    );
+  const relationshipMotiveLock =
+    thirdPartyFeelingAsk ||
+    (relationshipBehaviorPresent &&
+      (motiveAttributionPressure ||
+        MOTIVE_ATTRIBUTION_ASK_RE.test(corpus) ||
+        /\b(ne\s+hissediyor|k[ıi]skan[ıi]yor|ba[gğ]lanma\s+kork|unutamad)/i.test(text)));
+
   const needsEvidenceMeaningLock =
     !directDomainQuestion &&
     (coincidenceCausePressure ||
@@ -111,6 +224,7 @@ export function detectEvidenceMeaningSignals(message, opts = {}) {
       hijriChronologyPresent ||
       spiritualModeRequested ||
       contradictionPriority ||
+      relationshipMotiveLock ||
       /\b(tutulma|transit|astroloj|tarot|r[uü]ya|numerol|g[uü]nl[uü]k\s+hayatta|senaryo)/i.test(
         text,
       ));
@@ -123,6 +237,10 @@ export function detectEvidenceMeaningSignals(message, opts = {}) {
     coincidenceCausePressure,
     hijriChronologyPresent,
     contradictionPriority,
+    relationshipBehaviorPresent,
+    motiveAttributionPressure,
+    directMotiveEvidencePresent,
+    relationshipMotiveLock,
     needsEvidenceMeaningLock,
     allowHijriSymbolicTheme: spiritualModeRequested,
   };
@@ -222,6 +340,24 @@ export function buildEvidenceMeaningPromptLock(signals, extra = {}) {
       'Layer conflict: if observable refusal/behavior contradicts symbolic closeness, state the tension; do not force one narrative.',
     );
   }
+  if (signals.relationshipMotiveLock || signals.relationshipBehaviorPresent) {
+    lines.push(
+      'RELATIONSHIP: OBSERVED BEHAVIOR ≠ INTERNAL MOTIVE.',
+      'Strong pattern description is allowed (approach–distance repeats, unstable contact).',
+      'Do NOT invent a single psychological story (içsel çekim, bağlanma korkusu, sınır testi, seni bırakamıyor, etc.) from behavior alone.',
+      'If user asks why: offer several plausible explanations, keep them hypothetical, and name what evidence would distinguish them.',
+      'Qualifiers (olabilir/muhtemelen) do not make an unsupported motive the main answer.',
+      'Do not rank a "strongest motive" unless observable evidence actually distinguishes.',
+      'Evidence weight: repeated behavior > direct reported statement > stable context > symbolic > speculative motive.',
+      'User-reported statements from the person may be used as stated evidence — still not independently verified inner state.',
+      'Never print OBSERVED/MOTIVE/UNKNOWN labels unless user asks for structured analysis.',
+    );
+  }
+  if (signals.directMotiveEvidencePresent) {
+    lines.push(
+      'Direct motive statement present: you may cite it as their reported reason; do not upgrade it to absolute certainty or invent extra motives.',
+    );
+  }
   if (extra.astrologyGrounded) {
     lines.push(
       'Astrology: separate astronomical input / traditional interpretation / real-world hypothesis.',
@@ -235,11 +371,44 @@ export function buildEvidenceMeaningPromptLock(signals, extra = {}) {
 }
 
 /**
+ * Structural check: unsupported motive story from behavior (qualifiers alone do not save).
+ * @param {string} reply
+ * @param {{
+ *   signals?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
+ *   allowSupported?: boolean,
+ * }} [opts]
+ */
+export function replyHasUnsupportedMotiveAttribution(reply, opts = {}) {
+  const text = String(reply || '');
+  if (!text.trim()) return false;
+  const signals = opts.signals || null;
+  if (signals?.directDomainQuestion) return false;
+  if (opts.allowSupported !== false && signals?.directMotiveEvidencePresent) {
+    // Supported motive may mention reported feelings; only fail hard certainty / invented extras stacked as fact.
+    return MOTIVE_CERTAINTY_RES.some((re) => re.test(text));
+  }
+  const hasMotiveLang = UNSUPPORTED_MOTIVE_LANG_RES.some((re) => re.test(text));
+  const hasCertainty = MOTIVE_CERTAINTY_RES.some((re) => re.test(text));
+  if (!hasMotiveLang && !hasCertainty) return false;
+  if (CALIBRATED_MOTIVE_FRAME_RE.test(text) && !hasCertainty) {
+    // Calibrated multi-hypothesis frame without certainty — OK even if motive words appear as options.
+    const primarySingle =
+      /\b(asıl|gerçek|aslında|temel)\s+neden.{0,40}(korku|[oö]zlem|[cç]ekim|ihtiya[cç]|ba[gğ]lanma)/i.test(
+        text,
+      ) ||
+      /\bbunun\s+nedeni\s+(onun\s+)?(korku|[oö]zlem|ba[gğ]lanma|i[cç]sel)/i.test(text);
+    return primarySingle;
+  }
+  return true;
+}
+
+/**
  * Soften beautiful-nonsense unsupported bridges without sterilizing synthesis.
  * @param {string} reply
  * @param {{
  *   signals?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
  *   casual?: boolean,
+ *   message?: string,
  * }} [opts]
  */
 export function applyEvidenceMeaningPostGuard(reply, opts = {}) {
@@ -280,19 +449,37 @@ export function applyEvidenceMeaningPostGuard(reply, opts = {}) {
   replaceSentences(
     PSYCH_OVERCLAIM_RES,
     'psychology_overclaim',
-    ' Astrolojik yorumda bu tema belirsizlik veya netlik arayışıyla ilişkilendirilebilir; klinik bir gerçeklik bozulması iddiası değildir.',
+    (sentence) => {
+      if (
+        /ba[gğ]lanmaktan\s+kork|ba[gğ]lanma\s+kork|korkuyor/i.test(sentence) &&
+        /ven[uü]s|sat[uü]rn|transit|astroloj/i.test(sentence)
+      ) {
+        return ' Venüs–Satürn astrolojik yorumda mesafe, sınır veya çekingenlik temalarıyla ilişkilendirilebilir; karşı tarafın gerçek bağlanma korkusunu buradan çıkaramayız.';
+      }
+      return ' Astrolojik yorumda bu tema belirsizlik veya netlik arayışıyla ilişkilendirilebilir; klinik bir gerçeklik bozulması iddiası değildir.';
+    },
   );
 
   replaceSentences(
     TAROT_MIND_FACT_RES,
     'tarot_mind_reading',
-    ' Kart bunu kanıtlamaz. Tarot açısından bağlantı veya duygusal yönelim teması yorumlanabilir; karşı tarafın gerçek zihinsel durumunu buradan bilemeyiz.',
+    (sentence) => {
+      if (/unutam/i.test(sentence)) {
+        return ' Kart ve davranış tematik olarak örtüşebilir; bu, karşı tarafın seni unutamadığını kanıtlamaz.';
+      }
+      return ' Kart bunu kanıtlamaz. Tarot açısından bağlantı veya duygusal yönelim teması yorumlanabilir; karşı tarafın gerçek zihinsel durumunu buradan bilemeyiz.';
+    },
   );
 
   replaceSentences(
     DREAM_PROPHECY_RES,
     'dream_deterministic',
-    ' Rüya sembolü geçiş/eşik temasıyla yorumlanabilir, ama tek başına gelecekte belirli bir olayın olacağını göstermez.',
+    (sentence) => {
+      if (/d[uü][sş][uü]n/i.test(sentence) && /r[uü]ya/i.test(sentence)) {
+        return ' Rüya ile sonraki mesaj senin deneyiminde eşzamanlılık hissi yaratabilir; onun da seni düşündüğünü buradan çıkaramayız.';
+      }
+      return ' Rüya sembolü geçiş/eşik temasıyla yorumlanabilir, ama tek başına gelecekte belirli bir olayın olacağını göstermez.';
+    },
   );
 
   if (!spiritualOk) {
@@ -351,6 +538,62 @@ export function applyEvidenceMeaningPostGuard(reply, opts = {}) {
     });
   }
 
+  // Relationship: OBSERVED BEHAVIOR ≠ INTERNAL MOTIVE (post-generation semantic repair)
+  const motiveActive =
+    signals?.relationshipMotiveLock === true ||
+    signals?.relationshipBehaviorPresent === true ||
+    signals?.motiveAttributionPressure === true ||
+    RELATIONSHIP_BEHAVIOR_RE.test(text) ||
+    thirdPartyFeelingInReply(text);
+  if (
+    motiveActive &&
+    signals?.directDomainQuestion !== true &&
+    replyHasUnsupportedMotiveAttribution(text, { signals })
+  ) {
+    hits.push('relationship_unsupported_motive');
+    const keepPatternSentences = [];
+    text = text.replace(/[^.!?…\n]+[.!?…]?/g, (sentence) => {
+      const s = sentence.trim();
+      if (!s) return sentence;
+      const isPatternOnly =
+        /\b([oö]r[uü]nt[uü]|yakla[sş]ma|uzakla[sş]|tekrar|d[oö]ng[uü]|davran[ıi][sş]\s+d[uü]zey|temas[ıi]n\s+istikrar)/i.test(
+          s,
+        ) && !UNSUPPORTED_MOTIVE_LANG_RES.some((re) => re.test(s)) && !MOTIVE_CERTAINTY_RES.some((re) => re.test(s));
+      if (isPatternOnly) {
+        keepPatternSentences.push(sentence);
+        return sentence;
+      }
+      if (
+        UNSUPPORTED_MOTIVE_LANG_RES.some((re) => re.test(s)) ||
+        MOTIVE_CERTAINTY_RES.some((re) => re.test(s)) ||
+        /\b(ihtiya[cç]|korku|karars[ıi]zl[ıi]k|s[ıi]n[ıi]r\s+test|[cç]ekim|ba[gğ]l[ıi]l[ıi]k)\b/i.test(s)
+      ) {
+        return '';
+      }
+      return sentence;
+    });
+    text = text.replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+    if (!CALIBRATED_MOTIVE_FRAME_RE.test(text) || !text.trim()) {
+      const prefix = keepPatternSentences.length
+        ? `${keepPatternSentences.join(' ').trim()}`
+        : text.trim();
+      const repair = pickMotiveRepairReply(signals, opts.message || '');
+      text = `${prefix}${repair}`.replace(/^\s+/, '').replace(/\s{2,}/g, ' ');
+    } else if (!/\bay[ıi]rt\s+(edici|etmek)|daha\s+g[uü][cç]l[uü]\s+veri/i.test(text)) {
+      text = `${text.trim()} Dönüşte ne söylediği ve sonrasında davranışının nasıl sürdüğü bunları ayırt etmek için daha güçlü veri olur.`;
+    }
+  } else if (
+    motiveActive &&
+    signals?.directMotiveEvidencePresent &&
+    MOTIVE_CERTAINTY_RES.some((re) => re.test(text))
+  ) {
+    hits.push('relationship_motive_overcertainty');
+    text = text.replace(/[^.!?…\n]+[.!?…]?/g, (sentence) => {
+      if (!MOTIVE_CERTAINTY_RES.some((re) => re.test(sentence))) return sentence;
+      return ' Kendi ifadesine göre bu bir dönüş nedeni olabilir; yine de tek başına kesin iç durum kanıtı değildir.';
+    });
+  }
+
   return {
     reply: text,
     hits,
@@ -361,10 +604,13 @@ export function applyEvidenceMeaningPostGuard(reply, opts = {}) {
 /**
  * Semantic assertions for tests — structure, not mere qualifier presence.
  * @param {string} reply
- * @param {'hijri_effect'|'psych_overclaim'|'tarot_mind'|'dream_prophecy'|'meta_cause'|'paranormal_synthesis'} kind
+ * @param {'hijri_effect'|'psych_overclaim'|'tarot_mind'|'dream_prophecy'|'meta_cause'|'paranormal_synthesis'|'relationship_motive'} kind
  */
 export function replyViolatesEvidenceBoundary(reply, kind) {
   const text = String(reply || '');
+  if (kind === 'relationship_motive') {
+    return replyHasUnsupportedMotiveAttribution(text);
+  }
   const map = {
     hijri_effect: HIJRI_UNSUPPORTED_EFFECT_RES,
     psych_overclaim: PSYCH_OVERCLAIM_RES,
