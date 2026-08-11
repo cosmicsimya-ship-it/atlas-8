@@ -57,6 +57,7 @@ export default function Chat() {
   const autoRetriedTurnsRef = useRef<Set<string>>(new Set());
   const emptyStateSeenRef = useRef(false);
   const firstMessageTrackedRef = useRef(false);
+  const discoveryUsedRef = useRef(false);
 
   const isEmpty = messages.length === 0;
 
@@ -103,6 +104,7 @@ export default function Chat() {
         setInput('');
         emptyStateSeenRef.current = false;
         firstMessageTrackedRef.current = false;
+        discoveryUsedRef.current = false;
       }
       sessionUserIdRef.current = nextId;
     };
@@ -370,8 +372,12 @@ export default function Chat() {
 
     if (!firstMessageTrackedRef.current && messages.length === 0) {
       firstMessageTrackedRef.current = true;
-      trackDiscoverability('first_message_sent', { traceCount: 0 });
-      trackDiscoverability('first_message_without_trace', { traceCount: 0 });
+      const usedDiscovery = discoveryUsedRef.current;
+      trackDiscoverability('first_message_sent', { usedDiscovery });
+      trackDiscoverability(
+        usedDiscovery ? 'first_message_with_discovery' : 'first_message_without_discovery',
+        { usedDiscovery },
+      );
     }
 
     await sendTurn(payload);
@@ -448,13 +454,28 @@ export default function Chat() {
           aria-label="Konuşma"
         >
           {isEmpty ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-end gap-0 pb-1 pt-2 text-center sm:justify-center">
-              <AtlasCorePresence state={loading ? 'thinking' : 'idle'} />
-              <p className="mt-5 max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/90 sm:mt-7 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
+            <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col items-center justify-end gap-0 overflow-y-auto pb-2 pt-6 text-center sm:justify-center sm:pt-2">
+              <p className="max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/92 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
                 {discoveryCopy.emptyInvite.line1}
               </p>
               {backendReady !== false && (
-                <PatternGapTraces className="mt-2.5 sm:mt-3" />
+                <PatternGapTraces
+                  className="mt-5 mb-1 sm:mt-6 sm:mb-2"
+                  onSelect={(question, composerText) => {
+                    discoveryUsedRef.current = true;
+                    setInput(composerText);
+                    trackDiscoverability('discovery_question_selected', {
+                      id: question.id,
+                    });
+                    requestAnimationFrame(() => {
+                      const el = textareaRef.current;
+                      if (!el) return;
+                      el.focus();
+                      const len = composerText.length;
+                      el.setSelectionRange(len, len);
+                    });
+                  }}
+                />
               )}
             </div>
           ) : (

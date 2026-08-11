@@ -1,47 +1,69 @@
 /**
- * A15 — Pattern Gap: lived "iz" pool for empty-state discoverability.
- * Human language only. No engine / product surface names.
+ * Empty-state discovery questions — natural language only.
+ * Internal intents (if present) are never shown or serialized into the composer.
  */
 
-export type PatternTraceId =
-  | 'tekrar'
-  | 'tarih'
-  | 'kisi'
-  | 'ruya'
-  | 'celiski'
-  | 'sembol'
-  | 'donem'
-  | 'secim';
+export type DiscoveryQuestionId =
+  | 'date'
+  | 'pattern'
+  | 'repeat'
+  | 'person'
+  | 'contradiction';
 
-export type PatternTrace = {
-  id: PatternTraceId;
-  /** Visible human label */
-  label: string;
-  /** Marker token carried into composer context (not a full sentence) */
-  marker: string;
+export type DiscoveryQuestion = {
+  id: DiscoveryQuestionId;
+  /** User-visible question — fills composer as-is */
+  text: string;
+  /**
+   * Optional routing hint. Never rendered, never written into messages.
+   * @internal
+   */
+  intent?: string;
 };
 
-/** Controlled pool — never show engine names. */
-export const PATTERN_TRACE_POOL: readonly PatternTrace[] = [
-  { id: 'tekrar', label: 'tekrar', marker: 'tekrar' },
-  { id: 'tarih', label: 'tarih', marker: 'tarih' },
-  { id: 'kisi', label: 'kişi', marker: 'kişi' },
-  { id: 'ruya', label: 'rüya', marker: 'rüya' },
-  { id: 'celiski', label: 'çelişki', marker: 'çelişki' },
-  { id: 'sembol', label: 'sembol', marker: 'sembol' },
-  { id: 'donem', label: 'dönem', marker: 'dönem' },
-  { id: 'secim', label: 'seçim', marker: 'seçim' },
+/**
+ * Fixed empty-state set — no session rotation on this surface.
+ * Distinct meaning fields; no repeated verb/pattern.
+ */
+export const DISCOVERY_QUESTION_POOL: readonly DiscoveryQuestion[] = [
+  {
+    id: 'date',
+    text: 'Bu tarih neden karşıma çıkıyor?',
+    intent: 'tarih',
+  },
+  {
+    id: 'pattern',
+    text: 'Asıl örüntü ne?',
+    intent: 'oruntu',
+  },
+  {
+    id: 'repeat',
+    text: 'Bu tesadüf mü, yoksa bir tekrar mı?',
+    intent: 'tekrar',
+  },
+  {
+    id: 'person',
+    text: 'Bu kişi neden yeniden gündeme geldi?',
+    intent: 'kisi',
+  },
+  {
+    id: 'contradiction',
+    text: 'Söylediğiyle yaptığı neden çelişiyor?',
+    intent: 'celiski',
+  },
 ] as const;
 
-export const PATTERN_GAP_VISIBLE_COUNT = 3;
+/** Fixed composition order for the empty-state surface. */
+export const EMPTY_STATE_DISCOVERY_QUESTIONS: readonly DiscoveryQuestion[] =
+  DISCOVERY_QUESTION_POOL;
 
-export const SESSION_TRACES_KEY = 'atlas.pattern_gap.visible_traces.v1';
+export const DISCOVERY_VISIBLE_COUNT = EMPTY_STATE_DISCOVERY_QUESTIONS.length;
 
-/** Soft multi-select prompts — question form, no auto-link claim. */
-export const CONVERGENCE_HINTS = [
-  'Bunları birlikte ele al.',
-  'Bunlar aynı yere mi bakıyor?',
-] as const;
+/** @deprecated Use DISCOVERY_VISIBLE_COUNT */
+export const PATTERN_GAP_VISIBLE_COUNT = DISCOVERY_VISIBLE_COUNT;
+
+/** Default empty-state composer placeholder (visible layer). */
+export const PATTERN_GAP_PLACEHOLDER = 'Aklındakini anlat…';
 
 /**
  * Placeholder candidates scored 1–5 on:
@@ -115,19 +137,7 @@ export function scorePlaceholder(scores: {
   );
 }
 
-/** Default empty-state composer placeholder (visible layer). */
-export const PATTERN_GAP_PLACEHOLDER = 'Aklındakini anlat…';
-
-function hashSeed(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-/** Deterministic shuffle — stable for a given seed. */
+/** Deterministic shuffle — kept for non-empty-state utilities/tests. */
 export function seededShuffle<T>(items: readonly T[], seed: string): T[] {
   const out = [...items];
   let state = hashSeed(seed) || 1;
@@ -139,76 +149,30 @@ export function seededShuffle<T>(items: readonly T[], seed: string): T[] {
   return out;
 }
 
-function readSessionStorage(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
+function hashSeed(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
   }
+  return h >>> 0;
 }
 
-function writeSessionStorage(key: string, value: string): void {
-  try {
-    sessionStorage.setItem(key, value);
-  } catch {
-    /* private mode / quota — fall through in-memory only */
-  }
+/**
+ * Empty-state discovery questions — fixed set, no session rotation.
+ */
+export function getEmptyStateDiscoveryQuestions(): DiscoveryQuestion[] {
+  return [...EMPTY_STATE_DISCOVERY_QUESTIONS];
 }
 
-function resolveSessionSeed(): string {
-  const existing = readSessionStorage('atlas.pattern_gap.session_seed.v1');
-  if (existing) return existing;
-  const seed =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  writeSessionStorage('atlas.pattern_gap.session_seed.v1', seed);
-  return seed;
+/**
+ * @deprecated Use getEmptyStateDiscoveryQuestions — rotation is off on this surface.
+ */
+export function getSessionVisibleDiscoveryQuestions(): DiscoveryQuestion[] {
+  return getEmptyStateDiscoveryQuestions();
 }
 
-/** Session-stable visible traces (max 3). New browser session → controlled variation. */
-export function getSessionVisibleTraces(
-  count: number = PATTERN_GAP_VISIBLE_COUNT,
-): PatternTrace[] {
-  const cached = readSessionStorage(SESSION_TRACES_KEY);
-  if (cached) {
-    try {
-      const ids = JSON.parse(cached) as PatternTraceId[];
-      if (Array.isArray(ids) && ids.length === count) {
-        const mapped = ids
-          .map((id) => PATTERN_TRACE_POOL.find((t) => t.id === id))
-          .filter((t): t is PatternTrace => Boolean(t));
-        if (mapped.length === count) return mapped;
-      }
-    } catch {
-      /* recompute */
-    }
-  }
-
-  const seed = resolveSessionSeed();
-  const picked = seededShuffle(PATTERN_TRACE_POOL, seed).slice(0, count);
-  writeSessionStorage(SESSION_TRACES_KEY, JSON.stringify(picked.map((t) => t.id)));
-  return picked;
-}
-
-export function getSessionConvergenceHint(): string {
-  const seed = resolveSessionSeed();
-  return CONVERGENCE_HINTS[hashSeed(seed) % CONVERGENCE_HINTS.length];
-}
-
-/** Format selected markers for send payload — not a full sentence. */
-export function formatTraceMarkers(traces: PatternTrace[]): string {
-  if (!traces.length) return '';
-  return traces.map((t) => `[${t.marker}]`).join(' ');
-}
-
-export function composeMessageWithTraces(
-  userText: string,
-  traces: PatternTrace[],
-): string {
-  const body = userText.trim();
-  const markers = formatTraceMarkers(traces);
-  if (!markers) return body;
-  if (!body) return markers;
-  return `${markers}\n${body}`;
+/** Public text only — never includes intent / markers. */
+export function discoveryQuestionToComposerText(question: DiscoveryQuestion): string {
+  return question.text.trim();
 }

@@ -1,3 +1,5 @@
+import { useId } from 'react';
+
 import { cn } from '../../utils/cn';
 
 interface AtlasCorePresenceProps {
@@ -7,14 +9,17 @@ interface AtlasCorePresenceProps {
 }
 
 /**
- * Register Core — brightest object in the conversation field.
- * Layered planes with soft cyan seam; 5s intelligence breath.
+ * Register aperture — quiet observation mark for the conversation field.
+ * Incomplete orbits + alignment ticks; not an AI orb / loading glyph.
  */
 export default function AtlasCorePresence({
   className,
   state = 'idle',
 }: AtlasCorePresenceProps) {
   const thinking = state === 'thinking';
+  const uid = useId().replace(/:/g, '');
+  const edgeId = `atlas-aperture-edge-${uid}`;
+  const seamId = `atlas-aperture-seam-${uid}`;
 
   return (
     <div
@@ -27,106 +32,110 @@ export default function AtlasCorePresence({
     >
       <div
         className={cn(
-          'absolute inset-[8%] rounded-full',
-          'bg-[radial-gradient(circle,rgba(126,182,255,0.22),rgba(59,130,246,0.06)_48%,transparent_72%)]',
-          'blur-xl transition-opacity duration-700',
-          thinking ? 'opacity-100' : 'opacity-80',
+          'absolute inset-[18%] rounded-full',
+          'bg-[radial-gradient(circle,rgba(126,182,255,0.10),transparent_68%)]',
+          'blur-2xl transition-opacity duration-700',
+          thinking ? 'opacity-90' : 'opacity-55',
         )}
       />
 
       <svg
-        className="relative h-full w-full drop-shadow-[0_0_28px_rgba(126,182,255,0.35)]"
+        className="relative h-full w-full"
         viewBox="0 0 280 280"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
-          <linearGradient id="corePlane" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#e8f4ff" stopOpacity="0.42" />
-            <stop offset="45%" stopColor="#7eb6ff" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.06" />
+          <linearGradient id={edgeId} x1="0.15" y1="0" x2="0.9" y2="1">
+            <stop offset="0%" stopColor="#dceeff" stopOpacity="0.42" />
+            <stop offset="55%" stopColor="#8aa4c0" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#4a6a8a" stopOpacity="0.05" />
           </linearGradient>
-          <linearGradient id="coreSeam" x1="0" y1="0.5" x2="1" y2="0.5">
+          <linearGradient id={seamId} x1="0" y1="0.5" x2="1" y2="0.5">
             <stop offset="0%" stopColor="#8eeafa" stopOpacity="0" />
-            <stop offset="48%" stopColor="#8eeafa" stopOpacity={thinking ? 0.85 : 0.55} />
-            <stop offset="52%" stopColor="#8eeafa" stopOpacity={thinking ? 0.85 : 0.55} />
+            <stop offset="48%" stopColor="#8eeafa" stopOpacity={thinking ? 0.7 : 0.38} />
+            <stop offset="52%" stopColor="#8eeafa" stopOpacity={thinking ? 0.7 : 0.38} />
             <stop offset="100%" stopColor="#8eeafa" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="coreEdge" x1="0.2" y1="0" x2="0.9" y2="1">
-            <stop offset="0%" stopColor="#dceeff" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#4a6a8a" stopOpacity="0.08" />
           </linearGradient>
         </defs>
 
-        {/* Outer plane — slightly misaligned */}
-        <ellipse
-          cx="140"
-          cy="142"
-          rx="108"
-          ry="102"
-          stroke="url(#coreEdge)"
+        {/* Outer incomplete orbit */}
+        <path
+          d="M 54 168 A 118 104 0 0 1 226 96"
+          stroke={`url(#${edgeId})`}
           strokeWidth="0.7"
-          fill="none"
-          opacity="0.45"
-          transform="rotate(-4 140 142)"
-        />
-
-        {/* Mid glass plane */}
-        <path
-          d="M 148 72 L 218 118 L 192 198 L 108 168 Z"
-          fill="url(#corePlane)"
-          stroke="rgba(200,220,240,0.2)"
-          strokeWidth="0.5"
-          opacity="0.85"
-          className={thinking ? 'motion-safe:animate-[atlas-plane-drift_2.2s_ease-in-out_infinite]' : undefined}
-        />
-
-        {/* Inner arc fragment */}
-        <path
-          d="M 98 148 A 72 86 0 0 1 228 168"
-          stroke="url(#coreEdge)"
-          strokeWidth="1.1"
           strokeLinecap="round"
           fill="none"
-          opacity="0.5"
+          opacity="0.55"
         />
 
-        {/* Cyan seam — register alignment */}
-        <line
-          x1="88"
-          y1="138"
-          x2="192"
-          y2="132"
-          stroke="url(#coreSeam)"
-          strokeWidth="1"
-          strokeLinecap="round"
-        />
-
-        {/* Lower plane shard */}
-        <path
-          d="M 118 188 L 168 158 L 198 212 L 142 238 Z"
-          fill="rgba(126,182,255,0.06)"
-          stroke="rgba(142,234,250,0.18)"
-          strokeWidth="0.45"
-          opacity="0.7"
-        />
-
-        {/* Slow orbit trace */}
+        {/* Counter orbit — misaligned, dashed */}
         <g
           className={
             thinking
-              ? 'motion-safe:animate-[atlas-orbit-slow_12s_linear_infinite] origin-center [transform-box:fill-box] [transform-origin:140px_140px]'
-              : 'motion-safe:animate-[atlas-orbit-slow_24s_linear_infinite] origin-center [transform-box:fill-box] [transform-origin:140px_140px]'
+              ? 'motion-safe:animate-[atlas-orbit-slow_18s_linear_infinite] origin-center [transform-box:fill-box] [transform-origin:140px_140px]'
+              : 'motion-safe:animate-[atlas-orbit-slow_32s_linear_infinite] origin-center [transform-box:fill-box] [transform-origin:140px_140px]'
           }
         >
           <path
-            d="M 52 168 A 116 88 0 0 1 248 112"
-            stroke="rgba(126,182,255,0.12)"
-            strokeWidth="0.45"
-            strokeDasharray="3 9"
+            d="M 72 92 A 108 92 0 0 1 214 198"
+            stroke="rgba(126,182,255,0.16)"
+            strokeWidth="0.55"
+            strokeDasharray="2.5 11"
+            strokeLinecap="round"
             fill="none"
           />
         </g>
+
+        {/* Inner aperture ring — broken at seam */}
+        <path
+          d="M 102 168 A 48 48 0 1 1 178 112"
+          stroke={`url(#${edgeId})`}
+          strokeWidth="1"
+          strokeLinecap="round"
+          fill="none"
+          opacity="0.7"
+        />
+
+        {/* Soft plane shard — register fragment */}
+        <path
+          d="M 148 78 L 196 118 L 176 168 L 128 142 Z"
+          fill="rgba(200,220,240,0.03)"
+          stroke="rgba(200,220,240,0.14)"
+          strokeWidth="0.45"
+          opacity={thinking ? 0.9 : 0.65}
+          className={
+            thinking
+              ? 'motion-safe:animate-[atlas-plane-drift_2.8s_ease-in-out_infinite]'
+              : undefined
+          }
+        />
+
+        {/* Cyan register seam */}
+        <line
+          x1="96"
+          y1="142"
+          x2="184"
+          y2="136"
+          stroke={`url(#${seamId})`}
+          strokeWidth="0.9"
+          strokeLinecap="round"
+        />
+
+        {/* Alignment ticks */}
+        <line x1="140" y1="58" x2="140" y2="72" stroke="rgba(142,234,250,0.28)" strokeWidth="0.7" strokeLinecap="round" />
+        <line x1="208" y1="140" x2="222" y2="140" stroke="rgba(142,234,250,0.22)" strokeWidth="0.7" strokeLinecap="round" />
+        <line x1="140" y1="208" x2="140" y2="222" stroke="rgba(142,234,250,0.18)" strokeWidth="0.7" strokeLinecap="round" />
+        <line x1="58" y1="140" x2="72" y2="140" stroke="rgba(142,234,250,0.18)" strokeWidth="0.7" strokeLinecap="round" />
+
+        {/* Quiet center point — observation focus */}
+        <circle
+          cx="140"
+          cy="140"
+          r={thinking ? 2.2 : 1.6}
+          fill="rgba(142,234,250,0.55)"
+          className="transition-[r] duration-500"
+        />
       </svg>
     </div>
   );

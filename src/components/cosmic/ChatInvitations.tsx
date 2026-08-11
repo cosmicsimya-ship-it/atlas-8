@@ -1,5 +1,5 @@
 /**
- * @deprecated Replaced by PatternGapTraces (A15). Kept for import safety during transition.
+ * @deprecated Replaced by PatternGapTraces discovery questions. Kept for import safety.
  * Do not use for new UI — engine-named / full-sentence invitations are out of scope.
  */
 export type ChatInvitation = {

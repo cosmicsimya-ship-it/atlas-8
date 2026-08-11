@@ -93,14 +93,12 @@ record(
 // ── P2 Chat start (empty analysis entry) ──────────────────────────────
 record(
   'P2 empty invite',
-  /Neye bakıyoruz\?/.test(discovery) &&
-    /Aklındaki herhangi bir şeyi anlatabilirsin/.test(discovery) &&
-    /Aklındakini anlat/.test(discovery),
+  /Neye bakıyoruz\?/.test(discovery) && /Aklındakini anlat/.test(discovery),
 );
 record(
   'P2 pattern gap editorial',
   /PatternGapTraces/.test(chatPage) &&
-    /discoveryCopy\.emptyInvite/.test(read('src/components/cosmic/PatternGapTraces.tsx')),
+    /getEmptyStateDiscoveryQuestions/.test(read('src/components/cosmic/PatternGapTraces.tsx')),
 );
 record(
   'P2 no engine invitation labels',
@@ -115,6 +113,14 @@ record(
   ) &&
     !/Bunları birlikte ele al/.test(chatPage) &&
     !/Ne taşıyorsun\?/.test(chatPage),
+);
+record(
+  'P2 discovery questions not taxonomy chips',
+  /Asıl örüntü ne\?/.test(read('src/data/pattern-traces.ts')) &&
+    /Bu tesadüf mü, yoksa bir tekrar mı\?/.test(read('src/data/pattern-traces.ts')) &&
+    !/kaçırıyorum/.test(read('src/data/pattern-traces.ts')) &&
+    !/label:\s*'tekrar'/.test(read('src/data/pattern-traces.ts')) &&
+    /setInput\(composerText\)/.test(chatPage),
 );
 
 // ── P3 Tone ───────────────────────────────────────────────────────────

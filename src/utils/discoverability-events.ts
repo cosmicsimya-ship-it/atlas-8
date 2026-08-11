@@ -5,11 +5,10 @@
 
 export type DiscoverabilityEventName =
   | 'empty_state_seen'
-  | 'trace_selected'
-  | 'multiple_traces_selected'
+  | 'discovery_question_selected'
   | 'first_message_sent'
-  | 'first_message_without_trace'
-  | 'first_message_with_trace';
+  | 'first_message_without_discovery'
+  | 'first_message_with_discovery';
 
 export type DiscoverabilityEventPayload = {
   name: DiscoverabilityEventName;

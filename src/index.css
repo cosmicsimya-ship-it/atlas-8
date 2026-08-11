@@ -370,8 +370,11 @@ body {
   .motion-safe\:animate-\[atlas-glow-breathe_5s_ease-in-out_infinite_0\.4s\],
   .motion-safe\:animate-\[atlas-field-drift_16s_ease-in-out_infinite\],
   .motion-safe\:animate-\[atlas-plane-drift_2\.2s_ease-in-out_infinite\],
+  .motion-safe\:animate-\[atlas-plane-drift_2\.8s_ease-in-out_infinite\],
   .motion-safe\:animate-\[atlas-orbit-slow_12s_linear_infinite\],
-  .motion-safe\:animate-\[atlas-orbit-slow_24s_linear_infinite\] {
+  .motion-safe\:animate-\[atlas-orbit-slow_18s_linear_infinite\],
+  .motion-safe\:animate-\[atlas-orbit-slow_24s_linear_infinite\],
+  .motion-safe\:animate-\[atlas-orbit-slow_32s_linear_infinite\] {
     animation: none !important;
   }
 }

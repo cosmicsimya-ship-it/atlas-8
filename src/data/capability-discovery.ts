@@ -115,7 +115,6 @@ export function resolveDiscoveredModules(
 export const discoveryCopy = {
   emptyInvite: {
     line1: 'Neye bakıyoruz?',
-    line2: 'Aklındaki herhangi bir şeyi anlatabilirsin.',
   },
 } as const;
 

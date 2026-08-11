@@ -1,5 +1,5 @@
 /**
- * A15 Pattern Gap — unit checks (no browser).
+ * Empty-state discovery questions — unit checks (no browser).
  * Run: node scripts/test-pattern-gap.mjs
  */
 import { createRequire } from 'node:module';
@@ -41,51 +41,42 @@ function loadTs(rel) {
 
 const pt = loadTs('src/data/pattern-traces.ts');
 
-const poolLabels = pt.PATTERN_TRACE_POOL.map((t) => t.label);
-record('pool size 8', pt.PATTERN_TRACE_POOL.length === 8);
+const pool = pt.DISCOVERY_QUESTION_POOL;
+const poolTexts = pool.map((q) => q.text);
+const fixed = pt.getEmptyStateDiscoveryQuestions();
+
+record('fixed set size 5', pool.length === 5 && fixed.length === 5, String(pool.length));
+record('visible count 5', pt.DISCOVERY_VISIBLE_COUNT === 5);
 record(
-  'pool ids',
-  ['tekrar', 'tarih', 'kisi', 'ruya', 'celiski', 'sembol', 'donem', 'secim'].every((id) =>
-    pt.PATTERN_TRACE_POOL.some((t) => t.id === id),
-  ),
+  'exact empty-state copy',
+  [
+    'Bu tarih neden karşıma çıkıyor?',
+    'Asıl örüntü ne?',
+    'Bu tesadüf mü, yoksa bir tekrar mı?',
+    'Bu kişi neden yeniden gündeme geldi?',
+    'Söylediğiyle yaptığı neden çelişiyor?',
+  ].every((t) => poolTexts.includes(t)) && poolTexts.length === 5,
+);
+record(
+  'removed kaçırıyorum pattern questions',
+  !poolTexts.some((t) => /kaçırıyorum/.test(t)),
+);
+record(
+  'no session rotation on surface',
+  fixed.map((q) => q.id).join() === pool.map((q) => q.id).join() &&
+    pt.getSessionVisibleDiscoveryQuestions().map((q) => q.id).join() ===
+      fixed.map((q) => q.id).join(),
 );
 record(
   'no engine names in pool',
-  !/(numerolog|tarot|natal|dream engine|persona)/i.test(poolLabels.join(' ')),
-);
-
-const a = pt.seededShuffle(pt.PATTERN_TRACE_POOL, 'session-a');
-const b = pt.seededShuffle(pt.PATTERN_TRACE_POOL, 'session-a');
-const c = pt.seededShuffle(pt.PATTERN_TRACE_POOL, 'session-b');
-record(
-  'seeded shuffle stable',
-  a.map((t) => t.id).join() === b.map((t) => t.id).join(),
+  !/(numerolog|tarot|natal|dream engine|persona)/i.test(poolTexts.join(' ')),
 );
 record(
-  'seeded shuffle varies by seed',
-  a.map((t) => t.id).join() !== c.map((t) => t.id).join(),
-);
-
-record('visible count 3', pt.PATTERN_GAP_VISIBLE_COUNT === 3);
-
-const markers = pt.formatTraceMarkers([
-  pt.PATTERN_TRACE_POOL[0],
-  pt.PATTERN_TRACE_POOL[2],
-]);
-record('markers format', markers === '[tekrar] [kişi]', markers);
-
-const composed = pt.composeMessageWithTraces('gece yine aynı rüya', [
-  pt.PATTERN_TRACE_POOL[0],
-  pt.PATTERN_TRACE_POOL[3],
-]);
-record(
-  'compose keeps user sentence',
-  composed === '[tekrar] [rüya]\ngece yine aynı rüya',
-  composed,
-);
-record(
-  'compose without traces is plain',
-  pt.composeMessageWithTraces('sadece yazı', []) === 'sadece yazı',
+  'composer text never includes intent markers',
+  pool.every((q) => {
+    const text = pt.discoveryQuestionToComposerText(q);
+    return text === q.text && !/\[/.test(text) && text !== q.intent;
+  }),
 );
 
 const winner = pt.PLACEHOLDER_CANDIDATES.reduce((best, cur) =>
@@ -101,36 +92,64 @@ record(
   'visible composer placeholder is natural',
   pt.PATTERN_GAP_PLACEHOLDER === 'Aklındakini anlat…',
 );
-record(
-  'old manifesto placeholder not winner',
-  pt.PATTERN_GAP_PLACEHOLDER !== 'Bir işaret getir. Gerisini birlikte okuruz.',
-);
 
 const tracesSrc = readFileSync(resolve(root, 'src/components/cosmic/PatternGapTraces.tsx'), 'utf8');
 const chatSrc = readFileSync(resolve(root, 'src/pages/Chat.tsx'), 'utf8');
 const eventsSrc = readFileSync(resolve(root, 'src/utils/discoverability-events.ts'), 'utf8');
 const discoverySrc = readFileSync(resolve(root, 'src/data/capability-discovery.ts'), 'utf8');
+const dataSrc = readFileSync(resolve(root, 'src/data/pattern-traces.ts'), 'utf8');
 
-record('empty invite subtitle only', /Aklındaki herhangi bir şeyi anlatabilirsin/.test(discoverySrc));
-record('no suggestion surface in PatternGapTraces', !/Önündeki dönem|EMPTY_STATE_SUGGESTIONS|aria-pressed/.test(tracesSrc));
-record('a11y site-focus optional or absent ok', true);
-record('Chat wires PatternGapTraces', /PatternGapTraces/.test(chatSrc));
-record('Chat does not inject markers', !/composeMessageWithTraces/.test(chatSrc));
-record('post-send reveal omitted', !/dayanak güçlenir/.test(chatSrc));
+record('empty invite keeps headline', /Neye bakıyoruz\?/.test(discoverySrc));
+record(
+  'no taxonomy chip labels as standalone pool labels',
+  !/label:\s*'(tekrar|tarih|kişi|çelişki|dönem|seçim)'/.test(dataSrc),
+);
+record(
+  'no marker serialization helpers',
+  !/formatTraceMarkers|composeMessageWithTraces/.test(dataSrc + chatSrc + tracesSrc),
+);
+record(
+  'PatternGapTraces uses fixed empty-state set',
+  /getEmptyStateDiscoveryQuestions/.test(tracesSrc) && /onSelect/.test(tracesSrc),
+);
+record(
+  'PatternGapTraces center-axis composition',
+  /byId\.repeat/.test(tracesSrc) && /byId\.date/.test(tracesSrc) && /byId\.contradiction/.test(tracesSrc),
+);
+record(
+  'no random offset stagger',
+  !/LEFT_STAGGER|RIGHT_STAGGER|translate-x-2\.5|Math\.random/.test(tracesSrc),
+);
+record(
+  'no pill / rounded-full chip wall',
+  !/rounded-full|rounded-2xl|border border|bg-white\/\[0\.0[2-9]\]/.test(tracesSrc),
+);
+record('Chat wires PatternGapTraces with onSelect', /PatternGapTraces[\s\S]*onSelect/.test(chatSrc));
+record(
+  'Chat empty-state has no orbit icon',
+  !/isEmpty \? \([\s\S]*?<AtlasCorePresence[\s\S]*?discoveryCopy\.emptyInvite/.test(chatSrc),
+);
+record(
+  'Chat fills composer without auto-send',
+  /setInput\(composerText\)/.test(chatSrc) &&
+    !/onSelect[\s\S]{0,400}void send\(/.test(chatSrc) &&
+    !/onSelect[\s\S]{0,400}sendTurn\(/.test(chatSrc),
+);
+record(
+  'Chat never injects intent into input',
+  !/question\.intent|setInput\([^)]*intent/.test(chatSrc),
+);
 record(
   'analytics events prepared',
   [
     'empty_state_seen',
-    'trace_selected',
-    'multiple_traces_selected',
+    'discovery_question_selected',
     'first_message_sent',
-    'first_message_without_trace',
-    'first_message_with_trace',
+    'first_message_without_discovery',
+    'first_message_with_discovery',
   ].every((e) => eventsSrc.includes(e)),
 );
 record('no third-party analytics', !/(gtag|plausible|posthog|segment|mixpanel)/i.test(eventsSrc));
-record('no chip wall rounded-full on traces', !/rounded-full/.test(tracesSrc));
-record('no gradient / sparkle in traces', !/gradient|sparkle|particle/i.test(tracesSrc));
 
 console.log(`\n=== ${passed}/${passed + failed} passed ===`);
 if (failed > 0) process.exit(1);
