@@ -57,7 +57,8 @@
     "test:entitlements": "node scripts/test-entitlements.mjs",
     "test:billing": "node scripts/test-billing.mjs",
     "test:cognitive-reflex": "node scripts/test-cognitive-reflex.mjs",
-    "test:evidence-meaning": "node scripts/test-evidence-meaning-boundaries.mjs"
+    "test:evidence-meaning": "node scripts/test-evidence-meaning-boundaries.mjs",
+    "test:pattern-claim": "node scripts/test-pattern-claim-sufficiency.mjs"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",

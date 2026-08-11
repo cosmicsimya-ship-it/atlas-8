@@ -195,7 +195,7 @@ export function detectUnsupportedCausalCompletion(reply) {
   const text = String(reply || '');
   const hits = [];
   const patterns = [
-    [/bilin[cç]alt[ıi].{0,40}(çekiyor|tekrar)/i, 'subconscious_pull'],
+    [/bilin[cç]alt[ıi].{0,40}(çekiyor|tekrar|yans[ıi]ma)/i, 'subconscious_pull'],
     [/[cç]evresel\s+fakt[oö]r/i, 'environmental_factor_invented'],
     [/benzer\s+frekans/i, 'frequency_causation'],
     [/evrenden?\s+(gönder|mesaj|i[sş]aret)/i, 'universe_message'],
@@ -203,6 +203,9 @@ export function detectUnsupportedCausalCompletion(reply) {
     [/kader\s+tekrar/i, 'fate_repetition'],
     [/kesin\s+bir\s+[oö]r[uü]nt/i, 'absolute_pattern'],
     [/bu\s+y[uü]zden\s+geri\s+geliyor/i, 'invented_return_cause'],
+    [/tekrar[ıi]n\s+[iİ]zleri/i, 'pattern_traces_asserted'],
+    [/tesad[uü]ften\s+[oö]te/i, 'beyond_coincidence'],
+    [/ya[sş]am\s+d[oö]ng[uü]s[uü].{0,30}yans[ıi]ma/i, 'life_cycle_reflection'],
   ];
   for (const [re, id] of patterns) {
     if (re.test(text)) hits.push(id);

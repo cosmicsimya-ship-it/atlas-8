@@ -273,7 +273,7 @@ const e2eOk = await processAtlasMessage(
 );
 record(
   'e2e with prior does not force clarify',
-  e2eOk.intent !== 'referent:clarify',
+  e2eOk.intent !== 'referent:clarify' && e2eOk.intent !== 'pattern:clarify',
   `intent=${e2eOk.intent}`,
 );
 

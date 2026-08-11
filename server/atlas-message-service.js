@@ -204,6 +204,12 @@ import {
   REFERENTIAL_SUFFICIENCY_VERSION,
 } from './referential-sufficiency.js';
 import {
+  assessPatternClaimSufficiency,
+  buildPatternClaimPromptLock,
+  applyPatternClaimPostGuard,
+  PATTERN_CLAIM_SUFFICIENCY_VERSION,
+} from './pattern-claim-sufficiency.js';
+import {
   resolveAssistantFollowUp,
   ASSISTANT_FOLLOWUP_VERSION,
 } from './assistant-followup.js';
@@ -1543,6 +1549,70 @@ export async function processAtlasMessage(input, options = {}) {
     selectedOption: followUpResolution.selectedOption || null,
   };
 
+  // Pattern claim sufficiency — PATTERN QUESTION ≠ PATTERN EXISTS.
+  const patternClaim = healthSafety.active
+    ? { active: false, sufficiency: 'sufficient', clarificationNeeded: false }
+    : assessPatternClaimSufficiency({
+        message: originalUserMessage,
+        history,
+        followUpResolved: followUpResolution.resolved === true && followUpResolution.sufficient === true,
+        referentialSufficient: sufficiency.sufficient !== false,
+      });
+  pipelineDebug.patternClaimSufficiency = {
+    version: PATTERN_CLAIM_SUFFICIENCY_VERSION,
+    active: patternClaim.active === true,
+    sufficiency: patternClaim.sufficiency || null,
+    independentEvidenceCount: patternClaim.independentEvidenceCount ?? 0,
+    patternEvidenceType: patternClaim.patternEvidenceType || null,
+    clarificationNeeded: patternClaim.clarificationNeeded === true,
+    interpretationAllowed: patternClaim.interpretationAllowed === true,
+    reason: patternClaim.reason || null,
+  };
+
+  if (
+    !hasImage &&
+    !healthSafety.active &&
+    !preferConvergence &&
+    patternClaim.active &&
+    patternClaim.clarificationNeeded &&
+    patternClaim.question
+  ) {
+    const clarifyReply = patternClaim.question;
+    noteAssistantTurn(conversationId, {
+      reply: clarifyReply,
+      intent: 'pattern:clarify',
+      responseMode: 'clarify',
+      symbolicDomain: symbolicContext.primaryDomain || 'pattern',
+    });
+    return applyPrivacyGuardToResult(
+      {
+        status: 'complete',
+        reply: clarifyReply,
+        intent: 'pattern:clarify',
+        engine: 'pattern-claim-sufficiency',
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          conversationIntent: 'pattern:clarify',
+          responseMode: 'clarify',
+          sufficiencyReason: patternClaim.reason,
+          patternClaimSufficiency: pipelineDebug.patternClaimSufficiency,
+          semanticLayers: pipelineDebug.semanticLayers,
+          referentialSufficiency: pipelineDebug.referentialSufficiency,
+          model: 'deterministic',
+          provider: 'atlas-pattern-claim-sufficiency',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+      },
+      privacyGuardCtx,
+    );
+  }
+
   if (
     !hasImage &&
     !healthSafety.active &&
@@ -2697,6 +2767,13 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
     }
   }
 
+  if (!casualReflexBypass && patternClaim?.active) {
+    const patternLock = buildPatternClaimPromptLock(patternClaim);
+    if (patternLock) {
+      systemPrompt = `${systemPrompt}\n\n${patternLock}`;
+    }
+  }
+
   if (!casualReflexBypass && symbolicContext.active) {
     const symbolicLock = buildSymbolicContextPromptLock(symbolicContext);
     if (symbolicLock) {
@@ -2751,6 +2828,7 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
       casual: casualReflexBypass,
       stance: analyticStance,
       epistemic: epistemicLayers,
+      patternClaim,
     });
     if (synthesisBridge.ran && synthesisBridge.promptBlock) {
       userPrompt = `${userPrompt}\n\n${synthesisBridge.promptBlock}`;
@@ -2961,7 +3039,9 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
         stance: analyticStance,
         epistemic: epistemicLayers,
         evidenceMeaning: evidenceMeaningSignals,
+        patternClaim,
         message,
+        history,
       });
       reply = reflexPost.reply;
     }
@@ -2985,6 +3065,18 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
         pipelineDebug.unsupportedCausalHits = causalGuard.hits;
       }
       reply = causalGuard.reply;
+    }
+
+    // Belt-and-suspenders: pattern claim post-guard after causal softener.
+    if (!casualReflexBypass && patternClaim?.active) {
+      const patternPost = applyPatternClaimPostGuard(reply, {
+        casual: false,
+        assessment: patternClaim,
+      });
+      if (patternPost.hits.length) {
+        pipelineDebug.patternClaimHits = patternPost.hits;
+      }
+      reply = patternPost.reply;
     }
 
     const authorVoiceGuard = applyPersonaGuards(reply, {

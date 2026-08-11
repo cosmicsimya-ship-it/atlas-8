@@ -14,6 +14,12 @@ import {
   buildEvidenceMeaningPromptLock,
   detectEvidenceMeaningSignals,
 } from './evidence-meaning-boundaries.js';
+import {
+  applyPatternClaimPostGuard,
+  buildPatternClaimPromptLock,
+  assessPatternClaimSufficiency,
+  PATTERN_CLAIM_SUFFICIENCY_VERSION,
+} from './pattern-claim-sufficiency.js';
 
 export {
   applyEvidenceMeaningPostGuard,
@@ -25,6 +31,15 @@ export {
   replyViolatesEvidenceBoundary,
 } from './evidence-meaning-boundaries.js';
 
+export {
+  applyPatternClaimPostGuard,
+  assessPatternClaimSufficiency,
+  buildPatternClaimPromptLock,
+  detectPrematurePatternClaims,
+  extractPatternEvidence,
+  isPatternClaimAsk,
+  PATTERN_CLAIM_SUFFICIENCY_VERSION,
+} from './pattern-claim-sufficiency.js';
 const CASUAL_INTENTS = new Set([
   'greeting',
   'how_are_you',
@@ -522,6 +537,7 @@ export function buildReflexStateFromSynthesis(synthesis, opts = {}) {
  *   evidenceMeaning?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
  *   astrologyGrounded?: boolean,
  *   referentialSufficient?: boolean,
+ *   patternClaim?: ReturnType<typeof assessPatternClaimSufficiency>|null,
  * }} [extra]
  */
 export function buildReflexPromptLock(reflex, extra = {}) {
@@ -558,6 +574,7 @@ export function buildReflexPromptLock(reflex, extra = {}) {
       referentialSufficient: extra.referentialSufficient,
     },
   );
+  const patternClaimBlock = buildPatternClaimPromptLock(extra.patternClaim ?? null);
 
   return `
 ## COGNITIVE LOCKS (internal — do not narrate, do not print labels)
@@ -569,9 +586,9 @@ ${stanceLine ? `- stance hint: ${stanceLine}` : ''}
 - Never show H0/H1/H2/H3, advanceAllowed, or stance names to the user.
 ${epistemicBlock ? `\n${epistemicBlock}` : ''}
 ${evidenceMeaningBlock ? `\n${evidenceMeaningBlock}` : ''}
+${patternClaimBlock ? `\n${patternClaimBlock}` : ''}
 `.trim();
 }
-
 /**
  * Stance-only soft lock when CLS did not run.
  * @param {string|null} stance
@@ -687,7 +704,9 @@ function applyEpistemicPostSoftening(text, epistemic, hits) {
  *   stance?: string|null,
  *   epistemic?: ReturnType<typeof detectEpistemicLayers>|null,
  *   evidenceMeaning?: ReturnType<typeof detectEvidenceMeaningSignals>|null,
+ *   patternClaim?: ReturnType<typeof assessPatternClaimSufficiency>|null,
  *   message?: string,
+ *   history?: Array<{role?: string, content?: string}>,
  * }} [opts]
  */
 export function applyNarrowReflexPostGuard(reply, opts = {}) {
@@ -763,6 +782,23 @@ export function applyNarrowReflexPostGuard(reply, opts = {}) {
   if (evidenceGuard.hits.length) {
     hits.push(...evidenceGuard.hits);
     text = evidenceGuard.reply;
+  }
+
+  const patternAssessment =
+    opts.patternClaim ??
+    (opts.message
+      ? assessPatternClaimSufficiency({
+          message: opts.message,
+          history: opts.history || [],
+        })
+      : null);
+  const patternGuard = applyPatternClaimPostGuard(text, {
+    casual: false,
+    assessment: patternAssessment,
+  });
+  if (patternGuard.hits.length) {
+    hits.push(...patternGuard.hits.map((h) => `pattern:${h}`));
+    text = patternGuard.reply;
   }
 
   return {
