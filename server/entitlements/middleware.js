@@ -24,7 +24,21 @@ export function requireCapability(capability, opts = {}) {
   return function entitlementGuard(req, res, next) {
     try {
       const auth = req.auth || {};
-      const resolved = resolveEntitlements(auth);
+      let resolved;
+      try {
+        resolved = resolveEntitlements(auth);
+      } catch {
+        // Fail closed — store/resolve errors never grant Premium capabilities.
+        return res.status(403).json({
+          ok: false,
+          data: null,
+          error: {
+            code: ENTITLEMENT_ERROR_CODES.FORBIDDEN,
+            feature,
+            message: 'Yetki kontrolü başarısız.',
+          },
+        });
+      }
 
       if (!hasCapability(resolved.entitlements, capability)) {
         const needsPremium =
@@ -45,7 +59,7 @@ export function requireCapability(capability, opts = {}) {
             feature,
             message:
               code === ENTITLEMENT_ERROR_CODES.PREMIUM_REQUIRED
-                ? 'Bu özellik Atlas Premium gerektirir.'
+                ? 'Bu özellik Lara Prime gerektirir.'
                 : 'Bu işlem için yetkiniz yok.',
             plan: resolved.plan,
           },
@@ -54,12 +68,13 @@ export function requireCapability(capability, opts = {}) {
 
       req.entitlements = resolved;
       return next();
-    } catch (err) {
-      return res.status(500).json({
+    } catch {
+      return res.status(403).json({
         ok: false,
         data: null,
         error: {
-          code: 'entitlement_error',
+          code: ENTITLEMENT_ERROR_CODES.FORBIDDEN,
+          feature,
           message: 'Yetki kontrolü başarısız.',
         },
       });

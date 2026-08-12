@@ -62,6 +62,7 @@ import {
   loginWithGoogleIdentity,
   logoutSession,
   rateLimitMiddleware,
+  checkRateLimit,
   findAccountByUserId,
   toPublicAccount,
   toSessionProfile,
@@ -70,8 +71,11 @@ import {
 } from './auth/index.js';
 import { mountAtlasLiveRoutes } from './atlas-live/http/atlas-live-routes.js';
 import { createAudioStudioRouter } from './audio-studio-routes.js';
+import { createVoiceRouter } from './voice/index.js';
+import { getVoiceConfig } from './voice/config.js';
 import {
   createEntitlementsRouter,
+  requireVoiceLara,
   buildEntitlementsResponse,
 } from './entitlements/index.js';
 import {
@@ -281,6 +285,41 @@ app.use(
   }),
 );
 
+/** Voice TTS — Premium-gated synthesize; CSRF on POST. */
+function voiceTtsRateLimit(req, res, next) {
+  try {
+    const cfg = getVoiceConfig();
+    const isAnon =
+      Boolean(req.auth?.isAnonymous) ||
+      (Array.isArray(req.auth?.roles) && req.auth.roles.includes('anonymous')) ||
+      (typeof req.auth?.userId === 'string' && req.auth.userId.startsWith('anonymous:'));
+    const max = isAnon ? cfg.anonymousMaxPerMinute : cfg.authenticatedMaxPerMinute;
+    const key = `voice-tts:${req.auth?.userId || req.ip || 'unknown'}`;
+    const result = checkRateLimit(key, { windowMs: 60_000, max });
+    res.setHeader('X-RateLimit-Remaining', String(result.remaining));
+    if (!result.allowed) {
+      res.setHeader('Retry-After', String(Math.ceil(result.retryAfterMs / 1000)));
+      return res.status(429).json({
+        ok: false,
+        data: null,
+        error: { code: 'rate_limited', message: 'Çok fazla istek. Lütfen biraz bekleyin.' },
+      });
+    }
+    return next();
+  } catch {
+    return next();
+  }
+}
+
+app.use(
+  '/api/voice',
+  attachAuthFromSession({ createAnonymous: true }),
+  createVoiceRouter({
+    requireCsrf: requireCsrfProtection,
+    rateLimit: voiceTtsRateLimit,
+    requireVoiceLara: requireVoiceLara(),
+  }),
+);
 
 const entitlementsRateLimit = rateLimitMiddleware({
   windowMs: 60_000,
@@ -1569,7 +1608,7 @@ if (process.env.ATLAS_NO_LISTEN !== '1') {
     console.log(`  Frontend: ${serveFrontend ? '✓ dist/ (same-origin)' : '✗ not served (API-only)'}`);
     console.log('  Auth:   GET/POST /api/auth/session|login|logout|register, OAuth /api/auth/oauth/* (+ legacy /api/auth/google*)');
     console.log('  Admin:  GET /api/admin/me (admin role required)');
-    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*');
+    console.log('  Routes: POST /api/chat, POST /api/atlas/message, GET /api/ai/health, /api/audio/*, /api/voice/*');
     console.log('  SEO:    GET /sitemap.xml, GET /robots.txt');
     console.log('  Memory: ✓ JSON persistence initialized');
     console.log(

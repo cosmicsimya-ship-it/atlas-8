@@ -18,6 +18,10 @@ cosmicsimya.com_*.report.html
 # Runtime persistence — local data, not for repo
 data/user_memory.json
 data/user_memory.json.corrupt.*.json
+data/user_memory_v2.sqlite
+data/user_memory_v2.sqlite-*
+data/user_memory_v2_migration_manifest.json
+data/user_memory.json.pre-v2-migration.*.bak
 data/*.corrupt.*.json
 data/telegram.poll.lock
 data/telegram.heartbeat.json
@@ -36,6 +40,13 @@ data/_auth_test/
 data/_admin_test/
 data/_bad_founder_profile_test.json
 data/_missing_founder_profile_test.json
+data/voice-cache/
 data/subscriptions.json
 data/billing_events.json
 data/billing_checkout_sessions.json
+data/voice-test-artifacts/
+
+# Regenerable voice derivatives (master under voice-assets/source is kept)
+voice-assets/processed/*.wav
+voice-assets/processed/*.inspect.json
+voice-assets/processed/prepare-reference.status.json

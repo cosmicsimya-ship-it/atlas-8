@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "voices": [
+    {
+      "id": "lara",
+      "displayName": "Lara",
+      "provider": "elevenlabs",
+      "languages": ["tr-TR", "en-US", "en-GB"],
+      "gender": "female",
+      "role": "founder",
+      "enabled": true,
+      "isDefault": true,
+      "providerVoiceId": "${ELEVENLABS_LARA_VOICE_ID}",
+      "providerVoiceIds": {
+        "tr-TR": "${ELEVENLABS_LARA_VOICE_ID_TR}",
+        "en-US": "${ELEVENLABS_LARA_VOICE_ID_EN}",
+        "en-GB": "${ELEVENLABS_LARA_VOICE_ID_EN}"
+      },
+      "metadata": {
+        "masterAsset": "voice-assets/source/lara-master.mp3",
+        "identity": "founder-default",
+        "notes": "Same logical Lara identity for TR/EN; per-language IDs optional when multilingual model shares one clone."
+      }
+    }
+  ]
+}
