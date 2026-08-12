@@ -15,7 +15,10 @@ import {
   startGoogleAuth,
   type AtlasSessionInfo,
 } from '../../utils/atlas-session';
-import PremiumPlanPanel from './PremiumPlanPanel';
+import {
+  ATLAS_AUTH_REQUEST_EVENT,
+  consumeAuthReturnPath,
+} from '../../utils/atlas-auth-request';
 
 type AuthMode = 'chooser' | 'login' | 'register';
 
@@ -43,7 +46,6 @@ export default function AuthSessionControl({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [googleConfigured, setGoogleConfigured] = useState(false);
-  const [premiumOpen, setPremiumOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -63,9 +65,9 @@ export default function AuthSessionControl({
         } else if (callback.auth === 'ok') {
           setError(null);
           setOpen(false);
-          // Google / e-posta dönüşünde Atlas sohbetine al
           if (next.authenticated && !next.isAnonymous) {
-            navigate('/atlas', { replace: true });
+            const returnPath = consumeAuthReturnPath();
+            navigate(returnPath || '/atlas', { replace: true });
           }
         }
       })
@@ -75,6 +77,18 @@ export default function AuthSessionControl({
       .then((s) => setGoogleConfigured(Boolean(s.configured)))
       .catch(() => setGoogleConfigured(false));
   }, [navigate]);
+
+  useEffect(() => {
+    const onAuthRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ mode?: AuthMode }>).detail;
+      const nextMode = detail?.mode || 'login';
+      setMode(nextMode === 'chooser' ? 'chooser' : nextMode);
+      setError(null);
+      setOpen(true);
+    };
+    window.addEventListener(ATLAS_AUTH_REQUEST_EVENT, onAuthRequest);
+    return () => window.removeEventListener(ATLAS_AUTH_REQUEST_EVENT, onAuthRequest);
+  }, []);
 
   useEffect(() => {
     if (!autoOpen || session == null) return;
@@ -198,7 +212,8 @@ export default function AuthSessionControl({
       setPasswordConfirm('');
       closeModal();
       if (next.authenticated && !next.isAnonymous) {
-        navigate('/atlas');
+        const returnPath = consumeAuthReturnPath();
+        navigate(returnPath || '/atlas');
       }
     } catch (err) {
       setError(mapAuthError(err));
@@ -288,18 +303,17 @@ export default function AuthSessionControl({
               {displayEmail ? <span className={sessionEmailClass}>{displayEmail}</span> : null}
               {session?.plan && session.plan !== 'guest' ? (
                 <span className={sessionEmailClass}>
-                  Plan: {session.plan === 'premium' ? 'Premium' : 'Free'}
+                  Plan: {session.plan === 'premium' ? 'Lara Prime' : 'Free'}
                   {session.entitlements?.['voice.lara'] ? ' · Lara Voice' : ''}
                 </span>
               ) : null}
               {session?.plan === 'free' || session?.plan === 'premium' ? (
-                <button
-                  type="button"
-                  onClick={() => setPremiumOpen((v) => !v)}
+                <Link
+                  to="/lara-prime"
                   className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
                 >
-                  {session.plan === 'premium' ? 'Premium durumu' : "Premium'a Geç"}
-                </button>
+                  {session.plan === 'premium' ? 'Lara Prime durumu' : 'Lara Prime ✦'}
+                </Link>
               ) : null}
             </div>
             <button
@@ -313,14 +327,13 @@ export default function AuthSessionControl({
               Çıkış Yap
             </button>
             {session?.plan === 'free' || session?.plan === 'premium' ? (
-              <button
-                type="button"
-                onClick={() => setPremiumOpen(true)}
+              <Link
+                to="/lara-prime"
                 className={`${actionBtnClass} sm:hidden`}
-                aria-label={session.plan === 'premium' ? 'Premium durumu' : "Premium'a Geç"}
+                aria-label={session.plan === 'premium' ? 'Lara Prime durumu' : 'Lara Prime'}
               >
-                {session.plan === 'premium' ? 'Premium' : 'Premium+'}
-              </button>
+                {session.plan === 'premium' ? 'Prime' : 'Prime ✦'}
+              </Link>
             ) : null}
           </>
         ) : (
@@ -348,31 +361,6 @@ export default function AuthSessionControl({
           </>
         )}
       </div>
-
-      {premiumOpen && isAccount && typeof document !== 'undefined'
-        ? createPortal(
-            <div
-              className="fixed inset-0 z-[190] flex items-start justify-end bg-black/50 p-4 backdrop-blur-sm sm:items-center sm:justify-center"
-              role="presentation"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) setPremiumOpen(false);
-              }}
-            >
-              <div className="w-full max-w-sm rounded-xl border border-white/10 bg-[#0b0f16] p-1 shadow-xl">
-                <PremiumPlanPanel
-                  plan={session?.plan}
-                  hasLara={Boolean(session?.entitlements?.['voice.lara'])}
-                  onClose={() => setPremiumOpen(false)}
-                  onEntitlementsChange={async () => {
-                    const next = await ensureAtlasSession();
-                    setSession(next);
-                  }}
-                />
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
 
       {open && typeof document !== 'undefined'
         ? createPortal(

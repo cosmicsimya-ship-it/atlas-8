@@ -148,7 +148,6 @@ export function getPublicBillingConfig() {
       'Lara Voice',
       'Türkçe sesli yanıt',
       'İngilizce sesli yanıt',
-      'Premium özellikler',
     ],
   };
 }

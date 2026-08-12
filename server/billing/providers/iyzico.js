@@ -621,7 +621,7 @@ export function createIyzicoBillingProvider(overrides = {}) {
         basketItems: [
           {
             id: String(cfg.pricing.productId || 'atlas_premium_monthly').slice(0, 64),
-            name: String(cfg.pricing.productName || 'Atlas Premium').slice(0, 64),
+            name: String(cfg.pricing.productName || 'Lara Prime').slice(0, 64),
             category1: 'Subscription',
             itemType: 'VIRTUAL',
             price,

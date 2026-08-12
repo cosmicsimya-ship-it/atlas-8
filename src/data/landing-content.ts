@@ -229,6 +229,7 @@ export const landingNav = [
   { label: 'Atlas', to: '/atlas' as const },
   { label: 'Katmanlar', sectionId: 'nereye-bakar' as const },
   { label: 'Nasıl çalışır?', sectionId: 'nasil-calisir' as const },
+  { label: 'Lara Prime', to: '/lara-prime' as const },
   { label: 'Manifesto', to: '/about' as const },
 ];
 

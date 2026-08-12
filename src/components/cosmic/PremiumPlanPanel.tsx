@@ -1,10 +1,11 @@
 /**
- * Minimal Atlas Premium panel — uses Cosmic Simya visual language.
- * Does not start live payment unless server reports liveCheckoutEnabled.
+ * Compact Lara Prime panel — Cosmic Simya visual language.
+ * Internal plan remains `premium`. Checkout body stays empty (server owns price).
  * Live sandbox: navigates to provider paymentPageUrl (no iframe invention).
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   fetchBillingConfig,
   isSafePaymentPageUrl,
@@ -31,7 +32,7 @@ export default function PremiumPlanPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const checkoutLock = useRef(false);
-  const isPremium = plan === 'premium';
+  const isPrime = plan === 'premium';
   const busy = panelState === 'initializing' || panelState === 'redirecting';
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function PremiumPlanPanel({
   }
 
   async function onCheckout() {
-    if (checkoutLock.current || busy || isPremium) return;
+    if (checkoutLock.current || busy || isPrime) return;
     checkoutLock.current = true;
     setPanelState('initializing');
     setError(null);
@@ -80,7 +81,7 @@ export default function PremiumPlanPanel({
       if (result.dryRun || !result.liveCheckoutEnabled) {
         setPanelState('dry-run');
         setMessage(
-          'Premium ödeme altyapısı hazır (test/dry-run). Canlı sandbox ücreti bu ortamda kapalı.',
+          'Lara Prime ödeme altyapısı hazır (test/dry-run). Canlı sandbox bu ortamda kapalı.',
         );
         await refreshLocalAuth();
         checkoutLock.current = false;
@@ -113,19 +114,19 @@ export default function PremiumPlanPanel({
       ? 'Hazırlanıyor…'
       : panelState === 'redirecting'
         ? 'Yönlendiriliyor…'
-        : "Premium'a Geç";
+        : 'Lara Prime’a Geç';
 
   return (
     <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-left">
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="font-display text-sm tracking-[0.12em] text-[#e8ecf2]/90">
-            ATLAS PREMIUM
+            LARA PRIME
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-[#9aa3b2]">
-            {isPremium
-              ? 'Aktif plan · Lara Voice dahil'
-              : 'Lara Voice ve Premium özellikler'}
+            {isPrime
+              ? 'Aktif üyelik · Lara Voice dahil'
+              : 'Atlas’ın ayrıcalıklı deneyimi · Lara Voice'}
           </p>
         </div>
         {onClose ? (
@@ -140,14 +141,11 @@ export default function PremiumPlanPanel({
       </div>
 
       <ul className="mt-3 space-y-1 text-[11px] text-[#c5ccd8]">
-        {(config?.features || [
-          'Lara Voice',
-          'Türkçe sesli yanıt',
-          'İngilizce sesli yanıt',
-          'Premium özellikler',
-        ]).map((f) => (
-          <li key={f}>· {f}</li>
-        ))}
+        {(config?.features || ['Lara Voice', 'Türkçe sesli yanıt', 'İngilizce sesli yanıt']).map(
+          (f) => (
+            <li key={f}>· {f}</li>
+          ),
+        )}
       </ul>
 
       {priceLabel ? (
@@ -156,9 +154,9 @@ export default function PremiumPlanPanel({
         <p className="mt-3 text-[11px] text-[#9aa3b2]">Fiyat sunucu yapılandırmasından gelir.</p>
       )}
 
-      {isPremium ? (
+      {isPrime ? (
         <p className="mt-3 text-[11px] text-[#9aa3b2]">
-          Plan: Premium
+          Lara Prime aktif
           {hasLara ? ' · Lara Voice' : ''}
           {' · '}
           Dönem aktif
@@ -173,6 +171,14 @@ export default function PremiumPlanPanel({
           {buttonLabel}
         </button>
       )}
+
+      <Link
+        to="/lara-prime"
+        className="mt-2 inline-block text-[11px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
+        onClick={onClose}
+      >
+        Lara Prime sayfası
+      </Link>
 
       {message ? <p className="mt-2 text-[11px] text-[#9aa3b2]">{message}</p> : null}
       {error ? <p className="mt-2 text-[11px] text-rose-300/90">{error}</p> : null}

@@ -5,14 +5,17 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import AuthSessionControl from './AuthSessionControl';
 
-const NAV_ITEMS = [
+const NAV_ITEMS: Array<{ to: string; label: string; accent?: boolean }> = [
   { to: '/', label: 'Ana Sayfa' },
+  { to: '/atlas', label: 'Atlas' },
   { to: '/analysis/symbolic', label: 'Sembolik Analiz' },
   { to: '/analysis', label: 'Analiz' },
   { to: '/archive', label: 'Arşiv' },
-  { to: '/atlas', label: 'Atlas' },
+  { to: '/lara-prime', label: 'Lara Prime', accent: true },
   { to: '/about', label: 'Hakkında' },
 ];
+
+const CHAT_MODE_PATHS = ['/atlas', '/analysis/symbolic', '/archive', '/lara-prime'] as const;
 
 interface CosmicNavProps {
   transparent?: boolean;
@@ -46,9 +49,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
   const quiet = chatMode && !scrolled && !open;
 
   const visibleItems = chatMode
-    ? NAV_ITEMS.filter((item) =>
-        ['/', '/atlas', '/analysis/symbolic', '/archive'].includes(item.to),
-      )
+    ? CHAT_MODE_PATHS.map((to) => NAV_ITEMS.find((item) => item.to === to)!).filter(Boolean)
     : NAV_ITEMS;
 
   const isActive = (to: string) =>
@@ -88,9 +89,9 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
           aria-label="Ana menü"
         >
           {visibleItems
-            .filter((item) => !chatMode || item.to !== '/')
             .map((item) => {
               const active = isActive(item.to);
+              const accent = Boolean(item.accent);
               return (
                 <Link
                   key={item.to}
@@ -99,11 +100,24 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                   className={cn(
                     'atlas-focus rounded-full px-3.5 py-2 text-[13px] transition duration-200',
                     active
-                      ? 'bg-white/[0.06] text-[#e8ecf2]'
-                      : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
+                      ? accent
+                        ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
+                        : 'bg-white/[0.06] text-[#e8ecf2]'
+                      : accent
+                        ? 'text-[#c9b37a]/85 hover:bg-[#c9b37a]/08 hover:text-[#e8ecf2]'
+                        : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
                   )}
                 >
-                  {item.label}
+                  {accent ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      {item.label}
+                      <span className="text-[10px] opacity-70" aria-hidden>
+                        ✦
+                      </span>
+                    </span>
+                  ) : (
+                    item.label
+                  )}
                 </Link>
               );
             })}
@@ -133,6 +147,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
           <ul className="space-y-1">
             {visibleItems.map((item) => {
               const active = isActive(item.to);
+              const accent = Boolean(item.accent);
               return (
                 <li key={item.to}>
                   <Link
@@ -141,11 +156,24 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                     className={cn(
                       'atlas-focus flex min-h-12 items-center rounded-xl px-4 text-base transition duration-200',
                       active
-                        ? 'bg-white/[0.06] text-[#e8ecf2]'
-                        : 'text-[#e8ecf2]/80 hover:bg-white/[0.04]',
+                        ? accent
+                          ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
+                          : 'bg-white/[0.06] text-[#e8ecf2]'
+                        : accent
+                          ? 'text-[#c9b37a]/90 hover:bg-[#c9b37a]/08'
+                          : 'text-[#e8ecf2]/80 hover:bg-white/[0.04]',
                     )}
                   >
-                    {item.label}
+                    {accent ? (
+                      <span className="inline-flex items-center gap-2">
+                        {item.label}
+                        <span className="text-[11px] opacity-70" aria-hidden>
+                          ✦
+                        </span>
+                      </span>
+                    ) : (
+                      item.label
+                    )}
                   </Link>
                 </li>
               );

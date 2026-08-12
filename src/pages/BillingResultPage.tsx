@@ -1,6 +1,6 @@
 /**
  * Safe billing result surface — no tokens/secrets in UI.
- * Query status is UX hint only. Premium = server entitlements.
+ * Query status is UX hint only. Lara Prime = server entitlements (plan: premium).
  */
 
 import { useEffect, useState } from 'react';
@@ -21,16 +21,16 @@ const COPY: Record<
   { title: string; body: string }
 > = {
   active: {
-    title: 'Premium aktif',
-    body: 'Sunucu üyeliğinizi doğruladı. Lara Voice ve Premium özellikler hesabınızda açık.',
+    title: 'Lara Prime aktif',
+    body: 'Sunucu üyeliğinizi doğruladı. Lara Voice Lara Prime kapsamında hesabınızda açık.',
   },
   pending: {
     title: 'Ödeme işleniyor',
-    body: 'Ödeme doğrulaması henüz Premium’u açmadı. Kısa süre sonra yenileyin veya Atlas’a dönüp hesabınızı kontrol edin.',
+    body: 'Ödeme doğrulaması henüz Lara Prime’ı açmadı. Kısa süre sonra yenileyin veya Lara Prime sayfasını kontrol edin.',
   },
   failed: {
     title: 'Ödeme doğrulanamadı',
-    body: 'Ödeme tamamlanamadı veya sunucu doğrulaması başarısız. Premium açılmadı.',
+    body: 'Ödeme tamamlanamadı veya sunucu doğrulaması başarısız. Lara Prime açılmadı.',
   },
   canceled: {
     title: 'Ödeme iptal edildi',
@@ -38,7 +38,7 @@ const COPY: Record<
   },
   invalid: {
     title: 'Geçersiz ödeme oturumu',
-    body: 'Checkout oturumu bulunamadı veya eşleşmedi. Premium açılmadı.',
+    body: 'Checkout oturumu bulunamadı veya eşleşmedi. Lara Prime açılmadı.',
   },
   error: {
     title: 'Durum kontrol edilemedi',
@@ -80,11 +80,11 @@ export default function BillingResultPage() {
           setView('active');
           return;
         }
-        // Never promote query success to Premium without server plan.
+        // Never promote query success to Lara Prime without server plan.
         setView(hintFromQuery(queryStatus));
       } catch {
         if (cancelled) return;
-        // Query alone still cannot show Premium.
+        // Query alone still cannot show Lara Prime.
         setView(queryStatus === 'success' ? 'error' : hintFromQuery(queryStatus));
       }
     })();
@@ -103,7 +103,7 @@ export default function BillingResultPage() {
     <CosmicShell>
       <main className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 pb-16 pt-28 md:px-8">
         <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-[#c9b37a]/65">
-          Atlas Premium
+          Lara Prime
         </p>
         <h1 className="mt-4 font-display text-[clamp(1.6rem,4vw,2.2rem)] font-medium tracking-[-0.02em] text-[#e8ecf2]">
           {copy.title}
@@ -112,6 +112,7 @@ export default function BillingResultPage() {
         {entitlements?.plan ? (
           <p className="mt-3 text-[11px] tracking-wide text-[#8b93a3]">
             Sunucu planı: {entitlements.plan}
+            {entitlements.plan === 'premium' ? ' (Lara Prime)' : ''}
             {entitlements.subscriptionStatus
               ? ` · ${entitlements.subscriptionStatus}`
               : ''}
@@ -122,16 +123,16 @@ export default function BillingResultPage() {
         ) : null}
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
-            to="/atlas"
+            to="/lara-prime"
             className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm text-[#e8ecf2] hover:bg-white/10"
           >
-            Atlas’a dön
+            Lara Prime
           </Link>
           <Link
-            to="/"
+            to="/atlas"
             className="rounded-md border border-white/10 px-4 py-2 text-sm text-[#9aa3b2] hover:text-[#e8ecf2]"
           >
-            Ana sayfa
+            Atlas’a dön
           </Link>
         </div>
       </main>

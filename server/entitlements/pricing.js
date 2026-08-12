@@ -36,7 +36,7 @@ export function getPremiumPricingConfig() {
 
   return {
     productId: String(process.env.PREMIUM_PRODUCT_ID || 'atlas_premium_monthly').trim(),
-    productName: String(process.env.PREMIUM_PRODUCT_NAME || 'Atlas Premium').trim(),
+    productName: String(process.env.PREMIUM_PRODUCT_NAME || 'Lara Prime').trim(),
     monthlyPrice,
     currency,
     interval: 'month',
