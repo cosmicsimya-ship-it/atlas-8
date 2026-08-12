@@ -23,9 +23,11 @@ import {
 
 export {
   applyEvidenceMeaningPostGuard,
+  applyMedicalSpiritualClaimGuard,
   assessBridgePermission,
   buildEvidenceMeaningPromptLock,
   detectEvidenceMeaningSignals,
+  detectMedicalSpiritualSignals,
   EVIDENCE_MEANING_VERSION,
   replyHasUnsupportedMotiveAttribution,
   replyViolatesEvidenceBoundary,
@@ -171,6 +173,10 @@ const EPISTEMIC_LAYER_PATTERNS = {
     /\bd[oö]ng[uü]y[uü]\s+k[ıi]r/i,
     /\benerji\b/i,
     /\bniyet\b/i,
+    /\besma\b/i,
+    /\bzikir\b/i,
+    /\bdua\b/i,
+    /\bmanevi\b/i,
   ],
 };
 

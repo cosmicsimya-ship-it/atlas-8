@@ -30,6 +30,13 @@ export const ESMA_CATALOG = Object.freeze([
     orientation: 'içsel selamet ve sakinlik',
   },
   {
+    id: 'safi',
+    arabic: 'الشَّافِي',
+    latin: 'Eş-Şâfî',
+    themes: ['şifa', 'manevi destek', 'huzur', 'sabır'],
+    orientation: 'şifa niyetiyle dua ve manevi sükûnet',
+  },
+  {
     id: 'mumin',
     arabic: 'الْمُؤْمِنُ',
     latin: 'El-Mü’min',
@@ -272,4 +279,12 @@ export const INTENTION_THEME_HINTS = Object.freeze({
   yol: ['yön', 'rehberlik', 'odak'],
   huzur: ['huzur', 'selamet', 'denge'],
   merhamet: ['şefkat', 'merhamet', 'yumuşaklık'],
+  şifa: ['şifa', 'manevi destek', 'huzur', 'sabır'],
+  hastalık: ['şifa', 'sabır', 'huzur', 'manevi destek'],
+  hasta: ['şifa', 'sabır', 'huzur'],
+  ameliyat: ['şifa', 'koruma', 'güven', 'sabır'],
+  böbrek: ['şifa', 'sabır', 'manevi destek'],
+  migren: ['huzur', 'şifa', 'sakinlik'],
+  ağrı: ['şifa', 'sabır', 'huzur'],
+  kanser: ['şifa', 'sabır', 'manevi destek', 'merhamet'],
 });

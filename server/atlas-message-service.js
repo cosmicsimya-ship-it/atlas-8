@@ -150,6 +150,10 @@ import {
   ABJAD_VERIFICATION_VERSION,
 } from './abjad-verification.js';
 import {
+  tryDeterministicDevotionalReply,
+  DEVOTIONAL_RECOMMENDATION_VERSION,
+} from './devotional-recommendation.js';
+import {
   tryDeterministicQuranVerseReply,
   QURAN_VERSE_LOOKUP_VERSION,
   isQuranContextActive,
@@ -1496,6 +1500,49 @@ export async function processAtlasMessage(input, options = {}) {
     }
   }
 
+  // ── Devotional Esma / dua / zikir (before numerology / abjad contamination) ──
+  // Medical context must not invent ebced prerequisites; medical-only stays free.
+  if (!hasImage && !healthSafety.active) {
+    const earlyDevotional = tryDeterministicDevotionalReply({ message, history });
+    if (earlyDevotional?.reply) {
+      noteAssistantTurn(conversationId, {
+        reply: earlyDevotional.reply,
+        intent: `devotional:${earlyDevotional.intent?.subintent || 'esma_recommendation'}`,
+        responseMode: 'direct',
+      });
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: earlyDevotional.reply,
+          intent: `devotional:${earlyDevotional.intent?.subintent || 'esma_recommendation'}`,
+          engine: 'devotional-recommendation',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            devotionalRecommendation: {
+              version: DEVOTIONAL_RECOMMENDATION_VERSION,
+              subintent: earlyDevotional.intent?.subintent || null,
+              medicalContext: earlyDevotional.intent?.medicalContext === true,
+              treatmentClaimRequested:
+                earlyDevotional.intent?.treatmentClaimRequested === true,
+              selected: earlyDevotional.selected || [],
+              followUpRepair: earlyDevotional.intent?.followUpRepair === true,
+            },
+            model: 'deterministic',
+            provider: 'atlas-devotional-recommendation',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
   // ── Personal numerology engine (layered analysis; before short self-profile) ──
   // Follow-ups stay in numerology session — do not fall through to profile resolvers.
   // Multi-layer / convergence asks must not be monopolized by a solo engine.
@@ -2381,6 +2428,41 @@ export async function processAtlasMessage(input, options = {}) {
     // Multi-layer synthesis / dream-primary must not be short-circuited by natal clarifies.
     // Casual deterministic replies (greeting etc.) stay available unless synthesis owns the turn.
     if (!synthesisIntentEarly.wantsSynthesis) {
+      // Devotional Esma / dua / zikir — before ebced; medical context must not invent abjad prereqs.
+      const devotional = tryDeterministicDevotionalReply({ message, history });
+      if (devotional?.reply) {
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: devotional.reply,
+            intent: `devotional:${devotional.intent?.subintent || 'esma_recommendation'}`,
+            engine: 'devotional-recommendation',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              devotionalRecommendation: {
+                version: DEVOTIONAL_RECOMMENDATION_VERSION,
+                subintent: devotional.intent?.subintent || null,
+                medicalContext: devotional.intent?.medicalContext === true,
+                treatmentClaimRequested:
+                  devotional.intent?.treatmentClaimRequested === true,
+                selected: devotional.selected || [],
+                followUpRepair: devotional.intent?.followUpRepair === true,
+              },
+              model: 'deterministic',
+              provider: 'atlas-devotional-recommendation',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
       // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
       const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
       if (abjadDeterministic?.reply) {

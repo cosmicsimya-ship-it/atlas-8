@@ -9,7 +9,7 @@
  * Relationship specialization: OBSERVED BEHAVIOR ≠ INTERNAL MOTIVE.
  */
 
-export const EVIDENCE_MEANING_VERSION = 'atlas-evidence-meaning-v1.1';
+export const EVIDENCE_MEANING_VERSION = 'atlas-evidence-meaning-v1.2';
 
 /** Explicit request for traditional / spiritual / symbolic framing. */
 const SPIRITUAL_MODE_RE =
@@ -601,15 +601,93 @@ export function applyEvidenceMeaningPostGuard(reply, opts = {}) {
   };
 }
 
+/** Unsupported spiritual→medical treatment framing. */
+const MEDICAL_TREATMENT_CLAIM_RES = [
+  /\b(iyile[sş]tirir|tedavi\s+eder|ge[cç]irir|d[uü]zeltir)\b/i,
+  /\bb[oö]bre[gğ]i?\s+(d[uü]zelt|iyile[sş]|onard)/i,
+  /\bkreatinin\w*\s+d[uü][sş][uü]r/i,
+  /\borgan[ıi]\s+iyile[sş]/i,
+  /\bdoktor\s+tedavisinin\s+yerine\b/i,
+  /\b(\d+)\s*(kez|kere|defa).{0,40}(kesin\s+)?(iyile[sş]|ge[cç]er|d[uü]zel)/i,
+  /\bkesin\s+(sonu[cç]|iyile[sş]me|şifa)\b/i,
+];
+
+const MEDICAL_CONTEXT_SIGNAL_RE =
+  /\b(hastal[ıi][kğ]|hasta|yetmezli[gğ]|b[oö]brek|kanser|ameliyat|migren|kronik|kreatinin|doktor|tedavi)\b/i;
+
+const SPIRITUAL_PRACTICE_SIGNAL_RE =
+  /\b(esma|dua|zikir|manevi|[cç]ekil|oku|şifa\s+niyet|ya\s+[şs][aâ]f)/i;
+
+/**
+ * Detect medical + spiritual co-presence for claim calibration (not blocking).
+ * @param {string} message
+ */
+export function detectMedicalSpiritualSignals(message) {
+  const text = String(message || '');
+  return {
+    medicalContext: MEDICAL_CONTEXT_SIGNAL_RE.test(text),
+    spiritualPracticeAsk: SPIRITUAL_PRACTICE_SIGNAL_RE.test(text),
+    treatmentClaimLanguage: MEDICAL_TREATMENT_CLAIM_RES.some((re) => re.test(text)),
+  };
+}
+
+/**
+ * Calibrate unsupported treatment claims in spiritual replies — do not suppress recommendation.
+ * @param {string} reply
+ * @param {{ medicalContext?: boolean, message?: string }} [opts]
+ */
+export function applyMedicalSpiritualClaimGuard(reply, opts = {}) {
+  const original = typeof reply === 'string' ? reply : '';
+  if (!original.trim()) {
+    return { reply: original, hits: [], changed: false };
+  }
+
+  const signals = detectMedicalSpiritualSignals(opts.message || '');
+  const medicalContext = opts.medicalContext === true || signals.medicalContext;
+  const hits = [];
+  let text = original;
+
+  if (!medicalContext && !signals.treatmentClaimLanguage) {
+    return { reply: text, hits, changed: false };
+  }
+
+  for (const re of MEDICAL_TREATMENT_CLAIM_RES) {
+    if (re.test(text)) {
+      hits.push('medical_treatment_claim');
+      break;
+    }
+  }
+
+  if (hits.length) {
+    text = text
+      .replace(/\b(hastal[ıi][gğ][ıi]|b[oö]brek\w*|organ[ıi])\s+(iyile[sş]tirir|d[uü]zeltir|ge[cç]irir|tedavi\s+eder)\b/gi, 'manevi destek olarak okunabilir; tıbbi tedavi iddiası değildir')
+      .replace(/\biyile[sş]tirir\b/gi, 'manevi sükûnet niyetiyle anılabilir')
+      .replace(/\btedavi\s+eder\b/gi, 'tedavi yerine geçmez')
+      .replace(/\bkreatinin\w*\s+d[uü][sş][uü]r\w*/gi, 'lab değerlerini değiştirdiğini söyleyemem')
+      .replace(/\b(\d+)\s*(kez|kere|defa).{0,40}(kesin\s+)?(iyile[sş]|ge[cç]er|d[uü]zel)\w*/gi, 'belirli sayıda okumak iyileşme garantisi vermez')
+      .replace(/\bkesin\s+(sonu[cç]|iyile[sş]me|şifa)\b/gi, 'garanti sonuç değil');
+  }
+
+  // Allowed spiritual framing must remain; only strip hard treatment claims.
+  return {
+    reply: text,
+    hits,
+    changed: text !== original,
+  };
+}
+
 /**
  * Semantic assertions for tests — structure, not mere qualifier presence.
  * @param {string} reply
- * @param {'hijri_effect'|'psych_overclaim'|'tarot_mind'|'dream_prophecy'|'meta_cause'|'paranormal_synthesis'|'relationship_motive'} kind
+ * @param {'hijri_effect'|'psych_overclaim'|'tarot_mind'|'dream_prophecy'|'meta_cause'|'paranormal_synthesis'|'relationship_motive'|'medical_treatment'} kind
  */
 export function replyViolatesEvidenceBoundary(reply, kind) {
   const text = String(reply || '');
   if (kind === 'relationship_motive') {
     return replyHasUnsupportedMotiveAttribution(text);
+  }
+  if (kind === 'medical_treatment') {
+    return MEDICAL_TREATMENT_CLAIM_RES.some((re) => re.test(text));
   }
   const map = {
     hijri_effect: HIJRI_UNSUPPORTED_EFFECT_RES,

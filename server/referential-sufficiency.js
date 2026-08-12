@@ -35,11 +35,20 @@ export function isDirectKnowledgeQuestion(message) {
   if (/^as[ıi]l\s+[oö]r[uü]nt/i.test(text)) return false;
   if (/^bunun\s+sebebi|^yine\s+ayn[ıi]\s+[sş]ey/i.test(text)) return false;
 
-  // Factual / definitional / traditional-meaning / general traits
+  // Factual / definitional / traditional-meaning / general traits / devotional Esma
   if (
     /(?:ba[sş]kent|nedir|nelerdir|ne\s+demek|ne\s+anlama(?:ya)?\s+gelir|anlam[ıi]\s+nedir|temel\s+anlam|genel\s+[oö]zellik|geleneksel\s+olarak|numerolojideki|ne(?:yi)?\s+(?:simgeler|temsil\s+eder)|tarotta\s+\w+|kart(?:[ıi]n[ıi]n|in)?\s+(?:temel\s+)?anlam|r[uü]yada\s+\w+|burcunun\s+genel)/i.test(
       text,
     )
+  ) {
+    return true;
+  }
+  // Esma / dua / zikir recommendation — answerable without personal name/ebced
+  if (
+    /\b(hangi\s+esma|esma.{0,20}([cç]ek|oku)|şifa.{0,20}esma|manevi\s+olarak\s+ne\s+oku|hangi\s+dua)/i.test(
+      text,
+    ) &&
+    !/\b(ebced|abjad|denk\s+gelen|ismimin)\b/i.test(text)
   ) {
     return true;
   }

@@ -11,7 +11,7 @@ const FORBIDDEN = [
   { id: 'allah_emrediyor', re: /\ballah\s+emrediyor/i },
   { id: 'fetva', re: /\bfetva\s+ver/i },
   { id: 'kader_iddiasi', re: /\bkaderindir\b|\bkaderin\s+bu\b|\bkaçınılmaz\s+kader\b/i },
-  { id: 'tibbi', re: /\btedavi\s+(eder|olur|sağlar)|psikiyatrik\s+tedavi|tıbbi\s+reçete/i },
+  { id: 'tibbi', re: /\btedavi\s+(eder|olur|sağlar)|psikiyatrik\s+tedavi|tıbbi\s+reçete|iyileştirir|böbreği\s+düzelt|kreatinini\s+düşür/i },
   { id: 'korku', re: /\bmutlaka\s+ceza\b|\blanet(lenecek)?\b|\bhelak\s+olacaksın\b/i },
   { id: 'gercek_iddia', re: /\bkesin\s+gerçek\b|\btek\s+doğru\s+yorum\b/i },
 ];
@@ -47,6 +47,9 @@ export function sanitizeSymbolicProse(text) {
   out = out.replace(/\bkaderindir\b|\bkaderin\s+bu\b/gi, 'kesin kader iddiası değildir');
   out = out.replace(/\bkaçınılmaz\s+kader\b/gi, 'zorunlu bir kader değildir');
   out = out.replace(/\btedavi\s+(eder|olur|sağlar)/gi, 'düşünme alanı açabilir');
+  out = out.replace(/\biyileştirir\b/gi, 'manevi destek olarak okunabilir');
+  out = out.replace(/\bböbreği\s+düzelt\w*/gi, 'tıbbi düzelme iddiası taşımaz');
+  out = out.replace(/\bkreatinini\s+düşür\w*/gi, 'lab değeri iddiası taşımaz');
   out = out.replace(/\bpsikiyatrik\s+tedavi/gi, 'profesyonel destek');
   out = out.replace(/\btıbbi\s+reçete/gi, 'tıbbi öneri değildir');
   out = out.replace(/\bmutlaka\s+ceza\b/gi, 'zorunlu bir sonuç değildir');

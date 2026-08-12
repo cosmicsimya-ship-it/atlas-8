@@ -36,10 +36,14 @@ export const ABJAD_VERIFICATION_SYSTEM_RULES = `
 - LLM zihinsel toplam üretme; yalnızca motor çıktısındaki total / letterBreakdown kullan.
 - Güven seviyesi Yüksek ancak Arapça yazım kesin, yöntem belli, harf dökümü ve programatik toplam varsa verilebilir.
 - VERIFIED ABJAD DATA / VERIFIED ESMA DATA bloklarındaki sayıları değiştirme.
+- Devotional Esma / dua / zikir önerisi ≠ kişisel ebced eşlemesi. Kullanıcı "hangi Esma çekeyim / okuyayım / şifa niyetiyle" diyorsa Arapça isim veya ebced önkoşulu UYDURMA; ebced yalnızca açıkça istendiğinde.
 `.trim();
 
-const EBCED_KEYWORD =
-  /\b(ebced|abjad|cifir|cifir|hesapla|hesab[ıi]|toplam|harf\s*harf|esma|esmalar|esmaül|esmaul|denk\s*gelen|eşleş|esles|lat[iî]f|melik|malik)\b/iu;
+/** Explicit ebced / abjad calculation language — not bare "esma". */
+const EXPLICIT_EBCED_RE =
+  /\b(ebced|abjad|cifir|ebcedini|ebcedi|ebcedim|abjad[ıi]m|harf\s*harf|harf\s+hesab)\b/iu;
+
+const CALC_HINT_RE = /\b(hesapla|hesab[ıi]|toplam)\b/iu;
 
 const CLAIM_VALUE_RE =
   /(?:(?:lat[iî]f|el[\s-]?lat[iî]f|melik|malik|el[\s-]?melik|el[\s-]?malik|لطيف|اللطيف|ملك|الملك)\s*(?:=|eşittir|esittir|:)?\s*(\d{2,4}))|(?:(\d{2,4})\s*(?:=|eşittir|esittir)?\s*(?:lat[iî]f|el[\s-]?lat[iî]f|melik|malik|el[\s-]?melik|el[\s-]?malik))/iu;
@@ -47,11 +51,50 @@ const CLAIM_VALUE_RE =
 const USER_OBJECTION_RE =
   /(?:yine\s+)?yanl[ıi][sş]|de[gğ]il|olacakt[ıi]|olmal[ıi]|d[uü]zelt|aslında|aslinda|\bhay[ıi]r\b/iu;
 
-const ESMA_MATCH_ASK_RE =
-  /\b(denk\s*gelen\s*esma|hangi\s*esma|esma\s*(nedir|ne|eşleş|esles|karş[ıi]l[ıi]k)|eşleşen\s*esma|esma\s*bul)\b/iu;
+/** Personal / numeric Esma matching (ebced path) — not general "hangi esma çekeyim". */
+const ESMA_PERSONAL_MATCH_RE =
+  /\b(denk\s*gelen(\s*esma)?|eşleşen\s*esma|esma\s*(eşleş|esles|karş[ıi]l[ıi]k)|bana\s+denk|ismimin\s+ebced|ebced(?:in|im|i)?(?:ne|ine)?\s+g[oö]re|harf\s+hesab[ıi]na\s+g[oö]re)\b/iu;
+
+/** Devotional practice cues — must not invent ebced prerequisites. */
+const DEVOTIONAL_ESMA_CUE_RE =
+  /\b([cç]ek|[cç]ekil|[cç]ekeyim|[cç]ekilir|oku|okuy|okuyay[ıi]m|zikir|zikir|dua|ne\s+kadar|ka[cç]\s*(kere|kez|defa)|manevi|şifa\s+niyet|şifa\s+i[cç]in)\b/iu;
+
+/** User rejects stale ebced / Arabic-name prerequisite. */
+const REJECT_EBCED_PREREQ_RE =
+  /\b(ebced\s+sormuyorum|ebced\s+istemiyorum|ebced\s+de[gğ]il|arap[cç]a\s+(yaz[ıi]m|istemiyorum)|isim\s+(hesab|istemiyorum)|sorunu\s+(tam\s+)?anlamad[ıi]n|ben\s+de\s+sana\s+soruyorum)\b/iu;
 
 const NAME_CALC_RE =
   /\b(hüseyin|huseyin|hussain|husayn|muhammed|muhammad|ali)\b/iu;
+
+/**
+ * True when the turn is a personal ebced↔Esma match ask (not zikir recommendation).
+ * @param {string} text
+ * @param {number|null} lastTotal
+ */
+export function isExplicitEbcedEsmaMatchAsk(text, lastTotal = null) {
+  const msg = normalizeTr(text);
+  if (!msg) return false;
+  if (REJECT_EBCED_PREREQ_RE.test(msg) && DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
+    return false;
+  }
+  if (ESMA_PERSONAL_MATCH_RE.test(msg)) return true;
+  if (EXPLICIT_EBCED_RE.test(msg) && /\besma/i.test(msg)) return true;
+  // "hangi esma" alone is recommendation unless numeric/ebced context is clear
+  // and there is no zikir/dua/çek practice framing.
+  if (/\bhangi\s*esma/i.test(msg)) {
+    if (DEVOTIONAL_ESMA_CUE_RE.test(msg)) return false;
+    if (EXPLICIT_EBCED_RE.test(msg) || ESMA_PERSONAL_MATCH_RE.test(msg)) return true;
+    if (/\b\d{2,4}\b/.test(msg)) return true;
+    // Short follow-up after a verified total, without practice cues
+    if (Number.isFinite(lastTotal) && msg.length < 80 && !DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
+      return /\b(esma|eşleş|denk|nedir|ne\b)/i.test(msg);
+    }
+  }
+  if (/\b(eşleşen\s*esma|esma\s*bul)\b/i.test(msg) && !DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
+    return true;
+  }
+  return false;
+}
 
 /**
  * @param {string} text
@@ -150,15 +193,29 @@ export function detectAbjadEsmaIntent(message, history = []) {
   }
 
   const arabicSpans = extractArabicSpans(text);
-  const hasEbcedKw = EBCED_KEYWORD.test(text);
+  const hasExplicitEbced = EXPLICIT_EBCED_RE.test(text);
+  const hasCalcHint = CALC_HINT_RE.test(text);
   const esmaClaim = extractEsmaValueClaim(text);
-  const asksEsmaMatch = ESMA_MATCH_ASK_RE.test(text);
   const hasName = NAME_CALC_RE.test(text);
   const objection = USER_OBJECTION_RE.test(text);
   const lastTotal = extractLastVerifiedTotalFromHistory(history);
+  const rejectsEbcedPrereq = REJECT_EBCED_PREREQ_RE.test(text);
+  const asksPersonalMatch = isExplicitEbcedEsmaMatchAsk(text, lastTotal);
+
+  // User clarification: not asking for ebced — discard stale match path.
+  if (rejectsEbcedPrereq && !hasExplicitEbced && !esmaClaim) {
+    return { active: false, kind: 'none', lastTotal, discarded: 'ebced_prereq_rejected' };
+  }
 
   // "Latif olacaktı" / "Latif 128'dir" — always recalc; never accept claim as truth.
-  if (esmaClaim && (esmaClaim.claimedValue != null || objection || hasEbcedKw || /olacakt[ıi]/i.test(text))) {
+  if (
+    esmaClaim &&
+    (esmaClaim.claimedValue != null ||
+      objection ||
+      hasExplicitEbced ||
+      hasCalcHint ||
+      /olacakt[ıi]/i.test(text))
+  ) {
     const implyPriorTotal =
       esmaClaim.claimedValue == null &&
       Number.isFinite(lastTotal) &&
@@ -175,7 +232,7 @@ export function detectAbjadEsmaIntent(message, history = []) {
     };
   }
 
-  if (asksEsmaMatch || (hasEbcedKw && /\besma\b/i.test(text))) {
+  if (asksPersonalMatch) {
     return {
       active: true,
       kind: 'esma_match',
@@ -185,7 +242,10 @@ export function detectAbjadEsmaIntent(message, history = []) {
     };
   }
 
-  if (arabicSpans.length || (hasName && (hasEbcedKw || hasArabicLetters(text) || /yaz[ıi]l[ıi]r|hesap/i.test(text)))) {
+  if (
+    arabicSpans.length ||
+    (hasName && (hasExplicitEbced || hasArabicLetters(text) || /yaz[ıi]l[ıi]r|hesap/i.test(text)))
+  ) {
     return {
       active: true,
       kind: 'calculate',
@@ -195,7 +255,18 @@ export function detectAbjadEsmaIntent(message, history = []) {
     };
   }
 
-  if (hasEbcedKw && (hasName || arabicSpans.length || /\d{2,4}/.test(text))) {
+  if (hasExplicitEbced && (hasName || arabicSpans.length || /\d{2,4}/.test(text) || hasCalcHint)) {
+    return {
+      active: true,
+      kind: 'calculate',
+      arabicSpans,
+      lastTotal,
+      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : null,
+    };
+  }
+
+  // Bare "ebced hesapla" without name still activates calculate (asks confirmation).
+  if (hasExplicitEbced && hasCalcHint) {
     return {
       active: true,
       kind: 'calculate',
