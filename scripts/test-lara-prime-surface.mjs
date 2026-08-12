@@ -43,7 +43,17 @@ ok('LaraPrimePage exists', Boolean(page));
 ok('route lara-prime in App', Boolean(app?.includes('path="lara-prime"') && app?.includes('LaraPrimePage')));
 ok('HashRouter single router', Boolean(app?.includes('HashRouter') && !app?.match(/BrowserRouter|createBrowserRouter/)));
 ok('mobile/desktop CosmicNav Lara Prime', Boolean(nav?.includes("label: 'Lara Prime'") && nav?.includes('/lara-prime') && nav?.includes('✦')));
-ok('chatMode includes lara-prime', Boolean(nav?.includes("'/lara-prime'")));
+ok('primary nav includes lara-prime', Boolean(nav?.includes("PRIMARY_NAV_PATHS") && nav?.includes("'/lara-prime'")));
+ok(
+  'primary nav order Ana Sayfa→Atlas→Lara Prime→Arşiv',
+  Boolean(
+    nav?.match(
+      /PRIMARY_NAV_PATHS\s*=\s*\[\s*'\/'\s*,\s*'\/atlas'\s*,\s*'\/lara-prime'\s*,\s*'\/archive'\s*\]/,
+    ),
+  ),
+);
+ok('mobile uses primaryItems (no symbolic exposure)', Boolean(nav?.includes('mobileItems = primaryItems') && !nav?.match(/PRIMARY_NAV_PATHS\s*=\s*\[[^\]]*analysis\/symbolic/)));
+ok('exact-active includes lara-prime + atlas', Boolean(nav?.includes("'/lara-prime'") && nav?.includes('EXACT_ACTIVE_PATHS') && nav?.includes("'/atlas'")));
 ok('landing nav Lara Prime', Boolean(landing?.includes("label: 'Lara Prime'") && landing?.includes("'/lara-prime'")));
 ok('guest auth return remember path', Boolean(page?.includes("rememberAuthReturnPath('/lara-prime')") && page?.includes('requestAtlasAuth')));
 ok('auth consume return path', Boolean(auth?.includes('consumeAuthReturnPath') && authReq?.includes('consumeAuthReturnPath')));

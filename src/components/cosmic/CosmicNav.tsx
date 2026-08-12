@@ -15,7 +15,24 @@ const NAV_ITEMS: Array<{ to: string; label: string; accent?: boolean }> = [
   { to: '/about', label: 'Hakkında' },
 ];
 
-const CHAT_MODE_PATHS = ['/atlas', '/analysis/symbolic', '/archive', '/lara-prime'] as const;
+/** Primary product nav — shared by chatMode desktop + all mobile menus. */
+const PRIMARY_NAV_PATHS = ['/', '/atlas', '/lara-prime', '/archive'] as const;
+
+/** Leaf surfaces that must exact-match; avoids dual-active via prefix/substring. */
+const EXACT_ACTIVE_PATHS = new Set<string>([
+  '/',
+  '/atlas',
+  '/lara-prime',
+  '/archive',
+  '/analysis',
+  '/about',
+]);
+
+function resolveNavItems(paths: readonly string[]) {
+  return paths
+    .map((to) => NAV_ITEMS.find((item) => item.to === to))
+    .filter((item): item is (typeof NAV_ITEMS)[number] => Boolean(item));
+}
 
 interface CosmicNavProps {
   transparent?: boolean;
@@ -48,12 +65,14 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
   const solid = scrolled || !transparent || open;
   const quiet = chatMode && !scrolled && !open;
 
-  const visibleItems = chatMode
-    ? CHAT_MODE_PATHS.map((to) => NAV_ITEMS.find((item) => item.to === to)!).filter(Boolean)
-    : NAV_ITEMS;
+  const primaryItems = resolveNavItems(PRIMARY_NAV_PATHS);
+  // Desktop: chatMode uses primary IA; full NAV_ITEMS otherwise (Lara Prime stays).
+  // Mobile: always primary IA (no Sembolik Analiz exposure).
+  const desktopItems = chatMode ? primaryItems : NAV_ITEMS;
+  const mobileItems = primaryItems;
 
   const isActive = (to: string) =>
-    to === '/' || to === '/analysis'
+    EXACT_ACTIVE_PATHS.has(to)
       ? location.pathname === to
       : location.pathname === to || location.pathname.startsWith(`${to}/`);
 
@@ -88,39 +107,38 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
           className={cn('hidden items-center gap-0.5 md:flex', chatMode && 'gap-1')}
           aria-label="Ana menü"
         >
-          {visibleItems
-            .map((item) => {
-              const active = isActive(item.to);
-              const accent = Boolean(item.accent);
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  aria-current={active ? 'page' : undefined}
-                  className={cn(
-                    'atlas-focus rounded-full px-3.5 py-2 text-[13px] transition duration-200',
-                    active
-                      ? accent
-                        ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
-                        : 'bg-white/[0.06] text-[#e8ecf2]'
-                      : accent
-                        ? 'text-[#c9b37a]/85 hover:bg-[#c9b37a]/08 hover:text-[#e8ecf2]'
-                        : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
-                  )}
-                >
-                  {accent ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      {item.label}
-                      <span className="text-[10px] opacity-70" aria-hidden>
-                        ✦
-                      </span>
+          {desktopItems.map((item) => {
+            const active = isActive(item.to);
+            const accent = Boolean(item.accent);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'atlas-focus rounded-full px-3.5 py-2 text-[13px] transition duration-200',
+                  active
+                    ? accent
+                      ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
+                      : 'bg-white/[0.06] text-[#e8ecf2]'
+                    : accent
+                      ? 'text-[#c9b37a]/85 hover:bg-[#c9b37a]/08 hover:text-[#e8ecf2]'
+                      : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
+                )}
+              >
+                {accent ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    {item.label}
+                    <span className="text-[10px] opacity-70" aria-hidden>
+                      ✦
                     </span>
-                  ) : (
-                    item.label
-                  )}
-                </Link>
-              );
-            })}
+                  </span>
+                ) : (
+                  item.label
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
@@ -145,7 +163,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
           aria-label="Mobil menü"
         >
           <ul className="space-y-1">
-            {visibleItems.map((item) => {
+            {mobileItems.map((item) => {
               const active = isActive(item.to);
               const accent = Boolean(item.accent);
               return (
