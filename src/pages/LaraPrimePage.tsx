@@ -43,7 +43,11 @@ import {
   rememberAuthReturnPath,
   requestAtlasAuth,
 } from '../utils/atlas-auth-request';
-import { ensureAtlasSession, type AtlasSessionInfo } from '../utils/atlas-session';
+import {
+  ATLAS_SESSION_CHANGED_EVENT,
+  ensureAtlasSession,
+  type AtlasSessionInfo,
+} from '../utils/atlas-session';
 
 type CheckoutUiState = 'idle' | 'initializing' | 'redirecting' | 'dry-run' | 'error';
 
@@ -118,12 +122,13 @@ export default function LaraPrimePage() {
 
   const isAccount =
     Boolean(session?.authenticated) && !session?.isAnonymous && Boolean(session?.authMethod);
-  const isPrime = isPremiumPlan(entitlements) || session?.plan === 'premium';
+  // Server entitlements are canonical once loaded; session.plan is only a first-paint fallback.
+  const isPrime = entitlements ? isPremiumPlan(entitlements) : session?.plan === 'premium';
   const busy = checkoutState === 'initializing' || checkoutState === 'redirecting';
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function load() {
       try {
         const next = await ensureAtlasSession();
         if (cancelled) return;
@@ -135,11 +140,15 @@ export default function LaraPrimePage() {
           } catch {
             if (!cancelled) setEntitlements(null);
           }
+        } else if (!cancelled) {
+          setEntitlements(null);
         }
       } catch {
         if (!cancelled) setSession(null);
       }
-    })();
+    }
+    load();
+    window.addEventListener(ATLAS_SESSION_CHANGED_EVENT, load);
     fetchBillingConfig()
       .then((c) => {
         if (!cancelled) setConfig(c);
@@ -149,6 +158,7 @@ export default function LaraPrimePage() {
       });
     return () => {
       cancelled = true;
+      window.removeEventListener(ATLAS_SESSION_CHANGED_EVENT, load);
     };
   }, []);
 
@@ -219,10 +229,10 @@ export default function LaraPrimePage() {
               : ''}
           </p>
           <Link
-            to="/atlas"
+            to="/lara-prime"
             className="atlas-focus mt-6 inline-flex rounded-md border border-white/14 bg-white/[0.04] px-4 py-2.5 text-sm text-[#e8ecf2] transition hover:bg-white/[0.08]"
           >
-            Atlas’a dön
+            Lara Prime’a dön
           </Link>
         </div>
       );

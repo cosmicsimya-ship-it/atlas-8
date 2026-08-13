@@ -95,11 +95,35 @@ export function recordBillingEvent(input) {
 
   const key = makeEventKey(provider, eventId);
   const store = loadStore();
+  const now = new Date().toISOString();
+  const nextStatus = String(input.status || '').toLowerCase();
+  const nextGrant = nextStatus === 'active' || nextStatus === 'trialing';
+
   if (store.events[key]) {
-    return { created: false, record: store.events[key] };
+    const prev = store.events[key];
+    const prevStatus = String(prev.status || '').toLowerCase();
+    const prevGrant = prevStatus === 'active' || prevStatus === 'trialing';
+    // Idempotent grant: never rewrite a successful event.
+    if (prevGrant) {
+      return { created: false, record: prev };
+    }
+    // Failed/pending event may upgrade to a later verified grant (same eventId).
+    if (!nextGrant) {
+      return { created: false, record: prev };
+    }
+    const record = {
+      ...prev,
+      userId: input.userId || prev.userId,
+      kind: input.kind,
+      status: input.status,
+      meta: sanitizeEventMeta(input.meta) || prev.meta,
+      updatedAt: now,
+    };
+    store.events[key] = record;
+    saveStore(store);
+    return { created: true, record };
   }
 
-  const now = new Date().toISOString();
   const record = {
     key,
     provider,

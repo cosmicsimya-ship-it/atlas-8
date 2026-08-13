@@ -34,11 +34,12 @@ export const CAPABILITIES = Object.freeze({
   VOICE_LARA: 'voice.lara',
   VOICE_MULTILINGUAL: 'voice.multilingual',
   ANALYSIS_EXTENDED: 'analysis.extended',
-  PREMIUM_FEATURES: 'premium.features',
   /** Phase 1 — Lara Prime differentiation (real, server-enforced) */
   USAGE_EXTENDED: 'usage.extended',
   IMAGE_ANALYSIS: 'image.analysis',
   MEMORY_EXTENDED: 'memory.extended',
+  PREMIUM_FEATURES: 'premium.features',
+  PRIME_WORLD: 'prime.world',
 });
 
 /**
@@ -53,10 +54,11 @@ export const PLAN_CAPABILITY_MATRIX = Object.freeze({
     [CAPABILITIES.VOICE_LARA]: false,
     [CAPABILITIES.VOICE_MULTILINGUAL]: false,
     [CAPABILITIES.ANALYSIS_EXTENDED]: false,
-    [CAPABILITIES.PREMIUM_FEATURES]: false,
     [CAPABILITIES.USAGE_EXTENDED]: false,
     [CAPABILITIES.IMAGE_ANALYSIS]: false,
     [CAPABILITIES.MEMORY_EXTENDED]: false,
+    [CAPABILITIES.PREMIUM_FEATURES]: false,
+    [CAPABILITIES.PRIME_WORLD]: false,
   }),
   [ATLAS_PLANS.FREE]: Object.freeze({
     [CAPABILITIES.ATLAS_BASIC]: true,
@@ -64,10 +66,11 @@ export const PLAN_CAPABILITY_MATRIX = Object.freeze({
     [CAPABILITIES.VOICE_LARA]: false,
     [CAPABILITIES.VOICE_MULTILINGUAL]: false,
     [CAPABILITIES.ANALYSIS_EXTENDED]: false,
-    [CAPABILITIES.PREMIUM_FEATURES]: false,
     [CAPABILITIES.USAGE_EXTENDED]: false,
     [CAPABILITIES.IMAGE_ANALYSIS]: false,
     [CAPABILITIES.MEMORY_EXTENDED]: false,
+    [CAPABILITIES.PREMIUM_FEATURES]: false,
+    [CAPABILITIES.PRIME_WORLD]: false,
   }),
   [ATLAS_PLANS.PREMIUM]: Object.freeze({
     [CAPABILITIES.ATLAS_BASIC]: true,
@@ -75,10 +78,11 @@ export const PLAN_CAPABILITY_MATRIX = Object.freeze({
     [CAPABILITIES.VOICE_LARA]: true,
     [CAPABILITIES.VOICE_MULTILINGUAL]: true,
     [CAPABILITIES.ANALYSIS_EXTENDED]: true,
-    [CAPABILITIES.PREMIUM_FEATURES]: true,
     [CAPABILITIES.USAGE_EXTENDED]: true,
     [CAPABILITIES.IMAGE_ANALYSIS]: true,
     [CAPABILITIES.MEMORY_EXTENDED]: true,
+    [CAPABILITIES.PREMIUM_FEATURES]: true,
+    [CAPABILITIES.PRIME_WORLD]: true,
   }),
 });
 

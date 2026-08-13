@@ -156,12 +156,12 @@ export { SANDBOX_BASE_URL };
 
 /**
  * Safe frontend billing result URL — never includes tokens/secrets.
- * @param {'success'|'failed'|'canceled'|'invalid'} status
+ * @param {'success'|'failed'|'canceled'|'invalid'|'pending'} status
  * @param {string} [code]
  */
 export function buildBillingResultRedirectUrl(status, code) {
   const cfg = getBillingConfig();
-  const safeStatus = ['success', 'failed', 'canceled', 'invalid'].includes(status)
+  const safeStatus = ['success', 'failed', 'canceled', 'invalid', 'pending'].includes(status)
     ? status
     : 'invalid';
   const params = new URLSearchParams({ status: safeStatus });

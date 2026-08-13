@@ -584,6 +584,8 @@ ok('manual bank transfer disabled', getManualBankTransferOffer().enabled === fal
     status: 'SUCCESS',
     userId: 'web:billing-wh-1',
     subscriptionId: 'sub_wh_1',
+    amount: 299,
+    currency: 'TRY',
   };
   const sig = signBillingWebhookBody(webhookBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
   const goodWh = await processProviderWebhook('iyzico', webhookBody, {
@@ -1146,6 +1148,296 @@ ok(
   'no production iyzico host called',
   networkUrls.every((u) => !u.includes('://api.iyzipay.com') || u.includes('sandbox')),
 );
+
+// === Activation E2E regression (10 scenarios, mock provider only) ===
+{
+  resetCheckoutSessionStoreForTests();
+  resetSubscriptionStoreForTests();
+  resetBillingEventStoreForTests();
+
+  const PRIME_CAPS = [
+    CAPABILITIES.VOICE_LARA,
+    CAPABILITIES.USAGE_EXTENDED,
+    CAPABILITIES.IMAGE_ANALYSIS,
+    CAPABILITIES.MEMORY_EXTENDED,
+  ];
+
+  function resolveUser(userId) {
+    return resolveEntitlements({
+      authenticated: true,
+      userId,
+      isAnonymous: false,
+    });
+  }
+
+  function mockSuccessProvider({
+    paymentId,
+    userId,
+    paidPrice = '299.00',
+    currency = 'TRY',
+    paymentStatus = 'SUCCESS',
+  }) {
+    return createIyzicoBillingProvider({
+      dryRun: false,
+      liveCheckoutEnabled: true,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+      fetch: mockFetchFactory(async () =>
+        jsonResponse({
+          status: 'success',
+          paymentStatus,
+          paymentId,
+          paidPrice,
+          currency,
+          basketId: userId,
+        }),
+      ),
+    });
+  }
+
+  // 1. free user before purchase
+  const freeBefore = resolveUser('web:act-free');
+  ok('1 free user before purchase', freeBefore.plan === ATLAS_PLANS.FREE);
+  ok(
+    '1 free prime caps closed',
+    PRIME_CAPS.every((c) => freeBefore.entitlements[c] === false),
+  );
+
+  // 2–4. valid successful purchase → subscription + entitlements
+  createCheckoutSession({
+    token: 'tok_act_ok',
+    userId: 'web:act-ok',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(mockSuccessProvider({ paymentId: 'pay_act_ok', userId: 'web:act-ok' }));
+  const purchase = await verifyClientPaymentClaim({
+    userId: 'web:act-ok',
+    body: { token: 'tok_act_ok', paymentSuccess: true, plan: 'premium', premium: true },
+  });
+  ok('2 valid successful purchase', purchase.ok && purchase.granted && purchase.paid);
+  const afterSub = getSubscription('web:act-ok');
+  ok(
+    '3 subscription activated',
+    afterSub?.plan === ATLAS_PLANS.PREMIUM && afterSub?.status === 'active',
+  );
+  const afterEnt = resolveUser('web:act-ok');
+  ok('4 resolver sees Prime', afterEnt.plan === ATLAS_PLANS.PREMIUM);
+  ok(
+    '9 Prime capabilities after activation',
+    PRIME_CAPS.every((c) => afterEnt.entitlements[c] === true),
+  );
+
+  // 5. duplicate payment callback is idempotent
+  const dupCb = await handleIyzicoCheckoutCallback({ token: 'tok_act_ok' });
+  ok(
+    '5 duplicate callback idempotent',
+    dupCb.ok && (dupCb.duplicate === true || dupCb.granted === true) && dupCb.status === 'success',
+  );
+  ok(
+    '5 duplicate still single premium',
+    resolveUser('web:act-ok').plan === ATLAS_PLANS.PREMIUM,
+  );
+
+  const signedDupBody = {
+    eventId: 'pay_act_ok',
+    paymentId: 'pay_act_ok',
+    status: 'SUCCESS',
+    userId: 'web:act-ok',
+    amount: 299,
+    currency: 'TRY',
+  };
+  const signedDup = signBillingWebhookBody(signedDupBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
+  const dupWhAct = await processProviderWebhook('iyzico', signedDupBody, {
+    'x-atlas-billing-signature': signedDup,
+  });
+  ok('5 duplicate webhook idempotent', dupWhAct.ok && dupWhAct.duplicate === true);
+
+  // 6. cancelled payment does not activate Prime
+  createCheckoutSession({
+    token: 'tok_act_cancel',
+    userId: 'web:act-cancel',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(
+    createIyzicoBillingProvider({
+      dryRun: false,
+      liveCheckoutEnabled: true,
+      apiKey: 'k',
+      secretKey: 's',
+      baseUrl: 'https://sandbox-api.iyzipay.com',
+      nodeEnv: 'test',
+      fetch: mockFetchFactory(async () =>
+        jsonResponse({
+          status: 'success',
+          paymentStatus: 'FAILURE',
+          paymentId: 'pay_act_cancel',
+          paidPrice: '299.00',
+          currency: 'TRY',
+        }),
+      ),
+    }),
+  );
+  const cancelCb = await handleIyzicoCheckoutCallback({
+    token: 'tok_act_cancel',
+    cancelHint: true,
+  });
+  ok('6 cancelled payment no grant', cancelCb.status === 'canceled' && !cancelCb.granted);
+  ok('6 cancelled user still free', resolveUser('web:act-cancel').plan === ATLAS_PLANS.FREE);
+
+  // forged cancel must not skip a real SUCCESS retrieve
+  createCheckoutSession({
+    token: 'tok_act_forged_cancel',
+    userId: 'web:act-forged-cancel',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(
+    mockSuccessProvider({ paymentId: 'pay_act_forged_cancel', userId: 'web:act-forged-cancel' }),
+  );
+  const forgedCancel = await handleIyzicoCheckoutCallback({
+    token: 'tok_act_forged_cancel',
+    cancelHint: true,
+  });
+  ok(
+    '6 forged cancel cannot block SUCCESS',
+    forgedCancel.status === 'success' && forgedCancel.granted === true,
+  );
+
+  // pending retrieve does not activate
+  createCheckoutSession({
+    token: 'tok_act_pending',
+    userId: 'web:act-pending',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(
+    mockSuccessProvider({
+      paymentId: 'pay_act_pending',
+      userId: 'web:act-pending',
+      paymentStatus: 'INIT_THREEDS',
+    }),
+  );
+  const pendingClaim = await verifyClientPaymentClaim({
+    userId: 'web:act-pending',
+    body: { token: 'tok_act_pending' },
+  });
+  ok('pending payment no grant', pendingClaim.pending === true && !pendingClaim.granted);
+  ok('pending user still free', resolveUser('web:act-pending').plan === ATLAS_PLANS.FREE);
+  ok(
+    'pending session not marked failed',
+    getCheckoutSession('tok_act_pending')?.status === 'pending',
+  );
+
+  // 7. forged client success does not activate Prime
+  const forgedClient = await verifyClientPaymentClaim({
+    userId: 'web:act-forged',
+    body: { paymentSuccess: true, paid: true, premium: true, plan: 'premium' },
+  });
+  ok('7 forged client success rejected', !forgedClient.granted && forgedClient.ok === false);
+  ok('7 forged client still free', resolveUser('web:act-forged').plan === ATLAS_PLANS.FREE);
+
+  // 8. wrong-user ownership rejected
+  createCheckoutSession({
+    token: 'tok_act_owner',
+    userId: 'web:act-owner',
+    amount: 299,
+    currency: 'TRY',
+  });
+  setBillingProviderForTests(mockSuccessProvider({ paymentId: 'pay_act_owner', userId: 'web:act-owner' }));
+  const stolen = await verifyClientPaymentClaim({
+    userId: 'web:act-thief',
+    body: { token: 'tok_act_owner' },
+  });
+  ok('8 wrong-user verify rejected', !stolen.granted && stolen.error === BILLING_ERROR_CODES.SESSION_MISMATCH);
+  ok('8 owner still free before own verify', resolveUser('web:act-owner').plan === ATLAS_PLANS.FREE);
+  ok('8 thief still free', resolveUser('web:act-thief').plan === ATLAS_PLANS.FREE);
+
+  const ownerGrant = await verifyClientPaymentClaim({
+    userId: 'web:act-owner',
+    body: { token: 'tok_act_owner' },
+  });
+  ok('8 owner can still complete', ownerGrant.ok && ownerGrant.granted);
+
+  const stealWhBody = {
+    eventId: 'pay_act_owner',
+    paymentId: 'pay_act_owner',
+    status: 'SUCCESS',
+    userId: 'web:act-thief',
+    amount: 299,
+    currency: 'TRY',
+  };
+  const stealSig = signBillingWebhookBody(stealWhBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
+  const stealWh = await processProviderWebhook('iyzico', stealWhBody, {
+    'x-atlas-billing-signature': stealSig,
+  });
+  ok(
+    '8 wrong-user webhook rejected',
+    stealWh.ok === false && stealWh.error === BILLING_ERROR_CODES.UNAUTHORIZED,
+  );
+  ok('8 thief not activated via webhook', resolveUser('web:act-thief').plan === ATLAS_PLANS.FREE);
+
+  // unsigned / forged webhook signature
+  const badSigWh = await processProviderWebhook(
+    'iyzico',
+    { eventId: 'evt_forged', status: 'SUCCESS', userId: 'web:act-forged', amount: 299, currency: 'TRY' },
+    { 'x-atlas-billing-signature': 'deadbeef' },
+  );
+  ok('forged webhook signature rejected', badSigWh.ok === false && !badSigWh.granted);
+
+  // webhook missing amount fail-closed
+  const noAmtBody = {
+    eventId: 'evt_no_amt',
+    paymentId: 'pay_no_amt',
+    status: 'SUCCESS',
+    userId: 'web:act-no-amt',
+  };
+  const noAmtSig = signBillingWebhookBody(noAmtBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
+  const noAmtWh = await processProviderWebhook('iyzico', noAmtBody, {
+    'x-atlas-billing-signature': noAmtSig,
+  });
+  ok(
+    'webhook missing amount rejected',
+    noAmtWh.ok === false && noAmtWh.error === BILLING_ERROR_CODES.AMOUNT_MISMATCH,
+  );
+  ok('webhook missing amount still free', resolveUser('web:act-no-amt').plan === ATLAS_PLANS.FREE);
+
+  // failed webhook then later SUCCESS with same eventId may activate (upgrade)
+  const failThenOkUser = 'web:act-fail-then-ok';
+  const failBody = {
+    eventId: 'evt_retry_same',
+    paymentId: 'pay_retry_same',
+    status: 'FAILURE',
+    userId: failThenOkUser,
+    amount: 299,
+    currency: 'TRY',
+  };
+  const failSig = signBillingWebhookBody(failBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
+  const failWh = await processProviderWebhook('iyzico', failBody, {
+    'x-atlas-billing-signature': failSig,
+  });
+  ok('failed webhook no grant', failWh.ok && !failWh.granted);
+  const okBody = { ...failBody, status: 'SUCCESS' };
+  const okSig = signBillingWebhookBody(okBody, process.env.ATLAS_BILLING_WEBHOOK_SECRET);
+  const okWh = await processProviderWebhook('iyzico', okBody, {
+    'x-atlas-billing-signature': okSig,
+  });
+  ok('failed-then-success webhook grants', okWh.ok && okWh.granted === true);
+  ok('failed-then-success user is Prime', resolveUser(failThenOkUser).plan === ATLAS_PLANS.PREMIUM);
+
+  // 10. existing Free behavior unchanged
+  const stillFree = resolveUser('web:act-never-paid');
+  ok('10 untouched free user remains free', stillFree.plan === ATLAS_PLANS.FREE);
+  ok(
+    '10 untouched free caps closed',
+    PRIME_CAPS.every((c) => stillFree.entitlements[c] === false),
+  );
+
+  setBillingProviderForTests(null);
+}
 
 // Note: mock fetch URLs are recorded — real global fetch was never used for payments.
 console.log(`\n  (mock network calls recorded: ${networkUrls.length}; real charge: NO)\n`);
