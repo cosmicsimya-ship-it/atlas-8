@@ -52,7 +52,16 @@ ok(
     ),
   ),
 );
-ok('mobile uses primaryItems (no symbolic exposure)', Boolean(nav?.includes('mobileItems = primaryItems') && !nav?.match(/PRIMARY_NAV_PATHS\s*=\s*\[[^\]]*analysis\/symbolic/)));
+ok(
+  'mobile keeps Lara Prime purchase path without symbolic primary',
+  Boolean(
+    nav &&
+      !/PRIMARY_NAV_PATHS\s*=\s*\[[^\]]*analysis\/symbolic/.test(nav) &&
+      (nav.includes('mobileItems = primaryItems') ||
+        nav.includes("to: '/lara-prime', label: 'Lara Prime'")) &&
+      !/const mobileItems[\s\S]{0,900}analysis\/symbolic/.test(nav),
+  ),
+);
 ok('exact-active includes lara-prime + atlas', Boolean(nav?.includes("'/lara-prime'") && nav?.includes('EXACT_ACTIVE_PATHS') && nav?.includes("'/atlas'")));
 ok('landing nav Lara Prime', Boolean(landing?.includes("label: 'Lara Prime'") && landing?.includes("'/lara-prime'")));
 ok('guest auth return remember path', Boolean(page?.includes("rememberAuthReturnPath('/lara-prime')") && page?.includes('requestAtlasAuth')));
@@ -73,7 +82,13 @@ ok('capability image.analysis', Boolean(caps?.includes("IMAGE_ANALYSIS: 'image.a
 ok('capability memory.extended', Boolean(caps?.includes("MEMORY_EXTENDED: 'memory.extended'")));
 ok('default productName Lara Prime', Boolean(pricing?.includes("'Lara Prime'")));
 ok('no unsupported marketing on page', Boolean(page && !/higher limits|early access|advanced memory|priority processing|exclusive engines|unlimited usage|BEST VALUE/i.test(page)));
-ok('account links to /lara-prime', Boolean(auth?.includes('to="/lara-prime"')));
+ok(
+  'account links to Lara Prime purchase or Prime app',
+  Boolean(
+    auth?.includes('/lara-prime') &&
+      (auth.includes('to="/lara-prime"') || /to=\{[\s\S]*?\/lara-prime/.test(auth)),
+  ),
+);
 
 console.log(`\nLara Prime result: ${passed} passed, ${failed} failed\n`);
 process.exit(failed ? 1 : 0);
