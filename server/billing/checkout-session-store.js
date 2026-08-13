@@ -13,7 +13,7 @@ const DEFAULT_PATH = join(__dirname, '..', '..', 'data', 'billing_checkout_sessi
 /** @type {string} */
 let storePath = DEFAULT_PATH;
 
-/** @typedef {'pending'|'completed'|'failed'|'expired'} CheckoutSessionStatus */
+/** @typedef {'pending'|'completed'|'failed'|'canceled'|'expired'} CheckoutSessionStatus */
 
 function emptyStore() {
   return { version: 1, sessions: {} };

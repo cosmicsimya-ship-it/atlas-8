@@ -64,10 +64,13 @@ ok('GET /api/billing/config client', Boolean(billing?.includes("'/api/billing/co
 ok('page uses fetchBillingConfig displayPrice', Boolean(page?.includes('fetchBillingConfig') && page?.includes('displayPrice')));
 ok('Prime hides purchase via isPrime branch', Boolean(page?.includes('isPrime') && page?.includes('Üyeliğin aktif')));
 ok('CTA label Lara Prime’a Geç', Boolean(page?.includes('Lara Prime’a Geç') || page?.includes("Lara Prime'a Geç")));
-ok('BillingResult active copy', Boolean(result?.includes("title: 'Lara Prime aktif'")));
+ok('BillingResult active copy', Boolean(result?.includes("title: 'Aktivasyon tamamlandı'")));
 ok('BillingResult entitlement authority', Boolean(result?.includes('isPremiumPlan') && result?.includes('hintFromQuery') && result?.includes('Never promote query success')));
 ok('internal plan premium', Boolean(caps?.includes("PREMIUM: 'premium'") && page?.includes("plan === 'premium'")));
 ok('capability voice.lara', Boolean(caps?.includes("VOICE_LARA: 'voice.lara'") && page?.includes("voice.lara")));
+ok('capability usage.extended', Boolean(caps?.includes("USAGE_EXTENDED: 'usage.extended'")));
+ok('capability image.analysis', Boolean(caps?.includes("IMAGE_ANALYSIS: 'image.analysis'")));
+ok('capability memory.extended', Boolean(caps?.includes("MEMORY_EXTENDED: 'memory.extended'")));
 ok('default productName Lara Prime', Boolean(pricing?.includes("'Lara Prime'")));
 ok('no unsupported marketing on page', Boolean(page && !/higher limits|early access|advanced memory|priority processing|exclusive engines|unlimited usage|BEST VALUE/i.test(page)));
 ok('account links to /lara-prime', Boolean(auth?.includes('to="/lara-prime"')));

@@ -2,7 +2,7 @@
  * Express middleware — require a capability (server-side).
  */
 
-import { CAPABILITIES } from './capabilities.js';
+import { ATLAS_PLANS, CAPABILITIES, entitlementsForPlan } from './capabilities.js';
 import { resolveEntitlements, hasCapability } from './resolve.js';
 
 export const ENTITLEMENT_ERROR_CODES = Object.freeze({
@@ -41,11 +41,10 @@ export function requireCapability(capability, opts = {}) {
       }
 
       if (!hasCapability(resolved.entitlements, capability)) {
+        const freeCaps = entitlementsForPlan(ATLAS_PLANS.FREE);
+        const premiumCaps = entitlementsForPlan(ATLAS_PLANS.PREMIUM);
         const needsPremium =
-          capability === CAPABILITIES.VOICE_LARA ||
-          capability === CAPABILITIES.VOICE_MULTILINGUAL ||
-          capability === CAPABILITIES.PREMIUM_FEATURES ||
-          capability === CAPABILITIES.ANALYSIS_EXTENDED;
+          hasCapability(premiumCaps, capability) && !hasCapability(freeCaps, capability);
 
         const code = needsPremium
           ? ENTITLEMENT_ERROR_CODES.PREMIUM_REQUIRED

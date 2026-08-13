@@ -4,6 +4,7 @@ import { Eye, EyeOff, LogIn, LogOut, UserPlus, X } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import {
+  ATLAS_SESSION_CHANGED_EVENT,
   consumeAuthCallbackParams,
   ensureAtlasSession,
   fetchGoogleAuthStatus,
@@ -77,6 +78,16 @@ export default function AuthSessionControl({
       .then((s) => setGoogleConfigured(Boolean(s.configured)))
       .catch(() => setGoogleConfigured(false));
   }, [navigate]);
+
+  useEffect(() => {
+    const onSessionChanged = () => {
+      ensureAtlasSession()
+        .then(setSession)
+        .catch(() => setSession(null));
+    };
+    window.addEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
+    return () => window.removeEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
+  }, []);
 
   useEffect(() => {
     const onAuthRequest = (event: Event) => {
@@ -309,10 +320,28 @@ export default function AuthSessionControl({
               ) : null}
               {session?.plan === 'free' || session?.plan === 'premium' ? (
                 <Link
-                  to="/lara-prime"
+                  to={session.plan === 'premium' || session.experience?.canAccessPrime ? '/prime' : '/lara-prime'}
                   className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
                 >
-                  {session.plan === 'premium' ? 'Lara Prime durumu' : 'Lara Prime ✦'}
+                  {session.plan === 'premium' || session.experience?.canAccessPrime
+                    ? 'Lara Prime merkezi'
+                    : 'Lara Prime ✦'}
+                </Link>
+              ) : null}
+              {session?.plan === 'free' && !session?.experience?.canAccessPrime ? (
+                <Link
+                  to="/app"
+                  className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
+                >
+                  Alanım
+                </Link>
+              ) : null}
+              {session?.roles?.includes('admin') || session?.experience?.canAccessAdmin ? (
+                <Link
+                  to="/admin"
+                  className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
+                >
+                  Control Center
                 </Link>
               ) : null}
             </div>
@@ -328,11 +357,15 @@ export default function AuthSessionControl({
             </button>
             {session?.plan === 'free' || session?.plan === 'premium' ? (
               <Link
-                to="/lara-prime"
+                to={session.plan === 'premium' || session.experience?.canAccessPrime ? '/prime' : '/lara-prime'}
                 className={`${actionBtnClass} sm:hidden`}
-                aria-label={session.plan === 'premium' ? 'Lara Prime durumu' : 'Lara Prime'}
+                aria-label={
+                  session.plan === 'premium' || session.experience?.canAccessPrime
+                    ? 'Lara Prime merkezi'
+                    : 'Lara Prime'
+                }
               >
-                {session.plan === 'premium' ? 'Prime' : 'Prime ✦'}
+                {session.plan === 'premium' || session.experience?.canAccessPrime ? 'Prime' : 'Prime ✦'}
               </Link>
             ) : null}
           </>

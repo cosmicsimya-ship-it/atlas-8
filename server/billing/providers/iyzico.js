@@ -748,26 +748,33 @@ export function createIyzicoBillingProvider(overrides = {}) {
       }
 
       const data = result.data || {};
-      const paymentStatus = String(data.paymentStatus || data.status || '').toUpperCase();
-      const paid =
-        paymentStatus === 'SUCCESS' ||
-        (String(data.status || '').toLowerCase() === 'success' &&
-          String(data.paymentStatus || '').toUpperCase() === 'SUCCESS');
+      // Fail-closed: API `status: success` is not payment success. Require paymentStatus.
+      const paymentStatus = String(data.paymentStatus || '').toUpperCase();
+      const paid = paymentStatus === 'SUCCESS' || paymentStatus === 'PAID';
+      const pendingStatuses = new Set([
+        'INIT_THREEDS',
+        'CALLBACK_THREEDS',
+        'PENDING',
+        'WAITING',
+        'INIT_BANKTRANS',
+      ]);
+      const pending = !paid && pendingStatuses.has(paymentStatus);
 
       if (!paid) {
         return {
           ok: false,
           paid: false,
+          pending,
           provider: 'iyzico',
           userId: data.basketId || data.conversationId || null,
           providerPaymentId: data.paymentId != null ? String(data.paymentId) : null,
-          status: 'failed',
+          status: pending ? 'pending' : 'failed',
           amount: data.paidPrice != null ? Number(data.paidPrice) : null,
           currency: data.currency ? String(data.currency).toUpperCase() : null,
           error: BILLING_ERROR_CODES.VERIFICATION_FAILED,
           meta: {
-            reason: 'retrieve_not_success',
-            paymentStatus,
+            reason: pending ? 'retrieve_pending' : 'retrieve_not_success',
+            paymentStatus: paymentStatus || null,
             iyzicoStatus: data.status || null,
           },
         };
@@ -835,6 +842,10 @@ export function createIyzicoBillingProvider(overrides = {}) {
         };
       }
 
+      const amountRaw =
+        event.paidPrice != null ? event.paidPrice : event.amount != null ? event.amount : event.price;
+      const amount = amountRaw != null && amountRaw !== '' ? Number(amountRaw) : null;
+
       return {
         ok: true,
         paid,
@@ -845,9 +856,12 @@ export function createIyzicoBillingProvider(overrides = {}) {
           ? String(event.subscriptionId)
           : null,
         status: paid ? 'active' : 'failed',
+        amount: Number.isFinite(amount) ? amount : null,
+        currency: event.currency ? String(event.currency).toUpperCase() : null,
         meta: {
           eventId,
           kind: event.eventType || 'payment',
+          token: event.token ? String(event.token) : null,
         },
       };
     },

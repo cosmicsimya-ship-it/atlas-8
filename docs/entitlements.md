@@ -11,7 +11,11 @@ Capability-based access control. Prefer capabilities over hard-coded `user.plan 
 | `voice.lara` | ✗ | ✗ | ✓ |
 | `voice.multilingual` | ✗ | ✗ | ✓ |
 | `analysis.extended` | ✗ | ✗ | ✓ |
+| `usage.extended` | ✗ | ✗ | ✓ |
+| `image.analysis` | ✗ | ✗ | ✓ |
+| `memory.extended` | ✗ | ✗ | ✓ |
 | `premium.features` | ✗ | ✗ | ✓ |
+| `prime.world` | ✗ | ✗ | ✓ |
 
 Defined in `server/entitlements/capabilities.js` → `PLAN_CAPABILITY_MATRIX`.
 

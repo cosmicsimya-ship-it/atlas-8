@@ -26,6 +26,9 @@ import {
   configureSubscriptionStore,
   resetSubscriptionStoreForTests,
   upsertSubscription,
+  getSubscription,
+  subscriptionGrantsPremium,
+  entitlementsForPlan,
   resolveEntitlements,
   buildEntitlementsResponse,
   requireVoiceLara,
@@ -89,6 +92,9 @@ console.log('\n=== Entitlements / Premium ===\n');
   ok('guest plan', g.plan === ATLAS_PLANS.GUEST);
   ok('guest atlas.basic', g.entitlements[CAPABILITIES.ATLAS_BASIC] === true);
   ok('guest voice.lara false', g.entitlements[CAPABILITIES.VOICE_LARA] === false);
+  ok('guest usage.extended false', g.entitlements[CAPABILITIES.USAGE_EXTENDED] === false);
+  ok('guest image.analysis false', g.entitlements[CAPABILITIES.IMAGE_ANALYSIS] === false);
+  ok('guest memory.extended false', g.entitlements[CAPABILITIES.MEMORY_EXTENDED] === false);
   const guard = await runGuard({ authenticated: false, isAnonymous: true, userId: 'anonymous:x' });
   ok('guest voice → 403', guard.res.statusCode === 403 && !guard.nextCalled);
   ok('guest error premium_required', guard.res.body?.error?.code === 'premium_required');
@@ -107,6 +113,9 @@ console.log('\n=== Entitlements / Premium ===\n');
   ok('free plan', f.plan === ATLAS_PLANS.FREE);
   ok('free history', f.entitlements[CAPABILITIES.ATLAS_HISTORY] === true);
   ok('free voice.lara false', f.entitlements[CAPABILITIES.VOICE_LARA] === false);
+  ok('free usage.extended false', f.entitlements[CAPABILITIES.USAGE_EXTENDED] === false);
+  ok('free image.analysis false', f.entitlements[CAPABILITIES.IMAGE_ANALYSIS] === false);
+  ok('free memory.extended false', f.entitlements[CAPABILITIES.MEMORY_EXTENDED] === false);
   const guard = await runGuard(auth);
   ok('free voice → 403', guard.res.statusCode === 403);
   ok('free premium_required', guard.res.body?.error?.code === 'premium_required');
@@ -132,6 +141,9 @@ console.log('\n=== Entitlements / Premium ===\n');
   const p = resolveEntitlements(auth);
   ok('premium plan', p.plan === ATLAS_PLANS.PREMIUM);
   ok('premium voice.lara', p.entitlements[CAPABILITIES.VOICE_LARA] === true);
+  ok('premium usage.extended', p.entitlements[CAPABILITIES.USAGE_EXTENDED] === true);
+  ok('premium image.analysis', p.entitlements[CAPABILITIES.IMAGE_ANALYSIS] === true);
+  ok('premium memory.extended', p.entitlements[CAPABILITIES.MEMORY_EXTENDED] === true);
   ok('premium multilingual', p.entitlements[CAPABILITIES.VOICE_MULTILINGUAL] === true);
   const guard = await runGuard(auth);
   ok('premium voice auth PASS', guard.nextCalled === true && guard.res.statusCode === 200);
@@ -191,6 +203,57 @@ console.log('\n=== Entitlements / Premium ===\n');
   ok('forged entitlements ignored', forged.entitlements[CAPABILITIES.VOICE_LARA] === false);
   const guard = await runGuard(auth, { plan: 'premium', entitlements: { 'voice.lara': true } });
   ok('tamper body still 403', guard.res.statusCode === 403);
+}
+
+// Unknown / missing subscription — fail closed (never premium)
+{
+  const missingAuth = {
+    authenticated: true,
+    userId: 'web:no-sub-user',
+    isAnonymous: false,
+    roles: ['user'],
+  };
+  ok('missing subscription record is null', getSubscription(missingAuth.userId) == null);
+  ok('missing subscription does not grant premium', subscriptionGrantsPremium(null) === false);
+  const missing = resolveEntitlements(missingAuth);
+  ok('missing subscription → free', missing.plan === ATLAS_PLANS.FREE);
+  ok('missing subscription no voice.lara', missing.entitlements[CAPABILITIES.VOICE_LARA] === false);
+  const missingGuard = await runGuard(missingAuth);
+  ok('missing subscription voice → 403', missingGuard.res.statusCode === 403 && !missingGuard.nextCalled);
+
+  for (const unknown of ['gold', 'pro', 'prime_plus', 'undefined', 'null']) {
+    ok(
+      `unknown plan matrix ${unknown} has no voice.lara`,
+      entitlementsForPlan(unknown)[CAPABILITIES.VOICE_LARA] === false,
+    );
+  }
+  ok('null plan matrix has no voice.lara', entitlementsForPlan(null)[CAPABILITIES.VOICE_LARA] === false);
+  ok('undefined plan matrix has no voice.lara', entitlementsForPlan(undefined)[CAPABILITIES.VOICE_LARA] === false);
+
+  const unknownUser = 'web:unknown-plan-user';
+  upsertSubscription({
+    userId: unknownUser,
+    plan: 'gold',
+    status: 'active',
+  });
+  const stored = getSubscription(unknownUser);
+  ok('unknown stored plan normalized to free', stored?.plan === ATLAS_PLANS.FREE);
+  ok('unknown stored plan does not grant premium', subscriptionGrantsPremium(stored) === false);
+  const unknownResolved = resolveEntitlements({
+    authenticated: true,
+    userId: unknownUser,
+    isAnonymous: false,
+    roles: ['user'],
+  });
+  ok('unknown stored plan → free entitlements', unknownResolved.plan === ATLAS_PLANS.FREE);
+  ok('unknown stored plan no voice.lara', unknownResolved.entitlements[CAPABILITIES.VOICE_LARA] === false);
+  const unknownGuard = await runGuard({
+    authenticated: true,
+    userId: unknownUser,
+    isAnonymous: false,
+    roles: ['user'],
+  });
+  ok('unknown stored plan voice → 403', unknownGuard.res.statusCode === 403);
 }
 
 // Public entitlements payload safety
@@ -312,6 +375,45 @@ console.log('\n=== Entitlements / Premium ===\n');
   ok(
     'http free+tamper synth 403',
     freeSynth.status === 403 && freeSynth.json?.error?.code === 'premium_required',
+  );
+
+  const headerSpoof = await dispatch('POST', '/api/voice/synthesize', {
+    auth: {
+      authenticated: true,
+      userId: 'web:free-http',
+      isAnonymous: false,
+      roles: ['user'],
+    },
+    headers: {
+      'x-plan': 'premium',
+      'x-tier': 'premium',
+      'ispremium': 'true',
+    },
+    body: {
+      text: 'Hi',
+      voice: 'lara',
+      language: 'en-US',
+      isPremium: true,
+      tier: 'premium',
+    },
+  });
+  ok(
+    'http header/body plan spoof 403',
+    headerSpoof.status === 403 && headerSpoof.json?.error?.code === 'premium_required',
+  );
+
+  const querySpoof = await dispatch('POST', '/api/voice/synthesize?plan=premium&tier=premium&isPremium=true', {
+    auth: {
+      authenticated: true,
+      userId: 'web:free-http',
+      isAnonymous: false,
+      roles: ['user'],
+    },
+    body: { text: 'Hi', voice: 'lara', language: 'en-US' },
+  });
+  ok(
+    'http query plan spoof 403',
+    querySpoof.status === 403 && querySpoof.json?.error?.code === 'premium_required',
   );
 
   const premSynth = await dispatch('POST', '/api/voice/synthesize', {

@@ -7,11 +7,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import CosmicShell from '../components/cosmic/CosmicShell';
-import {
-  fetchEntitlementsWithRetry,
-  isPremiumPlan,
-  type AtlasEntitlementsPayload,
-} from '../services/atlas-entitlements';
+import { fetchEntitlementsWithRetry, isPremiumPlan } from '../services/atlas-entitlements';
 import { ensureAtlasSession } from '../utils/atlas-session';
 
 type ViewKey = 'loading' | 'active' | 'pending' | 'failed' | 'canceled' | 'invalid' | 'error';
@@ -21,28 +17,28 @@ const COPY: Record<
   { title: string; body: string }
 > = {
   active: {
-    title: 'Lara Prime aktif',
-    body: 'Sunucu üyeliğinizi doğruladı. Lara Voice Lara Prime kapsamında hesabınızda açık.',
+    title: 'Aktivasyon tamamlandı',
+    body: 'Lara Prime üyeliğin açıldı. Prime özellikleri hesabında hazır.',
   },
   pending: {
     title: 'Ödeme işleniyor',
-    body: 'Ödeme doğrulaması henüz Lara Prime’ı açmadı. Kısa süre sonra yenileyin veya Lara Prime sayfasını kontrol edin.',
+    body: 'Ödeme henüz tamamlanmadı. Kısa süre sonra bu sayfayı yenileyin.',
   },
   failed: {
-    title: 'Ödeme doğrulanamadı',
-    body: 'Ödeme tamamlanamadı veya sunucu doğrulaması başarısız. Lara Prime açılmadı.',
+    title: 'Ödeme tamamlanamadı',
+    body: 'Ödeme alınamadı. Lara Prime açılmadı.',
   },
   canceled: {
     title: 'Ödeme iptal edildi',
     body: 'İşlem iptal edildi. Hesap planınız değişmedi.',
   },
   invalid: {
-    title: 'Geçersiz ödeme oturumu',
-    body: 'Checkout oturumu bulunamadı veya eşleşmedi. Lara Prime açılmadı.',
+    title: 'Ödeme tamamlanamadı',
+    body: 'Ödeme oturumu doğrulanamadı. Lara Prime açılmadı.',
   },
   error: {
-    title: 'Durum kontrol edilemedi',
-    body: 'Üyelik durumu sunucudan alınamadı. Giriş yaptığınızdan emin olup tekrar deneyin.',
+    title: 'Ödeme tamamlanamadı',
+    body: 'Üyelik durumu alınamadı. Giriş yaptığınızdan emin olup tekrar deneyin.',
   },
 };
 
@@ -50,6 +46,7 @@ function hintFromQuery(status: string): 'failed' | 'canceled' | 'invalid' | 'pen
   if (status === 'canceled' || status === 'cancelled') return 'canceled';
   if (status === 'failed') return 'failed';
   if (status === 'invalid') return 'invalid';
+  if (status === 'pending') return 'pending';
   // status=success is NOT authority — treat as pending until entitlements confirm.
   if (status === 'success') return 'pending';
   return 'invalid';
@@ -58,9 +55,7 @@ function hintFromQuery(status: string): 'failed' | 'canceled' | 'invalid' | 'pen
 export default function BillingResultPage() {
   const [params] = useSearchParams();
   const queryStatus = String(params.get('status') || 'invalid').toLowerCase();
-  const code = String(params.get('code') || '').slice(0, 64);
   const [view, setView] = useState<ViewKey>('loading');
-  const [entitlements, setEntitlements] = useState<AtlasEntitlementsPayload | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,8 +70,9 @@ export default function BillingResultPage() {
           preferPremium,
         });
         if (cancelled) return;
-        setEntitlements(data);
         if (isPremiumPlan(data)) {
+          await ensureAtlasSession();
+          if (cancelled) return;
           setView('active');
           return;
         }
@@ -96,7 +92,7 @@ export default function BillingResultPage() {
 
   const copy =
     view === 'loading'
-      ? { title: 'Üyelik kontrol ediliyor…', body: 'Sunucu doğrulaması bekleniyor.' }
+      ? { title: 'Üyelik kontrol ediliyor…', body: 'Aktivasyon durumu bekleniyor.' }
       : COPY[view];
 
   return (
@@ -109,24 +105,12 @@ export default function BillingResultPage() {
           {copy.title}
         </h1>
         <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/68">{copy.body}</p>
-        {entitlements?.plan ? (
-          <p className="mt-3 text-[11px] tracking-wide text-[#8b93a3]">
-            Sunucu planı: {entitlements.plan}
-            {entitlements.plan === 'premium' ? ' (Lara Prime)' : ''}
-            {entitlements.subscriptionStatus
-              ? ` · ${entitlements.subscriptionStatus}`
-              : ''}
-          </p>
-        ) : null}
-        {code ? (
-          <p className="mt-3 text-[11px] tracking-wide text-[#8b93a3]">Kod: {code}</p>
-        ) : null}
         <div className="mt-10 flex flex-wrap gap-3">
           <Link
-            to="/lara-prime"
+            to={view === 'active' ? '/prime' : '/lara-prime'}
             className="rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm text-[#e8ecf2] hover:bg-white/10"
           >
-            Lara Prime
+            {view === 'active' ? 'Prime merkeze gir' : 'Lara Prime'}
           </Link>
           <Link
             to="/atlas"

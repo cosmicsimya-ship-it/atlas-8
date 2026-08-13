@@ -14,7 +14,19 @@ export type AtlasSessionInfo = {
   avatarUrl: string | null;
   plan?: string | null;
   entitlements?: Record<string, boolean> | null;
+  experience?: AtlasExperienceInfo | null;
   csrfToken: string;
+};
+
+export type AtlasExperienceInfo = {
+  layer: 'guest' | 'free' | 'prime' | 'admin' | string;
+  plan?: string | null;
+  guest?: boolean;
+  isAdmin?: boolean;
+  isPrime?: boolean;
+  canAccessPrime?: boolean;
+  canAccessAdmin?: boolean;
+  homePath?: string;
 };
 
 /** Fired when login/logout/register changes the active userId. */
@@ -41,6 +53,10 @@ function normalizeSession(data: Partial<AtlasSessionInfo> & { csrfToken: string 
     plan: data.plan ?? null,
     entitlements:
       data.entitlements && typeof data.entitlements === 'object' ? data.entitlements : null,
+    experience:
+      data.experience && typeof data.experience === 'object'
+        ? (data.experience as AtlasExperienceInfo)
+        : null,
     csrfToken: data.csrfToken,
   };
 }
@@ -50,7 +66,10 @@ function normalizeSession(data: Partial<AtlasSessionInfo> & { csrfToken: string 
  * Identity is assigned by the server (anonymous:<uuid> or logged-in user).
  */
 export async function ensureAtlasSession(): Promise<AtlasSessionInfo> {
-  const previousId = cachedSession?.userId ?? null;
+  const previous = cachedSession;
+  const previousId = previous?.userId ?? null;
+  const previousPlan = previous?.plan ?? null;
+  const previousEntitlements = JSON.stringify(previous?.entitlements ?? null);
   const data = await apiRequest<AtlasSessionInfo>('/api/auth/session', {
     method: 'GET',
   });
@@ -58,7 +77,12 @@ export async function ensureAtlasSession(): Promise<AtlasSessionInfo> {
   if (typeof window !== 'undefined' && data.csrfToken) {
     sessionStorage.setItem('atlas_csrf', data.csrfToken);
   }
+  const planChanged = previous != null && previousPlan !== cachedSession.plan;
+  const entitlementsChanged =
+    previous != null && previousEntitlements !== JSON.stringify(cachedSession.entitlements ?? null);
   if (previousId && previousId !== cachedSession.userId) {
+    emitSessionChanged();
+  } else if (planChanged || entitlementsChanged) {
     emitSessionChanged();
   }
   return cachedSession;

@@ -178,15 +178,26 @@ export function applyVerifiedBillingEvent(input) {
   if (input.eventId) {
     const existing = getBillingEvent(input.provider || 'unknown', input.eventId);
     if (existing) {
-      return {
-        duplicate: true,
-        subscription: getSubscription(userId),
-        entitlements: buildEntitlementsResponse({
-          authenticated: true,
-          userId,
-          isAnonymous: false,
-        }),
-      };
+      const existingUser = String(existing.userId || '').trim();
+      if (existingUser && existingUser !== userId) {
+        const err = new Error('event_user_mismatch');
+        err.code = BILLING_ERROR_CODES.UNAUTHORIZED;
+        throw err;
+      }
+      const alreadyGranted =
+        existing.status === 'active' || existing.status === 'trialing';
+      if (alreadyGranted) {
+        return {
+          duplicate: true,
+          subscription: getSubscription(userId),
+          entitlements: buildEntitlementsResponse({
+            authenticated: true,
+            userId,
+            isAnonymous: false,
+          }),
+        };
+      }
+      // Previous failed/pending record for the same event may upgrade to a grant.
     }
     recordBillingEvent({
       provider: input.provider || 'unknown',
@@ -407,12 +418,24 @@ export async function verifyClientPaymentClaim(input) {
     },
   });
 
+  if (verified.pending || verified.status === 'pending') {
+    return {
+      ok: false,
+      paid: false,
+      granted: false,
+      pending: true,
+      error: verified.error || BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      message: 'Ödeme işleniyor.',
+    };
+  }
+
   if (!verified.ok || !verified.paid) {
     updateCheckoutSession(token, { status: 'failed' });
     return {
       ok: false,
       paid: false,
       granted: false,
+      pending: false,
       error: verified.error || BILLING_ERROR_CODES.VERIFICATION_FAILED,
       message: 'Ödeme doğrulanamadı.',
     };
@@ -510,16 +533,6 @@ export async function handleIyzicoCheckoutCallback(input = {}) {
     };
   }
 
-  if (input.cancelHint) {
-    return {
-      ok: false,
-      granted: false,
-      status: 'canceled',
-      error: BILLING_ERROR_CODES.VERIFICATION_FAILED,
-      redirectUrl: buildBillingResultRedirectUrl('canceled', 'payment_canceled'),
-    };
-  }
-
   const session = getCheckoutSession(token);
   if (!session) {
     return {
@@ -542,7 +555,8 @@ export async function handleIyzicoCheckoutCallback(input = {}) {
     };
   }
 
-  // Callback arrival alone never grants — verify path only.
+  // Callback arrival / cancel hint never grants by itself — retrieve SUCCESS only.
+  // Forged cancel must not skip a successful payment retrieve.
   const verified = await verifyClientPaymentClaim({
     userId: session.userId,
     body: { token },
@@ -559,6 +573,29 @@ export async function handleIyzicoCheckoutCallback(input = {}) {
         'success',
         verified.duplicate ? 'duplicate' : 'verified',
       ),
+    };
+  }
+
+  if (verified.pending) {
+    return {
+      ok: false,
+      granted: false,
+      status: 'pending',
+      error: verified.error || BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      redirectUrl: buildBillingResultRedirectUrl('pending', 'payment_pending'),
+    };
+  }
+
+  if (input.cancelHint) {
+    if (session.status !== 'completed') {
+      updateCheckoutSession(token, { status: 'canceled' });
+    }
+    return {
+      ok: false,
+      granted: false,
+      status: 'canceled',
+      error: BILLING_ERROR_CODES.VERIFICATION_FAILED,
+      redirectUrl: buildBillingResultRedirectUrl('canceled', 'payment_canceled'),
     };
   }
 
@@ -635,24 +672,76 @@ export async function processProviderWebhook(providerId, rawBody, headers) {
     };
   }
 
-  const applied = applyVerifiedBillingEvent({
-    userId,
-    provider: verified.provider,
-    status: verified.status || 'active',
-    providerSubscriptionId: verified.providerSubscriptionId,
-    providerPaymentId: verified.providerPaymentId,
-    eventId,
-    kind: String(verified.meta?.kind || 'webhook'),
-  });
+  const raw = rawBody && typeof rawBody === 'object' ? rawBody : {};
+  const token = String(verified.meta?.token || raw.token || '').trim();
+  const session = token ? getCheckoutSession(token) : null;
+  if (session && session.userId !== userId) {
+    return {
+      ok: false,
+      statusCode: 403,
+      error: BILLING_ERROR_CODES.UNAUTHORIZED,
+      message: 'Webhook user does not match checkout session.',
+    };
+  }
 
-  return {
-    ok: true,
-    statusCode: 200,
-    paid: true,
-    granted: !applied.duplicate,
-    duplicate: applied.duplicate,
-    subscription: toPublicSubscription(applied.subscription),
-  };
+  const cfg = getBillingConfig();
+  const priceGate = assertCheckoutPriceInvariant({
+    providerAmount: verified.amount,
+    providerCurrency: verified.currency,
+    sessionAmount: session ? session.amount : cfg.pricing.monthlyPrice,
+    sessionCurrency: session ? session.currency : cfg.pricing.currency || 'TRY',
+    canonicalAmount: cfg.pricing.monthlyPrice,
+    canonicalCurrency: cfg.pricing.currency || 'TRY',
+  });
+  if (!priceGate.ok) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: priceGate.error,
+      message: priceGate.message,
+      paid: true,
+      granted: false,
+    };
+  }
+
+  try {
+    const applied = applyVerifiedBillingEvent({
+      userId,
+      provider: verified.provider,
+      status: verified.status || 'active',
+      providerSubscriptionId: verified.providerSubscriptionId,
+      providerPaymentId: verified.providerPaymentId,
+      eventId,
+      kind: String(verified.meta?.kind || 'webhook'),
+    });
+
+    if (session) {
+      updateCheckoutSession(token, {
+        status: 'completed',
+        paymentId: String(verified.providerPaymentId || eventId),
+      });
+    }
+
+    return {
+      ok: true,
+      statusCode: 200,
+      paid: true,
+      granted: !applied.duplicate,
+      duplicate: applied.duplicate,
+      subscription: toPublicSubscription(applied.subscription),
+    };
+  } catch (err) {
+    const code = err && typeof err === 'object' ? err.code : null;
+    if (code === BILLING_ERROR_CODES.UNAUTHORIZED) {
+      return {
+        ok: false,
+        statusCode: 403,
+        error: BILLING_ERROR_CODES.UNAUTHORIZED,
+        granted: false,
+      };
+    }
+    throw err;
+  }
 }
 
 /**
