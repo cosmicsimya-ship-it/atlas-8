@@ -35,6 +35,7 @@ export {
 export {
   requireCapability,
   requireVoiceLara,
+  requireImageAnalysis,
   ENTITLEMENT_ERROR_CODES,
 } from './middleware.js';
 
@@ -45,5 +46,8 @@ export {
   createNullBillingProvider,
   BILLING_PROVIDER_IDS,
 } from './billing-providers.js';
+
+export { chatUsageGate } from './usage-guard.js';
+export { validateImageAttachment, ALLOWED_IMAGE_MIME_TYPES, getMaxImageBytes } from './image-guard.js';
 
 export const ENTITLEMENTS_VERSION = 'atlas-entitlements-v1';

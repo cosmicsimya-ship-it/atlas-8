@@ -25,6 +25,11 @@ export interface AtlasSelectionPayload {
   domain?: string;
 }
 
+export interface AtlasImageAttachment {
+  mimeType: string;
+  base64: string;
+}
+
 export interface AtlasChatRequest {
   message: string;
   history?: AtlasChatTurn[];
@@ -36,6 +41,14 @@ export interface AtlasChatRequest {
   maxTokens?: number;
   /** Structured payload when user clicks an Atlas-offered option */
   selection?: AtlasSelectionPayload;
+  /** Lara Prime — image.analysis capability required server-side */
+  image?: AtlasImageAttachment;
+}
+
+export interface AtlasChatUsage {
+  plan: 'guest' | 'free' | 'premium';
+  dailyUsed: number;
+  dailyLimit: number;
 }
 
 export interface AtlasChatResponse {
@@ -58,6 +71,7 @@ export interface AtlasChatResponse {
   completionStatus?: string | null;
   incompleteReason?: string | null;
   completenessRetryCount?: number;
+  usage?: AtlasChatUsage;
 }
 
 export interface AtlasChatErrorResponse {

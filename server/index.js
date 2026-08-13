@@ -16,6 +16,10 @@ import { initializeFounderProfiles, getFounderProfileStatus } from './founder-pr
 import { initializeAuthorProfile } from './author-profile.js';
 import { initializePersonaEngine } from './persona-engine.js';
 import { logFounderPipelineDebug } from './founder-identity.js';
+import { chatUsageGate } from './entitlements/usage-guard.js';
+import { CAPABILITIES } from './entitlements/capabilities.js';
+import { resolveEntitlements, hasCapability } from './entitlements/resolve.js';
+import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   deleteMemoryField,
   deleteUserMemory,
@@ -217,7 +221,18 @@ app.use((req, res, next) => {
   return next();
 });
 
-app.use(express.json({ limit: '2mb' }));
+// Default body limit stays tight — most routes only carry small JSON payloads.
+// /api/chat gets its own larger parser (see below) for base64 image attachments;
+// this keeps the wider attack surface scoped to the one route that needs it.
+const DEFAULT_JSON_LIMIT = '2mb';
+// Comfortably above image-guard.js's 6MB decoded ceiling (base64 adds ~33% + JSON envelope).
+const CHAT_JSON_LIMIT = '10mb';
+const chatJsonParser = express.json({ limit: CHAT_JSON_LIMIT });
+
+app.use((req, res, next) => {
+  if (req.path === '/api/chat') return next(); // parsed by chatJsonParser in the route chain below
+  return express.json({ limit: DEFAULT_JSON_LIMIT })(req, res, next);
+});
 app.use(cookieParser());
 
 const loginRateLimit = rateLimitMiddleware({
@@ -702,12 +717,9 @@ app.post(
   },
 );
 
-const chatRateLimit = rateLimitMiddleware({
-  windowMs: 60_000,
-  max: 45,
-  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
-  keyFn: (req) => `chat:${req.auth?.userId || req.ip || 'unknown'}`,
-});
+// Free vs Prime "Genişletilmiş kullanım" — plan-aware burst + daily quota gate.
+// Replaces the flat per-IP/user rate limit for the web chat route.
+const chatUsageRateLimit = chatUsageGate({ keyPrefix: 'chat' });
 
 const atlasMessageRateLimit = rateLimitMiddleware({
   windowMs: 60_000,
@@ -727,10 +739,11 @@ const analysisRateLimit = rateLimitMiddleware({
 // ── Atlas Chat — server-resolved identity only ──
 app.post(
   '/api/chat',
+  chatJsonParser,
   attachAuthFromSession({ createAnonymous: true }),
   requireAuthenticated,
   requireCsrfProtection,
-  chatRateLimit,
+  chatUsageRateLimit,
   async (req, res) => {
     try {
       const body = {
@@ -741,6 +754,35 @@ app.post(
       };
       const normalized = normalizeAtlasMessageRequest(body);
       normalized.userId = req.auth.userId;
+
+      if (normalized.image) {
+        let entitled = false;
+        try {
+          const resolved = resolveEntitlements(req.auth || {});
+          entitled = hasCapability(resolved.entitlements, CAPABILITIES.IMAGE_ANALYSIS);
+        } catch {
+          entitled = false; // fail closed
+        }
+        if (!entitled) {
+          return res.status(403).json({
+            ok: false,
+            data: null,
+            error: {
+              code: 'premium_required',
+              feature: CAPABILITIES.IMAGE_ANALYSIS,
+              message: 'Görsel analiz, Lara Prime kapsamında sunulur.',
+            },
+          });
+        }
+        const validation = validateImageAttachment(normalized.image);
+        if (!validation.ok) {
+          return res.status(400).json({
+            ok: false,
+            data: null,
+            error: { code: validation.code, message: validation.message },
+          });
+        }
+      }
 
       const result = await processAtlasMessage(normalized, {
         mode: req.body?.mode,
@@ -753,6 +795,13 @@ app.post(
       });
 
       const response = toWebChatResponse(result);
+      if (req.atlasUsage) {
+        response.usage = {
+          plan: req.atlasUsage.plan,
+          dailyUsed: req.atlasUsage.dailyUsed,
+          dailyLimit: req.atlasUsage.dailyLimit,
+        };
+      }
       const httpStatus =
         result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
 
@@ -1590,6 +1639,29 @@ if (serveFrontend) {
   });
   console.log(`[ATLAS] Serving frontend from ${DIST_DIR}`);
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// ERROR HANDLING — body-parser (payload-too-large / malformed JSON) must
+// never surface an HTML error page to API clients.
+// ══════════════════════════════════════════════════════════════════════
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({
+      ok: false,
+      data: null,
+      error: { code: 'payload_too_large', message: 'İstek gövdesi çok büyük.' },
+    });
+  }
+  if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+    return res.status(400).json({
+      ok: false,
+      data: null,
+      error: { code: 'invalid_json', message: 'Geçersiz istek gövdesi.' },
+    });
+  }
+  return next(err);
+});
 
 // ══════════════════════════════════════════════════════════════════════
 // START

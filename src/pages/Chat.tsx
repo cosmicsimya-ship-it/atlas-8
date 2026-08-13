@@ -1,4 +1,4 @@
-import { Loader2, RotateCcw, Send } from 'lucide-react';
+import { ImagePlus, Loader2, RotateCcw, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -12,6 +12,7 @@ import CosmicShell from '../components/cosmic/CosmicShell';
 import { discoveryCopy } from '../data/capability-discovery';
 import { PATTERN_GAP_PLACEHOLDER } from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
+import { fetchEntitlements, hasEntitlement } from '../services/atlas-entitlements';
 import {
   ATLAS_SESSION_CHANGED_EVENT,
   ensureAtlasSession,
@@ -19,7 +20,13 @@ import {
 } from '../utils/atlas-session';
 import { trackDiscoverability } from '../utils/discoverability-events';
 import { prefersReducedMotion } from '../utils/scroll-section';
-import type { AtlasChatMessage } from '../types/atlas-chat';
+import type { AtlasChatMessage, AtlasImageAttachment } from '../types/atlas-chat';
+
+/** Mirrors server/entitlements/image-guard.js — client-side pre-check only, server is authoritative. */
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES = 6_000_000;
+
+type PendingImage = { previewUrl: string; mimeType: string; base64: string };
 
 const CAPABILITY_DISCOVERY_ENABLED = isCapabilityDiscoveryEnabled();
 
@@ -44,8 +51,12 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<PendingStatus>('thinking');
   const [backendReady, setBackendReady] = useState<boolean | null>(null);
+  const [canImageAnalysis, setCanImageAnalysis] = useState<boolean | null>(null);
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const seededContext = useRef(false);
   const inFlightRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -77,6 +88,9 @@ export default function Chat() {
       .catch(() => {
         /* session will retry on send */
       });
+    fetchEntitlements()
+      .then((ent) => setCanImageAnalysis(hasEntitlement(ent, 'image.analysis')))
+      .catch(() => setCanImageAnalysis(false)); // fail closed — UI never assumes access
     return () => {
       abortRef.current?.abort();
       clearStallTimer();
@@ -105,6 +119,14 @@ export default function Chat() {
         emptyStateSeenRef.current = false;
         firstMessageTrackedRef.current = false;
         discoveryUsedRef.current = false;
+        setPendingImage((prev) => {
+          if (prev) URL.revokeObjectURL(prev.previewUrl);
+          return null;
+        });
+        setImageError(null);
+        fetchEntitlements()
+          .then((ent) => setCanImageAnalysis(hasEntitlement(ent, 'image.analysis')))
+          .catch(() => setCanImageAnalysis(false));
       }
       sessionUserIdRef.current = nextId;
     };
@@ -192,10 +214,56 @@ export default function Chat() {
     [],
   );
 
+  const clearPendingImage = useCallback(() => {
+    setPendingImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const onImageSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+    setImageError(null);
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageError('Yalnızca JPG, PNG veya WEBP görseller desteklenir.');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImageError(`Görsel çok büyük (maks. ${Math.round(MAX_IMAGE_BYTES / 1_000_000)}MB).`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.split(',')[1] || '';
+      if (!base64) {
+        setImageError('Görsel okunamadı.');
+        return;
+      }
+      setPendingImage((prev) => {
+        if (prev) URL.revokeObjectURL(prev.previewUrl);
+        return { previewUrl: URL.createObjectURL(file), mimeType: file.type, base64 };
+      });
+    };
+    reader.onerror = () => setImageError('Görsel okunamadı.');
+    reader.readAsDataURL(file);
+  }, []);
+
   const sendTurn = useCallback(
     async (
       text: string,
-      opts: { reuseUser?: boolean; turnId?: string; isAutoRetry?: boolean } = {},
+      opts: {
+        reuseUser?: boolean;
+        turnId?: string;
+        isAutoRetry?: boolean;
+        image?: AtlasImageAttachment;
+      } = {},
     ) => {
       const trimmed = text.trim();
       if (!trimmed || inFlightRef.current) return;
@@ -256,6 +324,7 @@ export default function Chat() {
         const response = await atlasChat.sendMessage(trimmed, history, {
           signal: controller.signal,
           requestId,
+          ...(opts.image ? { image: opts.image } : {}),
         });
 
         if (activeTurnRef.current !== turnId) {
@@ -280,6 +349,7 @@ export default function Chat() {
               reuseUser: true,
               turnId,
               isAutoRetry: true,
+              image: opts.image,
             });
             return;
           }
@@ -344,6 +414,7 @@ export default function Chat() {
             reuseUser: true,
             turnId,
             isAutoRetry: true,
+            image: opts.image,
           });
           return;
         }
@@ -380,8 +451,12 @@ export default function Chat() {
       );
     }
 
-    await sendTurn(payload);
-  }, [input, messages.length, sendTurn]);
+    const image = pendingImage
+      ? { mimeType: pendingImage.mimeType, base64: pendingImage.base64 }
+      : undefined;
+    clearPendingImage();
+    await sendTurn(payload, { image });
+  }, [input, messages.length, sendTurn, pendingImage, clearPendingImage]);
 
   /** Retry the failed turn in place — keep the user bubble, new requestId. */
   const retryLast = useCallback(() => {
@@ -563,7 +638,61 @@ export default function Chat() {
               </div>
             )}
 
+            {pendingImage ? (
+              <div className="mb-2 flex items-center gap-2">
+                <div className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
+                  <img
+                    src={pendingImage.previewUrl}
+                    alt="Eklenecek görsel"
+                    className="h-full w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearPendingImage}
+                    aria-label="Görseli kaldır"
+                    className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-white"
+                  >
+                    <X size={10} aria-hidden />
+                  </button>
+                </div>
+                <span className="text-[12px] text-[#8b93a3]">Görsel eklendi</span>
+              </div>
+            ) : null}
+            {imageError ? (
+              <p className="mb-2 text-[12px] text-red-300/90">{imageError}</p>
+            ) : null}
+
             <div className="atlas-composer flex items-end gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                onChange={onImageSelected}
+                className="sr-only"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (canImageAnalysis) {
+                    fileInputRef.current?.click();
+                  } else {
+                    setImageError(
+                      canImageAnalysis === null
+                        ? 'Yetki kontrol ediliyor…'
+                        : 'Görsel analiz, Lara Prime kapsamında sunulur.',
+                    );
+                  }
+                }}
+                disabled={backendReady === false || loading}
+                aria-label="Görsel ekle"
+                title={canImageAnalysis ? 'Görsel ekle' : 'Görsel analiz, Lara Prime kapsamında sunulur.'}
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[#8b93a3] transition hover:text-[#e8ecf2] disabled:opacity-30"
+              >
+                <ImagePlus size={19} aria-hidden />
+              </button>
+
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <label htmlFor="atlas-message" className="sr-only">
                   Atlas’a yaz

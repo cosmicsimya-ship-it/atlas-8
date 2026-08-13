@@ -67,10 +67,15 @@ export async function apiRequest<T>(
     }
 
     if (!res.ok) {
-      const message =
-        typeof body === 'object' && body !== null && 'error' in body
-          ? String((body as { error: string }).error)
-          : `Request failed (${res.status})`;
+      let message = `Request failed (${res.status})`;
+      if (typeof body === 'object' && body !== null && 'error' in body) {
+        const errField = (body as { error: unknown }).error;
+        if (errField && typeof errField === 'object' && 'message' in errField) {
+          message = String((errField as { message: unknown }).message);
+        } else {
+          message = String(errField);
+        }
+      }
       throw new ApiError(message, res.status, body);
     }
 

@@ -45,7 +45,10 @@ export function requireCapability(capability, opts = {}) {
           capability === CAPABILITIES.VOICE_LARA ||
           capability === CAPABILITIES.VOICE_MULTILINGUAL ||
           capability === CAPABILITIES.PREMIUM_FEATURES ||
-          capability === CAPABILITIES.ANALYSIS_EXTENDED;
+          capability === CAPABILITIES.ANALYSIS_EXTENDED ||
+          capability === CAPABILITIES.USAGE_EXTENDED ||
+          capability === CAPABILITIES.IMAGE_ANALYSIS ||
+          capability === CAPABILITIES.MEMORY_EXTENDED;
 
         const code = needsPremium
           ? ENTITLEMENT_ERROR_CODES.PREMIUM_REQUIRED
@@ -84,4 +87,8 @@ export function requireCapability(capability, opts = {}) {
 
 export function requireVoiceLara() {
   return requireCapability(CAPABILITIES.VOICE_LARA, { feature: CAPABILITIES.VOICE_LARA });
+}
+
+export function requireImageAnalysis() {
+  return requireCapability(CAPABILITIES.IMAGE_ANALYSIS, { feature: CAPABILITIES.IMAGE_ANALYSIS });
 }

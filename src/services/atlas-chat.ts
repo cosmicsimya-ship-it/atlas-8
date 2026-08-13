@@ -89,6 +89,8 @@ export class AtlasChatService {
         maxTokens: options.maxTokens,
         clientRequestId: options.requestId,
         ...(options.selection ? { selection: options.selection } : {}),
+        // Server enforces image.analysis entitlement — client attaches, never self-grants.
+        ...(options.image ? { image: options.image } : {}),
       }),
     });
   }
