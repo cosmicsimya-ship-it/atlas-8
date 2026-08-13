@@ -27,6 +27,7 @@ import {
   shouldRouteToPersonalAnalysis,
 } from './symbolic-synthesis.js';
 import { getUserMemory, isValidUserId } from './user-memory.js';
+import { resolveEntitlements, hasCapability, CAPABILITIES } from './entitlements/resolve.js';
 import {
   buildRelevantMemoryContext,
   detectMemoryIntent,
@@ -669,10 +670,24 @@ export function buildAtlasPromptBundle(input, options = {}) {
       privacyEvaluation.aboutFounder && !privacyEvaluation.authorized,
   });
 
+  let memoryExtended = false;
+  try {
+    // Server-resolved only — never trust client plan/entitlement fields.
+    // Absent/unresolvable auth (e.g. bot-verified Telegram path with no
+    // session) fails closed to standard (free-equivalent) depth.
+    if (options.auth) {
+      const resolved = resolveEntitlements(options.auth);
+      memoryExtended = hasCapability(resolved.entitlements, CAPABILITIES.MEMORY_EXTENDED);
+    }
+  } catch {
+    memoryExtended = false;
+  }
+
   let userMemoryContext =
     userId && userId !== 'web:anonymous' && !filtered.strippedCrossUser
       ? buildRelevantMemoryContext(userId, message, mode, {
           accountDisplayName: requesterContext.displayName,
+          memoryExtended,
         })
       : null;
 

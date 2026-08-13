@@ -956,11 +956,26 @@ export function resolvePreferredUserName(memory, opts = {}) {
 }
 
 /**
+ * Historical-fact retrieval depth — the one bounded, measurable Lara Prime
+ * memory difference (memory.extended). The *trigger* for including facts at
+ * all (intentMentionsPast) is identical for free and premium — only the
+ * window of recalled facts widens. Env-overridable, safe defaults.
+ */
+export function getMemoryFactDepthConfig() {
+  const free = Number(process.env.ATLAS_MEMORY_FACT_DEPTH_FREE || 3);
+  const premium = Number(process.env.ATLAS_MEMORY_FACT_DEPTH_PREMIUM || 12);
+  return {
+    free: Number.isFinite(free) && free > 0 ? free : 3,
+    premium: Number.isFinite(premium) && premium > 0 ? premium : 12,
+  };
+}
+
+/**
  * Build only relevant memory lines for prompt injection (not full store).
  * @param {string} userId
  * @param {string} message
  * @param {string} mode
- * @param {{ accountDisplayName?: string|null }} [opts]
+ * @param {{ accountDisplayName?: string|null, memoryExtended?: boolean }} [opts]
  * @returns {string|null}
  */
 export function buildRelevantMemoryContext(userId, message, mode = 'conversational', opts = {}) {
@@ -1017,7 +1032,10 @@ export function buildRelevantMemoryContext(userId, message, mode = 'conversation
     lines.push(`Tercih edilen dil: ${memory.preferences.preferredLanguage}`);
   }
 
-  const factEntries = Object.entries(memory.facts).slice(-3);
+  const factDepth = opts.memoryExtended
+    ? getMemoryFactDepthConfig().premium
+    : getMemoryFactDepthConfig().free;
+  const factEntries = Object.entries(memory.facts).slice(-factDepth);
   if (factEntries.length > 0 && intentMentionsPast(message)) {
     for (const [, value] of factEntries) {
       lines.push(`Not: ${value}`);
