@@ -254,11 +254,11 @@ export async function upsertAccount(input) {
 
   store.accounts[accountId] = {
     id: accountId,
-    username: String(input.username).trim(),
+    username: input.username !== undefined ? String(input.username).trim() : existing?.username,
     email: emailInput,
     passwordHash,
     roles: Array.isArray(input.roles) ? [...input.roles] : existing?.roles ?? ['user'],
-    userId: input.userId,
+    userId: input.userId !== undefined ? input.userId : existing?.userId,
     telegramBindings: Array.isArray(input.telegramBindings)
       ? input.telegramBindings.map(String)
       : existing?.telegramBindings ?? [],
