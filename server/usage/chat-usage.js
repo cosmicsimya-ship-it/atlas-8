@@ -105,3 +105,22 @@ export function getChatUsageSnapshot(userKey, plan) {
 export function resetChatUsageForTests() {
   dailyBuckets.clear();
 }
+
+/**
+ * Admin-only aggregate over today's buckets — same in-memory Map used for
+ * enforcement, just summarized rather than checked per-user. Real counts
+ * only; nothing here is estimated or fabricated.
+ * @returns {{ totalRequestsToday: number, usersActiveToday: number, perUser: Array<{ userKey: string, count: number }> }}
+ */
+export function getChatUsageOverview() {
+  const today = new Date().toISOString().slice(0, 10);
+  const prefix = `${today}:`;
+  let total = 0;
+  const perUser = [];
+  for (const [key, bucket] of dailyBuckets.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    total += bucket.count;
+    perUser.push({ userKey: key.slice(prefix.length), count: bucket.count });
+  }
+  return { totalRequestsToday: total, usersActiveToday: perUser.length, perUser };
+}

@@ -1,0 +1,400 @@
+import { useEffect, useState } from 'react';
+
+import { apiRequest } from '../../services/api-client';
+
+type Tab = 'overview' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
+
+type AdminUserRow = {
+  userId: string;
+  username: string | null;
+  email: string | null;
+  roles: string[];
+  plan: string;
+  subscriptionStatus: string;
+  usageToday: { dailyUsed: number; dailyLimit: number };
+  createdAt: string | null;
+  lastActive: string | null;
+};
+
+type Overview = {
+  totalUsers: number;
+  primeUsers: number;
+  freeUsers: number;
+  activeToday: number | null;
+  chatUsageToday: number;
+  usersActiveInChatToday: number;
+  estimatedAiCost: number | null;
+};
+
+type UsageResponse = {
+  totalRequestsToday: number;
+  usersActiveToday: number;
+  nearLimitThreshold: number;
+  users: Array<{ userId: string; plan: string; dailyUsed: number; dailyLimit: number; nearLimit: boolean; atLimit: boolean }>;
+};
+
+type CostsResponse = {
+  authoritative: boolean;
+  message: string;
+  todayEstimatedCost: number | null;
+};
+
+type HealthResponse = {
+  overallStatus: string;
+  services: Array<{ service: string; status: string; detail?: string }>;
+  checkedAt: string;
+};
+
+type AuditEvent = { eventId: string; timestamp: string; actor: string; action: string; targetUserId: string | null; result: string };
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'users', label: 'Users' },
+  { id: 'prime', label: 'Prime' },
+  { id: 'usage', label: 'Usage' },
+  { id: 'costs', label: 'Costs' },
+  { id: 'health', label: 'System Health' },
+  { id: 'audit', label: 'Audit' },
+];
+
+function Metric({ label, value }: { label: string; value: string | number | null }) {
+  return (
+    <div className="rounded-lg border border-white/[0.08] p-4">
+      <p className="text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">{label}</p>
+      <p className="mt-1.5 text-2xl text-[#e8ecf2]">{value === null ? '—' : value}</p>
+      {value === null ? <p className="mt-1 text-[11px] text-[#8b93a3]">Not yet tracked</p> : null}
+    </div>
+  );
+}
+
+function useAdminFetch<T>(path: string, deps: unknown[] = []) {
+  const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'ok'; data: T }>({
+    status: 'loading',
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: 'loading' });
+    apiRequest<T>(path, { method: 'GET' })
+      .then((data) => {
+        if (!cancelled) setState({ status: 'ok', data });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ status: 'error', message: err instanceof Error ? err.message : 'Yüklenemedi' });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return state;
+}
+
+function StateWrapper({ state, empty, children }: { state: { status: string; message?: string }; empty?: boolean; children: React.ReactNode }) {
+  if (state.status === 'loading') return <p className="text-sm text-[#8b93a3]">Yükleniyor…</p>;
+  if (state.status === 'error') return <p className="text-sm text-red-300/80">{state.message}</p>;
+  if (empty) return <p className="text-sm text-[#8b93a3]">Veri yok.</p>;
+  return <>{children}</>;
+}
+
+function OverviewTab() {
+  const state = useAdminFetch<{ ok: boolean; overview: Overview }>('/api/admin/overview');
+  return (
+    <StateWrapper state={state}>
+      {state.status === 'ok' ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Metric label="Total Users" value={state.data.overview.totalUsers} />
+          <Metric label="Prime Users" value={state.data.overview.primeUsers} />
+          <Metric label="Free Users" value={state.data.overview.freeUsers} />
+          <Metric label="Active Today" value={state.data.overview.activeToday} />
+          <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
+          <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
+          <Metric label="Estimated AI Cost" value={state.data.overview.estimatedAiCost} />
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+function UsersTable({ rows }: { rows: AdminUserRow[] }) {
+  if (rows.length === 0) return <p className="text-sm text-[#8b93a3]">Kullanıcı bulunamadı.</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[720px] border-collapse text-left text-[13px]">
+        <thead>
+          <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">
+            <th className="py-2 pr-4 font-medium">User</th>
+            <th className="py-2 pr-4 font-medium">Plan</th>
+            <th className="py-2 pr-4 font-medium">Subscription</th>
+            <th className="py-2 pr-4 font-medium">Usage</th>
+            <th className="py-2 pr-4 font-medium">Created</th>
+            <th className="py-2 pr-4 font-medium">Last Active</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((u) => (
+            <tr key={u.userId} className="border-b border-white/[0.06] last:border-0">
+              <td className="py-2.5 pr-4">
+                <div className="text-[#e8ecf2]">{u.username ?? '—'}</div>
+                <div className="font-mono text-[11px] text-[#8b93a3]">{u.userId}</div>
+              </td>
+              <td className="py-2.5 pr-4 text-[#e8ecf2]">{u.plan}</td>
+              <td className="py-2.5 pr-4 text-[#9aa3b2]">{u.subscriptionStatus}</td>
+              <td className="py-2.5 pr-4 text-[#9aa3b2]">{u.usageToday.dailyUsed} / {u.usageToday.dailyLimit}</td>
+              <td className="py-2.5 pr-4 text-[#9aa3b2]">{u.createdAt ? new Date(u.createdAt).toLocaleDateString('tr-TR') : '—'}</td>
+              <td className="py-2.5 pr-4 text-[#8b93a3]">{u.lastActive ?? 'Not yet tracked'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function UsersTab() {
+  const [search, setSearch] = useState('');
+  const [plan, setPlan] = useState('');
+  const [status, setStatus] = useState('');
+  const [offset, setOffset] = useState(0);
+  const limit = 25;
+  const qs = new URLSearchParams({
+    ...(search ? { search } : {}),
+    ...(plan ? { plan } : {}),
+    ...(status ? { subscriptionStatus: status } : {}),
+    limit: String(limit),
+    offset: String(offset),
+  }).toString();
+  const state = useAdminFetch<{ ok: boolean; users: AdminUserRow[]; total: number }>(`/api/admin/users?${qs}`, [qs]);
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setOffset(0);
+          }}
+          placeholder="Ara: email, kullanıcı adı, id"
+          maxLength={200}
+          className="atlas-field max-w-xs text-sm"
+          aria-label="Kullanıcı ara"
+        />
+        <select
+          value={plan}
+          onChange={(e) => {
+            setPlan(e.target.value);
+            setOffset(0);
+          }}
+          className="atlas-field text-sm"
+          aria-label="Plana göre filtrele"
+        >
+          <option value="">Tüm planlar</option>
+          <option value="free">Free</option>
+          <option value="premium">Premium</option>
+        </select>
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setOffset(0);
+          }}
+          className="atlas-field text-sm"
+          aria-label="Aboneliğe göre filtrele"
+        >
+          <option value="">Tüm durumlar</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+          <option value="expired">Expired</option>
+        </select>
+      </div>
+      <StateWrapper state={state}>
+        {state.status === 'ok' ? (
+          <>
+            <UsersTable rows={state.data.users} />
+            <div className="mt-4 flex items-center gap-3 text-[12px] text-[#8b93a3]">
+              <button
+                type="button"
+                disabled={offset === 0}
+                onClick={() => setOffset(Math.max(0, offset - limit))}
+                className="atlas-focus rounded border border-white/10 px-2.5 py-1 disabled:opacity-40"
+              >
+                Önceki
+              </button>
+              <span>
+                {offset + 1}–{Math.min(offset + limit, state.data.total)} / {state.data.total}
+              </span>
+              <button
+                type="button"
+                disabled={offset + limit >= state.data.total}
+                onClick={() => setOffset(offset + limit)}
+                className="atlas-focus rounded border border-white/10 px-2.5 py-1 disabled:opacity-40"
+              >
+                Sonraki
+              </button>
+            </div>
+          </>
+        ) : null}
+      </StateWrapper>
+    </div>
+  );
+}
+
+function PrimeTab() {
+  const state = useAdminFetch<{ ok: boolean; users: AdminUserRow[]; total: number }>('/api/admin/prime');
+  return (
+    <div>
+      <p className="mb-3 text-[12px] text-[#8b93a3]">
+        Write actions (grant/revoke/extend) are read-only in this phase — no safe subscription-store write API
+        with audit/rollback semantics exists yet.
+      </p>
+      <StateWrapper state={state}>{state.status === 'ok' ? <UsersTable rows={state.data.users} /> : null}</StateWrapper>
+    </div>
+  );
+}
+
+function UsageTab() {
+  const state = useAdminFetch<{ ok: boolean; usage: UsageResponse }>('/api/admin/usage');
+  return (
+    <StateWrapper state={state}>
+      {state.status === 'ok' ? (
+        <div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Metric label="Total Requests Today" value={state.data.usage.totalRequestsToday} />
+            <Metric label="Users Active Today" value={state.data.usage.usersActiveToday} />
+            <Metric label="Near-Limit Threshold" value={`${Math.round(state.data.usage.nearLimitThreshold * 100)}%`} />
+          </div>
+          <div className="mt-5">
+            <p className="mb-2 text-[12px] uppercase tracking-[0.1em] text-[#8b93a3]">Users near or at their daily limit</p>
+            {state.data.usage.users.filter((u) => u.nearLimit || u.atLimit).length === 0 ? (
+              <p className="text-sm text-[#8b93a3]">Kimse limite yaklaşmadı.</p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {state.data.usage.users
+                  .filter((u) => u.nearLimit || u.atLimit)
+                  .map((u) => (
+                    <li key={u.userId} className="flex justify-between border-b border-white/[0.06] py-1.5">
+                      <span className="font-mono text-[12px] text-[#9aa3b2]">{u.userId}</span>
+                      <span className={u.atLimit ? 'text-red-300/80' : 'text-[#c9b37a]/85'}>
+                        {u.dailyUsed} / {u.dailyLimit} {u.atLimit ? '(at limit)' : '(near limit)'}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+function CostsTab() {
+  const state = useAdminFetch<{ ok: boolean; costs: CostsResponse }>('/api/admin/costs');
+  return (
+    <StateWrapper state={state}>
+      {state.status === 'ok' ? (
+        <div>
+          <p className="text-sm text-[#e8ecf2]">
+            {state.data.costs.authoritative ? 'Maliyet verisi mevcut.' : 'USAGE AVAILABLE — COST ESTIMATION NOT YET AUTHORITATIVE'}
+          </p>
+          <p className="mt-2 text-[13px] text-[#8b93a3]">{state.data.costs.message}</p>
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+function HealthTab() {
+  const state = useAdminFetch<{ ok: boolean; health: HealthResponse }>('/api/admin/health');
+  const color = (status: string) =>
+    status === 'healthy' ? 'text-[#7fd88f]' : status === 'degraded' ? 'text-[#c9b37a]' : status === 'unavailable' ? 'text-red-300/85' : 'text-[#8b93a3]';
+  return (
+    <StateWrapper state={state}>
+      {state.status === 'ok' ? (
+        <div>
+          <p className="mb-4 text-sm">
+            Overall: <span className={color(state.data.health.overallStatus)}>{state.data.health.overallStatus}</span>
+          </p>
+          <ul className="space-y-2">
+            {state.data.health.services.map((s) => (
+              <li key={s.service} className="flex flex-col gap-0.5 border-b border-white/[0.06] py-2 text-sm sm:flex-row sm:justify-between">
+                <span className="text-[#e8ecf2]/85">{s.service}</span>
+                <span className={color(s.status)}>
+                  {s.status}
+                  {s.detail ? <span className="ml-2 text-[12px] text-[#8b93a3]">{s.detail}</span> : null}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+function AuditTab() {
+  const state = useAdminFetch<{ ok: boolean; events: AuditEvent[]; total: number }>('/api/admin/audit');
+  return (
+    <StateWrapper state={state} empty={state.status === 'ok' && state.data.events.length === 0}>
+      {state.status === 'ok' && state.data.events.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px] border-collapse text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">
+                <th className="py-2 pr-4 font-medium">Timestamp</th>
+                <th className="py-2 pr-4 font-medium">Admin</th>
+                <th className="py-2 pr-4 font-medium">Action</th>
+                <th className="py-2 pr-4 font-medium">Target</th>
+                <th className="py-2 pr-4 font-medium">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.data.events.map((e) => (
+                <tr key={e.eventId} className="border-b border-white/[0.06] last:border-0">
+                  <td className="py-2 pr-4 text-[#9aa3b2]">{new Date(e.timestamp).toLocaleString('tr-TR')}</td>
+                  <td className="py-2 pr-4 font-mono text-[12px] text-[#9aa3b2]">{e.actor}</td>
+                  <td className="py-2 pr-4 text-[#e8ecf2]">{e.action}</td>
+                  <td className="py-2 pr-4 font-mono text-[12px] text-[#8b93a3]">{e.targetUserId ?? '—'}</td>
+                  <td className="py-2 pr-4 text-[#9aa3b2]">{e.result}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+export default function AdminControlCenter() {
+  const [tab, setTab] = useState<Tab>('overview');
+  return (
+    <div className="mt-10 border-t border-white/10 pt-8">
+      <p className="font-brand text-[11px] uppercase tracking-[0.28em] text-[#8b93a3]">Control Center</p>
+      <nav aria-label="Admin bölümleri" className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-b border-white/[0.08] pb-3 text-[13px]">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            aria-current={tab === t.id ? 'page' : undefined}
+            className={tab === t.id ? 'text-[#e8ecf2]' : 'text-[#8b93a3] hover:text-[#e8ecf2]'}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      <div className="mt-5">
+        {tab === 'overview' ? <OverviewTab /> : null}
+        {tab === 'users' ? <UsersTab /> : null}
+        {tab === 'prime' ? <PrimeTab /> : null}
+        {tab === 'usage' ? <UsageTab /> : null}
+        {tab === 'costs' ? <CostsTab /> : null}
+        {tab === 'health' ? <HealthTab /> : null}
+        {tab === 'audit' ? <AuditTab /> : null}
+      </div>
+    </div>
+  );
+}

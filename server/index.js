@@ -24,6 +24,15 @@ import { getChatUsageSnapshot } from './usage/chat-usage.js';
 import { getPrimeProfile, updatePrimeProfile } from './prime/profile.js';
 import { listPrimeMemoryFacts, deletePrimeMemoryFact } from './prime/memory.js';
 import { buildPrimeToday } from './prime/today.js';
+import {
+  listAdminUsers,
+  getAdminUserDetail,
+  getAdminOverview,
+  getAdminUsage,
+  getAdminCosts,
+  getAdminHealth,
+  getAdminAuditLog,
+} from './admin/control-center.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   appendMessage as appendConversationMessage,
@@ -742,6 +751,157 @@ app.delete(
       return res.status(status).json({ ok: false, error: result.error });
     }
     return res.json({ ok: true, deleted: true });
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Phase A. All routes: requireAuth + requireRole('admin').
+// Read-only (write actions deferred per audit — no safe subscription-store
+// write API with audit/rollback semantics exists yet).
+// ═══════════════════════════════════════════════════════════════════════
+const adminRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 120,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `admin-cc:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.get(
+  '/api/admin/overview',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      return res.json({ ok: true, overview: getAdminOverview() });
+    } catch (err) {
+      console.error('[ATLAS] admin/overview error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/users',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = listAdminUsers({
+        search: req.query.search,
+        plan: req.query.plan,
+        subscriptionStatus: req.query.subscriptionStatus,
+        role: req.query.role,
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/users error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/prime',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = listAdminUsers({
+        plan: 'premium',
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/prime error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/users/:userId',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = getAdminUserDetail(req.params.userId);
+      if (!result.ok) return res.status(404).json({ ok: false, error: result.error });
+      return res.json({ ok: true, user: result.user });
+    } catch (err) {
+      console.error('[ATLAS] admin/users/:userId error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/usage',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      return res.json({ ok: true, usage: getAdminUsage() });
+    } catch (err) {
+      console.error('[ATLAS] admin/usage error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/costs',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    return res.json({ ok: true, costs: getAdminCosts() });
+  },
+);
+
+app.get(
+  '/api/admin/health',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      return res.json({ ok: true, health: getAdminHealth() });
+    } catch (err) {
+      console.error('[ATLAS] admin/health error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/audit',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = getAdminAuditLog({ limit: req.query.limit, offset: req.query.offset });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/audit error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
   },
 );
 
