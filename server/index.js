@@ -21,6 +21,9 @@ import { CAPABILITIES } from './entitlements/capabilities.js';
 import { resolveEntitlements, hasCapability } from './entitlements/resolve.js';
 import { getSubscription, toPublicSubscription } from './entitlements/subscription-store.js';
 import { getChatUsageSnapshot } from './usage/chat-usage.js';
+import { getPrimeProfile, updatePrimeProfile } from './prime/profile.js';
+import { listPrimeMemoryFacts, deletePrimeMemoryFact } from './prime/memory.js';
+import { buildPrimeToday } from './prime/today.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   appendMessage as appendConversationMessage,
@@ -658,6 +661,87 @@ app.get(
       console.error('[ATLAS] admin/membership error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Prime personal center — authenticated accounts only, never guest.
+// Owner-scoped by construction: userId always comes from req.auth, never
+// from the request body/params.
+// ═══════════════════════════════════════════════════════════════════════
+const primeRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `prime:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.get(
+  '/api/prime/profile',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  primeRateLimit,
+  (req, res) => {
+    const result = getPrimeProfile(req.auth.userId);
+    if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
+    return res.json({ ok: true, profile: result.profile });
+  },
+);
+
+app.patch(
+  '/api/prime/profile',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  primeRateLimit,
+  async (req, res) => {
+    const result = await updatePrimeProfile(req.auth.userId, req.body ?? {});
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true, profile: result.profile });
+  },
+);
+
+app.get(
+  '/api/prime/today',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  primeRateLimit,
+  (req, res) => {
+    try {
+      const today = buildPrimeToday(req.auth.userId, req.auth);
+      return res.json({ ok: true, today });
+    } catch (err) {
+      console.error('[ATLAS] prime/today error:', err.message);
+      return res.status(500).json({ ok: false, error: 'Prime home service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/prime/memory',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  primeRateLimit,
+  (req, res) => {
+    const result = listPrimeMemoryFacts(req.auth.userId);
+    if (!result.ok) return res.status(500).json({ ok: false, error: result.error });
+    return res.json({ ok: true, facts: result.facts });
+  },
+);
+
+app.delete(
+  '/api/prime/memory/:factKey',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  primeRateLimit,
+  async (req, res) => {
+    const result = await deletePrimeMemoryFact(req.auth.userId, req.params.factKey);
+    if (!result.ok) {
+      const status = result.error === 'Fact not found' ? 404 : 400;
+      return res.status(status).json({ ok: false, error: result.error });
+    }
+    return res.json({ ok: true, deleted: true });
   },
 );
 
