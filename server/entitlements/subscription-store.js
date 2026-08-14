@@ -190,6 +190,7 @@ export function toPublicSubscription(sub) {
       status: 'inactive',
       cancelAtPeriodEnd: false,
       currentPeriodEnd: null,
+      provider: null,
     };
   }
   return {
@@ -197,5 +198,6 @@ export function toPublicSubscription(sub) {
     status: sub.status,
     cancelAtPeriodEnd: Boolean(sub.cancelAtPeriodEnd),
     currentPeriodEnd: sub.currentPeriodEnd || null,
+    provider: sub.provider || null,
   };
 }

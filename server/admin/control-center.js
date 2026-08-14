@@ -117,6 +117,7 @@ export function getAdminUserDetail(userId) {
       username: publicAccount.username,
       email: publicAccount.email,
       roles: publicAccount.roles,
+      disabled: publicAccount.disabled,
       createdAt: account.createdAt ?? null,
       lastActive: null,
       plan: resolved.plan,

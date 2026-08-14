@@ -39,7 +39,7 @@ function AdminVerifiedPanel({ profile }: { profile: AdminMeResponse }) {
           </div>
         </dl>
 
-        <AdminControlCenter />
+        <AdminControlCenter actorUserId={profile.userId} />
 
         <Link
           to="/"

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { apiRequest } from '../../services/api-client';
+import AdminUserActions from './AdminUserActions';
 
 type Tab = 'overview' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
 
@@ -117,7 +118,7 @@ function OverviewTab() {
   );
 }
 
-function UsersTable({ rows }: { rows: AdminUserRow[] }) {
+function UsersTable({ rows, onSelect }: { rows: AdminUserRow[]; onSelect: (userId: string) => void }) {
   if (rows.length === 0) return <p className="text-sm text-[#8b93a3]">Kullanıcı bulunamadı.</p>;
   return (
     <div className="overflow-x-auto">
@@ -134,7 +135,11 @@ function UsersTable({ rows }: { rows: AdminUserRow[] }) {
         </thead>
         <tbody>
           {rows.map((u) => (
-            <tr key={u.userId} className="border-b border-white/[0.06] last:border-0">
+            <tr
+              key={u.userId}
+              onClick={() => onSelect(u.userId)}
+              className="cursor-pointer border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
+            >
               <td className="py-2.5 pr-4">
                 <div className="text-[#e8ecf2]">{u.username ?? '—'}</div>
                 <div className="font-mono text-[11px] text-[#8b93a3]">{u.userId}</div>
@@ -152,11 +157,31 @@ function UsersTable({ rows }: { rows: AdminUserRow[] }) {
   );
 }
 
-function UsersTab() {
+function UserDetailPanel({ userId, actorUserId, onClose }: { userId: string; actorUserId: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/60" role="presentation" onMouseDown={(e) => {
+      if (e.target === e.currentTarget) onClose();
+    }}>
+      <div className="h-full w-[min(100%,480px)] overflow-y-auto border-l border-white/10 bg-[#050608] p-5 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <p className="font-mono text-[12px] text-[#8b93a3]">{userId}</p>
+          <button type="button" onClick={onClose} aria-label="Kapat" className="atlas-focus text-[#8b93a3] hover:text-[#e8ecf2]">
+            ✕
+          </button>
+        </div>
+        <p className="mt-2 text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">Actions</p>
+        <AdminUserActions userId={userId} actorUserId={actorUserId} />
+      </div>
+    </div>
+  );
+}
+
+function UsersTab({ actorUserId }: { actorUserId: string }) {
   const [search, setSearch] = useState('');
   const [plan, setPlan] = useState('');
   const [status, setStatus] = useState('');
   const [offset, setOffset] = useState(0);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const limit = 25;
   const qs = new URLSearchParams({
     ...(search ? { search } : {}),
@@ -212,7 +237,7 @@ function UsersTab() {
       <StateWrapper state={state}>
         {state.status === 'ok' ? (
           <>
-            <UsersTable rows={state.data.users} />
+            <UsersTable rows={state.data.users} onSelect={setSelectedUserId} />
             <div className="mt-4 flex items-center gap-3 text-[12px] text-[#8b93a3]">
               <button
                 type="button"
@@ -237,19 +262,24 @@ function UsersTab() {
           </>
         ) : null}
       </StateWrapper>
+      {selectedUserId ? (
+        <UserDetailPanel userId={selectedUserId} actorUserId={actorUserId} onClose={() => setSelectedUserId(null)} />
+      ) : null}
     </div>
   );
 }
 
-function PrimeTab() {
+function PrimeTab({ actorUserId }: { actorUserId: string }) {
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const state = useAdminFetch<{ ok: boolean; users: AdminUserRow[]; total: number }>('/api/admin/prime');
   return (
     <div>
-      <p className="mb-3 text-[12px] text-[#8b93a3]">
-        Write actions (grant/revoke/extend) are read-only in this phase — no safe subscription-store write API
-        with audit/rollback semantics exists yet.
-      </p>
-      <StateWrapper state={state}>{state.status === 'ok' ? <UsersTable rows={state.data.users} /> : null}</StateWrapper>
+      <StateWrapper state={state}>
+        {state.status === 'ok' ? <UsersTable rows={state.data.users} onSelect={setSelectedUserId} /> : null}
+      </StateWrapper>
+      {selectedUserId ? (
+        <UserDetailPanel userId={selectedUserId} actorUserId={actorUserId} onClose={() => setSelectedUserId(null)} />
+      ) : null}
     </div>
   );
 }
@@ -368,7 +398,7 @@ function AuditTab() {
   );
 }
 
-export default function AdminControlCenter() {
+export default function AdminControlCenter({ actorUserId }: { actorUserId: string }) {
   const [tab, setTab] = useState<Tab>('overview');
   return (
     <div className="mt-10 border-t border-white/10 pt-8">
@@ -388,8 +418,8 @@ export default function AdminControlCenter() {
       </nav>
       <div className="mt-5">
         {tab === 'overview' ? <OverviewTab /> : null}
-        {tab === 'users' ? <UsersTab /> : null}
-        {tab === 'prime' ? <PrimeTab /> : null}
+        {tab === 'users' ? <UsersTab actorUserId={actorUserId} /> : null}
+        {tab === 'prime' ? <PrimeTab actorUserId={actorUserId} /> : null}
         {tab === 'usage' ? <UsageTab /> : null}
         {tab === 'costs' ? <CostsTab /> : null}
         {tab === 'health' ? <HealthTab /> : null}
