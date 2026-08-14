@@ -7,6 +7,8 @@ import type {
   AtlasChatRequest,
   AtlasChatResponse,
   AtlasChatTurn,
+  AtlasConversation,
+  AtlasConversationSummary,
 } from '../types/atlas-chat';
 import { apiRequest } from './api-client';
 import { BACKEND_URL } from '../config';
@@ -91,7 +93,34 @@ export class AtlasChatService {
         ...(options.selection ? { selection: options.selection } : {}),
         // Server enforces image.analysis entitlement — client attaches, never self-grants.
         ...(options.image ? { image: options.image } : {}),
+        ...(options.conversationId ? { conversationId: options.conversationId } : {}),
       }),
+    });
+  }
+
+  /** Authenticated accounts only — server returns 401/403 for guest. */
+  async listConversations(): Promise<AtlasConversationSummary[]> {
+    await ensureAtlasSession();
+    const res = await apiRequest<{ ok: boolean; conversations: AtlasConversationSummary[] }>(
+      '/api/conversations',
+      { method: 'GET' },
+    );
+    return res.conversations;
+  }
+
+  async getConversation(conversationId: string): Promise<AtlasConversation> {
+    await ensureAtlasSession();
+    const res = await apiRequest<{ ok: boolean; conversation: AtlasConversation }>(
+      `/api/conversations/${encodeURIComponent(conversationId)}`,
+      { method: 'GET' },
+    );
+    return res.conversation;
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    await ensureAtlasSession();
+    await apiRequest(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'DELETE',
     });
   }
 }

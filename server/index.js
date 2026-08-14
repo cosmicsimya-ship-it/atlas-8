@@ -21,6 +21,13 @@ import { CAPABILITIES } from './entitlements/capabilities.js';
 import { resolveEntitlements, hasCapability } from './entitlements/resolve.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
+  appendMessage as appendConversationMessage,
+  getConversation as getStoredConversation,
+  listUserConversations,
+  deleteConversation as deleteStoredConversation,
+  deleteAllUserConversations,
+} from './conversations.js';
+import {
   deleteMemoryField,
   deleteUserMemory,
   getMemoryField,
@@ -784,6 +791,41 @@ app.post(
         }
       }
 
+      // Conversation persistence — authenticated accounts only (never guest/anonymous).
+      // Best-effort: a persistence failure must never break the chat response itself.
+      const canPersist = Boolean(req.auth?.authenticated) && !req.auth?.isAnonymous;
+      let conversationId =
+        typeof req.body?.conversationId === 'string' ? req.body.conversationId.trim() : null;
+      const clientRequestId =
+        typeof req.body?.clientRequestId === 'string' ? req.body.clientRequestId.trim() : null;
+
+      if (canPersist) {
+        try {
+          // Idempotency: if this exact client-generated request id was already
+          // persisted (retry after a client-side timeout, etc.), don't double-write
+          // the user turn again.
+          let alreadyPersisted = false;
+          if (conversationId && clientRequestId) {
+            const existing = getStoredConversation(req.auth.userId, conversationId);
+            alreadyPersisted = Boolean(
+              existing?.messages?.some((m) => m.clientRequestId === clientRequestId),
+            );
+          }
+          if (!alreadyPersisted) {
+            const userWrite = await appendConversationMessage(req.auth.userId, conversationId, {
+              role: 'user',
+              content: normalized.message,
+              hasImage: Boolean(normalized.image),
+              imageMimeType: normalized.image?.mimeType ?? null,
+              clientRequestId,
+            });
+            if (userWrite.ok) conversationId = userWrite.conversationId;
+          }
+        } catch (persistErr) {
+          console.error(`[ATLAS] conversation persist (user) failed: ${persistErr.message}`);
+        }
+      }
+
       const result = await processAtlasMessage(normalized, {
         mode: req.body?.mode,
         model: req.body?.model || DEFAULT_MODEL,
@@ -802,6 +844,24 @@ app.post(
           dailyLimit: req.atlasUsage.dailyLimit,
         };
       }
+
+      // Assistant turn is persisted only on genuine success — a failed
+      // provider/model call must never write a fake assistant reply. The
+      // user's own message above is already saved regardless of outcome.
+      if (canPersist && conversationId && result.status !== 'error' && response.reply) {
+        try {
+          await appendConversationMessage(req.auth.userId, conversationId, {
+            role: 'assistant',
+            content: response.reply,
+          });
+        } catch (persistErr) {
+          console.error(`[ATLAS] conversation persist (assistant) failed: ${persistErr.message}`);
+        }
+      }
+      if (conversationId) {
+        response.conversationId = conversationId;
+      }
+
       const httpStatus =
         result.status === 'error' && result.errorCode === 'INVALID_INPUT' ? 400 : 200;
 
@@ -825,6 +885,71 @@ app.post(
       console.error(`[ATLAS] chat error: ${err.message}`);
       const status = err.status ?? 500;
       return res.status(status).json({ error: err.message });
+    }
+  },
+);
+
+// ── Conversation persistence — authenticated accounts only, never guest ──
+const conversationsRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `conversations:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.get(
+  '/api/conversations',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  conversationsRateLimit,
+  (req, res) => {
+    try {
+      const list = listUserConversations(req.auth.userId);
+      return res.json({ ok: true, conversations: list });
+    } catch (err) {
+      console.error(`[ATLAS] conversations list error: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Conversations service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/conversations/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  conversationsRateLimit,
+  (req, res) => {
+    try {
+      const conversation = getStoredConversation(req.auth.userId, req.params.id);
+      if (!conversation) {
+        // Same response whether it doesn't exist or belongs to someone else —
+        // never confirm/deny existence of another user's conversation id.
+        return res.status(404).json({ ok: false, error: 'Conversation not found' });
+      }
+      return res.json({ ok: true, conversation });
+    } catch (err) {
+      console.error(`[ATLAS] conversation get error: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Conversations service unavailable' });
+    }
+  },
+);
+
+app.delete(
+  '/api/conversations/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  conversationsRateLimit,
+  async (req, res) => {
+    try {
+      const result = await deleteStoredConversation(req.auth.userId, req.params.id);
+      if (!result.ok) {
+        return res.status(404).json({ ok: false, error: 'Conversation not found' });
+      }
+      return res.json({ ok: true, deleted: true });
+    } catch (err) {
+      console.error(`[ATLAS] conversation delete error: ${err.message}`);
+      return res.status(500).json({ ok: false, error: 'Conversations service unavailable' });
     }
   },
 );
@@ -1018,7 +1143,14 @@ app.delete(
       const status = result.error === 'User memory not found' ? 404 : 500;
       return res.status(status).json({ error: result.error });
     }
-    return res.json({ userId: req.auth.userId, deleted: true });
+    let conversationsDeleted = 0;
+    try {
+      const convResult = await deleteAllUserConversations(req.auth.userId);
+      if (convResult.ok) conversationsDeleted = convResult.deleted ?? 0;
+    } catch (err) {
+      console.error(`[ATLAS] conversation erase failed during memory delete: ${err.message}`);
+    }
+    return res.json({ userId: req.auth.userId, deleted: true, conversationsDeleted });
   },
 );
 

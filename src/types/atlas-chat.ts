@@ -43,12 +43,40 @@ export interface AtlasChatRequest {
   selection?: AtlasSelectionPayload;
   /** Lara Prime — image.analysis capability required server-side */
   image?: AtlasImageAttachment;
+  /** Active conversation to append to; server creates a new one if omitted/unowned */
+  conversationId?: string;
+  /** Client-generated id for retry-safe persistence (not a security token) */
+  clientRequestId?: string;
 }
 
 export interface AtlasChatUsage {
   plan: 'guest' | 'free' | 'premium';
   dailyUsed: number;
   dailyLimit: number;
+}
+
+export interface AtlasConversationSummary {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  preview: string;
+}
+
+export interface AtlasConversationMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  hasImage: boolean;
+  imageMimeType: string | null;
+}
+
+export interface AtlasConversation {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: AtlasConversationMessage[];
 }
 
 export interface AtlasChatResponse {
@@ -72,6 +100,7 @@ export interface AtlasChatResponse {
   incompleteReason?: string | null;
   completenessRetryCount?: number;
   usage?: AtlasChatUsage;
+  conversationId?: string;
 }
 
 export interface AtlasChatErrorResponse {

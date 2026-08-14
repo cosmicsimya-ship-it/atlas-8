@@ -1,4 +1,4 @@
-import { ImagePlus, Loader2, RotateCcw, Send, X } from 'lucide-react';
+import { ImagePlus, Loader2, PlusCircle, RotateCcw, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -54,6 +54,8 @@ export default function Chat() {
   const [canImageAnalysis, setCanImageAnalysis] = useState<boolean | null>(null);
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [restoringHistory, setRestoringHistory] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +86,33 @@ export default function Chat() {
     ensureAtlasSession()
       .then((session) => {
         sessionUserIdRef.current = session.userId;
+        // Conversation restore — authenticated accounts only, and only when
+        // there's no analysis-flow context prompt already seeding the chat.
+        if (session.authenticated && !session.isAnonymous && !contextPrompt) {
+          setRestoringHistory(true);
+          atlasChat
+            .listConversations()
+            .then((list) => {
+              const latest = list[0]; // server returns newest-updated first
+              if (!latest) return null;
+              return atlasChat.getConversation(latest.id);
+            })
+            .then((conversation) => {
+              if (!conversation) return;
+              setMessages(
+                conversation.messages.map((m) => ({
+                  id: m.id,
+                  role: m.role,
+                  content: m.content,
+                })),
+              );
+              setActiveConversationId(conversation.id);
+            })
+            .catch(() => {
+              /* restore is best-effort UX — a fresh chat is a safe fallback */
+            })
+            .finally(() => setRestoringHistory(false));
+        }
       })
       .catch(() => {
         /* session will retry on send */
@@ -95,7 +124,7 @@ export default function Chat() {
       abortRef.current?.abort();
       clearStallTimer();
     };
-  }, [clearStallTimer]);
+  }, [clearStallTimer, contextPrompt]);
 
   useEffect(() => {
     if (!isEmpty || emptyStateSeenRef.current) return;
@@ -116,6 +145,7 @@ export default function Chat() {
         setPendingStatus('thinking');
         setMessages([]);
         setInput('');
+        setActiveConversationId(null);
         emptyStateSeenRef.current = false;
         firstMessageTrackedRef.current = false;
         discoveryUsedRef.current = false;
@@ -263,6 +293,7 @@ export default function Chat() {
         turnId?: string;
         isAutoRetry?: boolean;
         image?: AtlasImageAttachment;
+        requestId?: string;
       } = {},
     ) => {
       const trimmed = text.trim();
@@ -279,7 +310,7 @@ export default function Chat() {
 
       const turnId = opts.turnId || createId();
       activeTurnRef.current = turnId;
-      const requestId = createId();
+      const requestId = opts.requestId || createId();
 
       const history = messages
         .filter((m) => !m.pending && !m.error && !m.retryable)
@@ -325,11 +356,16 @@ export default function Chat() {
           signal: controller.signal,
           requestId,
           ...(opts.image ? { image: opts.image } : {}),
+          ...(activeConversationId ? { conversationId: activeConversationId } : {}),
         });
 
         if (activeTurnRef.current !== turnId) {
           // Stale response after a newer turn — drop to avoid duplicate assistant cards.
           return;
+        }
+
+        if (response.conversationId && response.conversationId !== activeConversationId) {
+          setActiveConversationId(response.conversationId);
         }
 
         if (isRetryableChatResponse(response)) {
@@ -350,6 +386,7 @@ export default function Chat() {
               turnId,
               isAutoRetry: true,
               image: opts.image,
+              requestId,
             });
             return;
           }
@@ -415,6 +452,7 @@ export default function Chat() {
             turnId,
             isAutoRetry: true,
             image: opts.image,
+            requestId,
           });
           return;
         }
@@ -434,7 +472,7 @@ export default function Chat() {
         }
       }
     },
-    [messages, clearStallTimer, markRetryableFailure],
+    [messages, clearStallTimer, markRetryableFailure, activeConversationId],
   );
 
   const send = useCallback(async () => {
@@ -486,13 +524,34 @@ export default function Chat() {
     inFlightRef.current = false;
     clearStallTimer();
     autoRetriedTurnsRef.current.delete(target.turnId);
-    void sendTurn(userMsg.content, { reuseUser: true, turnId: target.turnId });
+    void sendTurn(userMsg.content, {
+      reuseUser: true,
+      turnId: target.turnId,
+      requestId: target.requestId ?? undefined,
+    });
   }, [messages, sendTurn, clearStallTimer]);
 
   const recheckBackend = () => {
     setBackendReady(null);
     atlasChat.checkBackend().then(setBackendReady);
   };
+
+  const startNewConversation = useCallback(() => {
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    activeTurnRef.current = null;
+    clearStallTimer();
+    setLoading(false);
+    setPendingStatus('thinking');
+    setMessages([]);
+    setInput('');
+    setActiveConversationId(null);
+    clearPendingImage();
+    emptyStateSeenRef.current = false;
+    firstMessageTrackedRef.current = false;
+    discoveryUsedRef.current = false;
+    textareaRef.current?.focus();
+  }, [clearStallTimer, clearPendingImage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -528,7 +587,13 @@ export default function Chat() {
           className={`flex min-h-0 flex-1 flex-col px-4 md:px-8 ${isEmpty ? 'justify-end pb-3' : 'overflow-y-auto py-4 md:py-5'}`}
           aria-label="Konuşma"
         >
-          {isEmpty ? (
+          {restoringHistory ? (
+            <div className="mx-auto flex w-full max-w-2xl flex-1 items-center justify-center">
+              <p className="text-[13px] text-[#8b93a3]" aria-live="polite">
+                Sohbet geçmişin yükleniyor…
+              </p>
+            </div>
+          ) : isEmpty ? (
             <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col items-center justify-end gap-0 overflow-y-auto pb-2 pt-6 text-center sm:justify-center sm:pt-2">
               <p className="max-w-[20rem] text-[16px] leading-[1.55] tracking-[-0.01em] text-[#e8ecf2]/92 sm:max-w-sm sm:text-[17px] sm:leading-[1.6]">
                 {discoveryCopy.emptyInvite.line1}
@@ -555,6 +620,16 @@ export default function Chat() {
             </div>
           ) : (
             <div className="mx-auto w-full max-w-[760px] space-y-5 pb-2">
+              <div className="flex justify-end pb-1">
+                <button
+                  type="button"
+                  onClick={startNewConversation}
+                  disabled={loading}
+                  className="site-focus inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-[12px] text-[#9aa3b2] transition hover:border-white/20 hover:text-[#e8ecf2] disabled:opacity-40"
+                >
+                  <PlusCircle size={13} aria-hidden /> Yeni sohbet
+                </button>
+              </div>
               {messages.map((msg) => (
                 <article
                   key={msg.id}
