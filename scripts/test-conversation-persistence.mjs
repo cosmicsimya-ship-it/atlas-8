@@ -309,6 +309,33 @@ async function main() {
     ok('retry still gets an assistant reply once it succeeds', stored.messages.some((m) => m.role === 'assistant'));
   });
 
+  console.log('\n\u2500\u2500 stalled (not-yet-failed) retry does not duplicate either \u2500\u2500');
+  await withServer(async (base) => {
+    resetConversationStoreForTests();
+    // Simulates Chat.tsx: the pending assistant message now carries the
+    // ORIGINAL requestId from the moment it's created (fixed in this Phase 2
+    // pass — previously only set once a turn had formally failed), so even a
+    // retry clicked while the request is still "stalled" reuses it correctly.
+    const originalRequestId = 'stalled-original-id';
+    const r1 = await fetch(`${base}/test-chat`, {
+      method: 'POST',
+      headers: authHeaders('web:stalledUser', true, { 'x-simulate-model-failure': '1' }),
+      body: JSON.stringify({ message: 'stalled message', clientRequestId: originalRequestId }),
+    });
+    const { conversationId } = await r1.json();
+
+    // Retry reuses the SAME requestId the pending message was tagged with at creation.
+    await fetch(`${base}/test-chat`, {
+      method: 'POST',
+      headers: authHeaders('web:stalledUser', true),
+      body: JSON.stringify({ message: 'stalled message', conversationId, clientRequestId: originalRequestId }),
+    });
+
+    const stored = getConversation('web:stalledUser', conversationId);
+    const userTurns = stored.messages.filter((m) => m.role === 'user');
+    ok('stalled-turn retry (requestId set at creation, not just on failure) does not duplicate', userTurns.length === 1);
+  });
+
   console.log('\n\u2500\u2500 image base64 not persisted \u2500\u2500');
   await withServer(async (base) => {
     resetConversationStoreForTests();

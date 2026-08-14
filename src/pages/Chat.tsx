@@ -81,6 +81,23 @@ export default function Chat() {
     }
   }, []);
 
+  const restoreLatestConversation = useCallback(async () => {
+    setRestoringHistory(true);
+    try {
+      const list = await atlasChat.listConversations();
+      const latest = list[0];
+      if (!latest) return;
+      const conversation = await atlasChat.getConversation(latest.id);
+      if (!conversation) return;
+      setMessages(conversation.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })));
+      setActiveConversationId(conversation.id);
+    } catch {
+      /* restore is best-effort UX — a fresh chat is a safe fallback */
+    } finally {
+      setRestoringHistory(false);
+    }
+  }, []);
+
   useEffect(() => {
     atlasChat.checkBackend().then(setBackendReady);
     ensureAtlasSession()
@@ -89,29 +106,7 @@ export default function Chat() {
         // Conversation restore — authenticated accounts only, and only when
         // there's no analysis-flow context prompt already seeding the chat.
         if (session.authenticated && !session.isAnonymous && !contextPrompt) {
-          setRestoringHistory(true);
-          atlasChat
-            .listConversations()
-            .then((list) => {
-              const latest = list[0]; // server returns newest-updated first
-              if (!latest) return null;
-              return atlasChat.getConversation(latest.id);
-            })
-            .then((conversation) => {
-              if (!conversation) return;
-              setMessages(
-                conversation.messages.map((m) => ({
-                  id: m.id,
-                  role: m.role,
-                  content: m.content,
-                })),
-              );
-              setActiveConversationId(conversation.id);
-            })
-            .catch(() => {
-              /* restore is best-effort UX — a fresh chat is a safe fallback */
-            })
-            .finally(() => setRestoringHistory(false));
+          void restoreLatestConversation();
         }
       })
       .catch(() => {
@@ -124,7 +119,7 @@ export default function Chat() {
       abortRef.current?.abort();
       clearStallTimer();
     };
-  }, [clearStallTimer, contextPrompt]);
+  }, [clearStallTimer, contextPrompt, restoreLatestConversation]);
 
   useEffect(() => {
     if (!isEmpty || emptyStateSeenRef.current) return;
@@ -157,12 +152,24 @@ export default function Chat() {
         fetchEntitlements()
           .then((ent) => setCanImageAnalysis(hasEntitlement(ent, 'image.analysis')))
           .catch(() => setCanImageAnalysis(false));
+
+        // Old account's state is fully cleared above before this point —
+        // now load the NEW account's own latest conversation, if any.
+        ensureAtlasSession()
+          .then((session) => {
+            if (session.authenticated && !session.isAnonymous) {
+              void restoreLatestConversation();
+            }
+          })
+          .catch(() => {
+            /* stays empty — safe fallback */
+          });
       }
       sessionUserIdRef.current = nextId;
     };
     window.addEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
     return () => window.removeEventListener(ATLAS_SESSION_CHANGED_EVENT, onSessionChanged);
-  }, [clearStallTimer]);
+  }, [clearStallTimer, restoreLatestConversation]);
 
   useEffect(() => {
     if (!isEmpty) {
@@ -326,7 +333,7 @@ export default function Chat() {
           );
           return [
             ...withoutFailedAssistant,
-            { id: pendingId, role: 'assistant', content: '', pending: true, turnId },
+            { id: pendingId, role: 'assistant', content: '', pending: true, turnId, requestId },
           ];
         });
       } else {
@@ -339,7 +346,7 @@ export default function Chat() {
         setMessages((prev) => [
           ...prev,
           userMessage,
-          { id: pendingId, role: 'assistant', content: '', pending: true, turnId },
+          { id: pendingId, role: 'assistant', content: '', pending: true, turnId, requestId },
         ]);
         setInput('');
       }
