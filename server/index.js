@@ -33,6 +33,15 @@ import {
   getAdminHealth,
   getAdminAuditLog,
 } from './admin/control-center.js';
+import {
+  grantPrime,
+  revokePrime,
+  extendPrime,
+  setPrimeExpiry,
+  resetUsageToday,
+  setAccountDisabled,
+  erasePersonalData,
+} from './admin/write-actions.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   appendMessage as appendConversationMessage,
@@ -902,6 +911,169 @@ app.get(
       console.error('[ATLAS] admin/audit error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Phase B write actions. All mutating, all
+// requireAuth + requireRole('admin') + CSRF, all audited server-side.
+// ═══════════════════════════════════════════════════════════════════════
+const ADMIN_WRITE_FORBIDDEN_FIELDS = ['adminId', 'actorId', 'entitlements', 'role', 'roles', 'isAdmin', 'plan', 'capabilities'];
+function rejectAdminAuthoritySpoof(req, res, next) {
+  for (const key of ADMIN_WRITE_FORBIDDEN_FIELDS) {
+    if (req.body && typeof req.body === 'object' && key in req.body) {
+      return res.status(400).json({ ok: false, error: `Field not allowed: ${key}` });
+    }
+  }
+  return next();
+}
+
+app.post(
+  '/api/admin/users/:userId/prime/grant',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  (req, res) => {
+    const result = grantPrime({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      durationDays: req.body?.durationDays,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/prime/revoke',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  (req, res) => {
+    const result = revokePrime({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/prime/extend',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  (req, res) => {
+    const result = extendPrime({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      durationDays: req.body?.durationDays,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.patch(
+  '/api/admin/users/:userId/prime/expiry',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  (req, res) => {
+    const result = setPrimeExpiry({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      expiryDate: req.body?.expiryDate,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/usage/reset',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  (req, res) => {
+    const result = resetUsageToday({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/account/disable',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const result = await setAccountDisabled({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      disabled: true,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/account/enable',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const result = await setAccountDisabled({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      disabled: false,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.post(
+  '/api/admin/users/:userId/privacy/erase',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const result = await erasePersonalData({
+      actorId: req.auth.userId,
+      targetUserId: req.params.userId,
+      reason: req.body?.reason,
+    });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
   },
 );
 

@@ -102,6 +102,17 @@ export function getChatUsageSnapshot(userKey, plan) {
   return { used: bucket.count, limit, resetAt: bucket.resetAt, plan };
 }
 
+/**
+ * Admin-only: reset ONE user's daily bucket for TODAY only. Never touches
+ * plan/limit config, never touches other users, never touches history
+ * (there is no history to touch -- this store is daily-bucket-only by
+ * design).
+ * @param {string} userKey
+ */
+export function resetUserChatUsageToday(userKey) {
+  dailyBuckets.delete(dayKey(userKey || 'anonymous'));
+}
+
 export function resetChatUsageForTests() {
   dailyBuckets.clear();
 }
