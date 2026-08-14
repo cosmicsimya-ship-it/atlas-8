@@ -31,6 +31,7 @@ import ShortsProduction from "./pages/ShortsProduction";
 import Chat from "./pages/Chat";
 import BillingResultPage from "./pages/BillingResultPage";
 import LaraPrimePage from "./pages/LaraPrimePage";
+import PrimePage from "./pages/PrimePage";
 
 /** A new surface always opens at its beginning — unless it targets a section. */
 function ScrollToTop() {
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="chat" element={<Navigate to="/atlas" replace />} />
         <Route path="about" element={<AboutPage />} />
         <Route path="lara-prime" element={<LaraPrimePage />} />
+        <Route path="prime" element={<PrimePage />} />
         <Route path="billing/result" element={<BillingResultPage />} />
         <Route path="admin" element={<AdminPage />} />
 
