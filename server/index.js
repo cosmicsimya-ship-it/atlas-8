@@ -19,6 +19,8 @@ import { logFounderPipelineDebug } from './founder-identity.js';
 import { chatUsageGate } from './entitlements/usage-guard.js';
 import { CAPABILITIES } from './entitlements/capabilities.js';
 import { resolveEntitlements, hasCapability } from './entitlements/resolve.js';
+import { getSubscription, toPublicSubscription } from './entitlements/subscription-store.js';
+import { getChatUsageSnapshot } from './usage/chat-usage.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   appendMessage as appendConversationMessage,
@@ -75,6 +77,7 @@ import {
   rateLimitMiddleware,
   checkRateLimit,
   findAccountByUserId,
+  listAllAccounts,
   toPublicAccount,
   toSessionProfile,
   logAdminAudit,
@@ -582,6 +585,78 @@ app.get(
     } catch (err) {
       console.error('[ATLAS] admin/me error:', err.message);
       return res.status(503).json({ error: 'Admin service unavailable' });
+    }
+  },
+);
+
+/**
+ * Prime membership visibility for admin — plan, subscription status,
+ * entitlements, and usage only. Never returns raw memory facts, raw
+ * images/audio, secrets, API keys, webhook secrets, or provider payloads.
+ * Guests are never listed (listAllAccounts only returns real accounts).
+ */
+app.get(
+  '/api/admin/membership',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  (req, res) => {
+    try {
+      const accounts = listAllAccounts();
+      const members = accounts.map((account) => {
+        const publicAccount = toPublicAccount(account);
+        let resolved;
+        try {
+          resolved = resolveEntitlements({
+            authenticated: true,
+            userId: account.userId,
+            isAnonymous: false,
+          });
+        } catch {
+          // Fail closed: an unresolvable subscription record must never be
+          // shown as premium.
+          resolved = {
+            plan: 'free',
+            subscriptionStatus: 'unknown',
+            entitlements: {},
+            subscription: null,
+          };
+        }
+        const usage = getChatUsageSnapshot(account.userId, resolved.plan);
+        return {
+          userId: publicAccount.userId,
+          username: publicAccount.username,
+          email: publicAccount.email,
+          plan: resolved.plan,
+          subscriptionStatus: resolved.subscriptionStatus,
+          subscription: resolved.subscription, // already public-safe (toPublicSubscription)
+          entitlements: {
+            'voice.lara': hasCapability(resolved.entitlements, CAPABILITIES.VOICE_LARA),
+            'usage.extended': hasCapability(resolved.entitlements, CAPABILITIES.USAGE_EXTENDED),
+            'image.analysis': hasCapability(resolved.entitlements, CAPABILITIES.IMAGE_ANALYSIS),
+            'memory.extended': hasCapability(resolved.entitlements, CAPABILITIES.MEMORY_EXTENDED),
+          },
+          usage: { dailyUsed: usage.used, dailyLimit: usage.limit },
+        };
+      });
+
+      try {
+        logAdminAudit({
+          action: 'admin.membership_list',
+          actor: req.auth.userId,
+          targetUserId: null,
+          targetUsername: null,
+          targetEmail: null,
+          result: 'ok',
+        });
+      } catch {
+        /* non-fatal */
+      }
+
+      return res.json({ ok: true, members });
+    } catch (err) {
+      console.error('[ATLAS] admin/membership error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
 );

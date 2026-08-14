@@ -146,6 +146,17 @@ export function getAccountById(accountId) {
 }
 
 /**
+ * All accounts, newest first. Admin-only consumer — callers must gate
+ * access with requireRole('admin') before calling this.
+ */
+export function listAllAccounts() {
+  const store = loadStore();
+  return Object.values(store.accounts).sort(
+    (a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+  );
+}
+
+/**
  * @param {string} userId Memory / session user id
  */
 export function findAccountByUserId(userId) {

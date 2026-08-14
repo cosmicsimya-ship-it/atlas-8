@@ -32,6 +32,7 @@ export {
   findAccountByUsername,
   findAccountByEmail,
   findAccountByUserId,
+  listAllAccounts,
   findAccountByTelegramBinding,
   findAccountByGoogleSub,
   getAccountById,
