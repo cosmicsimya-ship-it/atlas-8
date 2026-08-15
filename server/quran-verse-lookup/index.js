@@ -3,7 +3,12 @@
  * Verse text is never produced by the LLM.
  */
 
-export { detectQuranVerseLookupIntent } from './intent.js';
+export {
+  detectQuranVerseLookupIntent,
+  isQuranContextActive,
+  buildNoSpontaneousQuranDirective,
+  buildQuranFailClosedDirective,
+} from './intent.js';
 export {
   parseQuranVerseLookup,
   describeBoundaryError,
