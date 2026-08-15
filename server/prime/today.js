@@ -1,6 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════
 // Prime "Today" — assembles Prime Home's personalized snapshot.
 // Every field traces to a real source; nothing here is invented text.
+//
+// COST: this module is deterministic. It never imports or calls the
+// OpenAI client. Numerology + natal are local engines. Check-in, outlook,
+// and memory continuity are stored/computed data. Ordinary home refresh
+// therefore produces zero model calls.
 // ═══════════════════════════════════════════════════════════════════════
 
 import { getPrimeProfile, profileCompleteness } from './profile.js';
@@ -8,7 +13,17 @@ import { calculateNatalFromMemory } from '../natal-engine/index.js';
 import { runNumerologyAnalysis } from '../numerology-engine/orchestrator.js';
 import { listUserConversations } from '../conversations.js';
 import { getChatUsageSnapshot } from '../usage/chat-usage.js';
-import { resolveEntitlements } from '../entitlements/resolve.js';
+import { resolveEntitlements, hasCapability } from '../entitlements/resolve.js';
+import { CAPABILITIES } from '../entitlements/capabilities.js';
+import { getTodayCheckin, getPreviousCheckin, civilDateKey } from './checkin.js';
+import { buildSevenDayOutlookTracked } from './outlook.js';
+import { buildMemoryContinuity } from './memory.js';
+
+export const PRIME_HOME_COST = Object.freeze({
+  mode: 'deterministic',
+  aiCalls: 0,
+  note: 'Ordinary Prime home refresh does not call the model.',
+});
 
 function greeting(displayName) {
   const hour = new Date().getHours();
@@ -73,6 +88,17 @@ function conversationPreview(conversation) {
   };
 }
 
+function completenessNote(completeness) {
+  if (!completeness) return 'Bugünün kişisel görünümünü genişletmek için profil bilgilerini tamamlayabilirsin.';
+  if (!completeness.hasBirthDate) {
+    return 'Bugünün kişisel görünümünü genişletmek için profil bilgilerini tamamlayabilirsin.';
+  }
+  if (!completeness.natalHousesAvailable) {
+    return 'Doğum saatini eklersen yükselen ve ev hesaplamaları kullanılabilir.';
+  }
+  return null;
+}
+
 /**
  * @param {string} userId
  * @param {{ authenticated: boolean, isAnonymous?: boolean, roles?: string[] }} auth
@@ -86,9 +112,10 @@ export function buildPrimeToday(userId, auth) {
   try {
     resolved = resolveEntitlements(auth || {});
   } catch {
-    resolved = { plan: 'free' };
+    resolved = { plan: 'free', entitlements: {} };
   }
   const usage = getChatUsageSnapshot(userId, resolved.plan);
+  const primeWorld = hasCapability(resolved.entitlements, CAPABILITIES.PRIME_WORLD);
 
   let latestConversation = null;
   try {
@@ -98,20 +125,90 @@ export function buildPrimeToday(userId, auth) {
     latestConversation = null;
   }
 
+  const timezone = profile?.birth?.timezone || null;
+  const date = civilDateKey(timezone);
+
+  let checkIn = { date, checkin: null, frequency: null };
+  let previousCheckin = null;
+  if (primeWorld) {
+    try {
+      const todayCheckin = getTodayCheckin(userId, { timezone });
+      if (todayCheckin.ok) checkIn = todayCheckin;
+      previousCheckin = getPreviousCheckin(userId, { timezone });
+    } catch {
+      checkIn = { date, checkin: null, frequency: null };
+    }
+  }
+
+  let outlook = {
+    available: false,
+    items: [],
+    reason: primeWorld ? 'insufficient_data' : 'prime_required',
+    message: primeWorld
+      ? 'Önümüzdeki 7 gün için kayıtlı bir madde yok. Profil ve günlük check-in görünümü genişletir.'
+      : '7 günlük görünüm Lara Prime ile açılır.',
+    cost: { mode: 'deterministic', aiCalls: 0 },
+  };
+  if (primeWorld) {
+    try {
+      outlook = buildSevenDayOutlookTracked({
+        profile,
+        checkin: checkIn.checkin,
+        timezone,
+      });
+    } catch {
+      outlook = {
+        available: false,
+        items: [],
+        reason: 'error',
+        message: '7 günlük görünüm şu an hesaplanamadı.',
+        cost: { mode: 'deterministic', aiCalls: 0 },
+      };
+    }
+  }
+
+  let memoryContinuity = {
+    available: false,
+    statement: null,
+    kind: null,
+    action: { label: 'Atlas ile konuş', href: '/atlas' },
+  };
+  try {
+    memoryContinuity = buildMemoryContinuity(userId);
+  } catch {
+    /* keep empty continuity */
+  }
+
   return {
     greeting: greeting(profile?.displayName ?? null),
-    date: new Date().toISOString().slice(0, 10),
+    date,
     profile: {
       completeness,
-      note: completeness?.hasBirthDate
-        ? completeness.natalHousesAvailable
-          ? null
-          : 'Doğum saatini eklersen yükselen ve ev hesaplamaları kullanılabilir.'
-        : 'Bugünün kişisel görünümünü genişletmek için profil bilgilerini tamamlayabilirsin.',
+      note: completenessNote(completeness),
     },
     symbolic: profile ? buildSymbolicSnapshot(profile) : { numerology: null, natal: null },
     natal: profile ? buildNatalSnapshot(userId, profile) : null,
     continueConversation: conversationPreview(latestConversation),
     usage: { plan: resolved.plan, dailyUsed: usage.used, dailyLimit: usage.limit },
+    checkIn: primeWorld
+      ? {
+          date: checkIn.date,
+          record: checkIn.checkin,
+          frequency: checkIn.frequency,
+          previous: previousCheckin
+            ? {
+                date: previousCheckin.date,
+                energy: previousCheckin.energy,
+                focus: previousCheckin.focus,
+                // Intention is the user's own words — only shown to the owner via this payload.
+                intention: previousCheckin.intention,
+              }
+            : null,
+        }
+      : null,
+    outlook,
+    memoryContinuity,
+    primeWorld,
+    cost: PRIME_HOME_COST,
   };
 }

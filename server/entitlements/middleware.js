@@ -88,3 +88,7 @@ export function requireVoiceLara() {
 export function requireImageAnalysis() {
   return requireCapability(CAPABILITIES.IMAGE_ANALYSIS, { feature: CAPABILITIES.IMAGE_ANALYSIS });
 }
+
+export function requirePrimeWorld() {
+  return requireCapability(CAPABILITIES.PRIME_WORLD, { feature: CAPABILITIES.PRIME_WORLD });
+}

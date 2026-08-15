@@ -36,6 +36,7 @@ export {
   requireCapability,
   requireVoiceLara,
   requireImageAnalysis,
+  requirePrimeWorld,
   ENTITLEMENT_ERROR_CODES,
 } from './middleware.js';
 

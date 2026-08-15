@@ -199,17 +199,53 @@ export async function updatePrimeProfile(userId, patch) {
 /**
  * Structured completeness — never a gamified percentage, just the honest
  * facts the Today/Profile UI needs to explain what unlocks what.
+ *
+ * Account functionality does not require these fields. Deeper
+ * personalization (numerology / natal) does require a birth date.
+ * Birth time absence is honest, not fabricated into an Ascendant.
+ *
  * @param {ReturnType<typeof getPrimeProfile>['profile']} profile
  */
 export function profileCompleteness(profile) {
+  const hasBirthDate = Boolean(profile?.birth?.date);
+  const hasBirthTime = Boolean(profile?.birth?.time);
+  const hasBirthPlace = Boolean(profile?.birth?.place);
+  const hasTimezone = Boolean(profile?.birth?.timezone);
+  const hasRelationshipStatus = Boolean(profile?.relationshipStatus);
+  const missingForDeeperPersonalization = [];
+  if (!hasBirthDate) {
+    missingForDeeperPersonalization.push({
+      field: 'birthDate',
+      unlocks: 'numeroloji ve natal gezegenler',
+    });
+  }
+  if (hasBirthDate && !hasBirthTime) {
+    missingForDeeperPersonalization.push({
+      field: 'birthTime',
+      unlocks: 'yükselen ve evler',
+    });
+  }
+  if (hasBirthDate && !hasBirthPlace) {
+    missingForDeeperPersonalization.push({
+      field: 'birthPlace',
+      unlocks: 'konum temelli natal hesap',
+    });
+  }
+
   return {
-    hasBirthDate: Boolean(profile.birth.date),
-    hasBirthTime: Boolean(profile.birth.time),
-    hasBirthPlace: Boolean(profile.birth.place),
-    hasTimezone: Boolean(profile.birth.timezone),
-    hasRelationshipStatus: Boolean(profile.relationshipStatus),
-    numerologyAvailable: Boolean(profile.birth.date),
-    natalPlanetsAvailable: Boolean(profile.birth.date && profile.birth.place),
-    natalHousesAvailable: Boolean(profile.birth.date && profile.birth.place && profile.birth.time),
+    hasBirthDate,
+    hasBirthTime,
+    hasBirthPlace,
+    hasTimezone,
+    hasRelationshipStatus,
+    numerologyAvailable: hasBirthDate,
+    natalPlanetsAvailable: Boolean(hasBirthDate && hasBirthPlace),
+    natalHousesAvailable: Boolean(hasBirthDate && hasBirthPlace && hasBirthTime),
+    accountFunctional: true,
+    deeperPersonalizationReady: hasBirthDate,
+    // CTA only when the field that actually unlocks personalization is missing.
+    showCompleteProfileCta: !hasBirthDate,
+    ctaLabel: 'Profilini tamamla',
+    missingForDeeperPersonalization,
   };
 }

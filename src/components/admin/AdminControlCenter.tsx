@@ -25,6 +25,9 @@ type Overview = {
   chatUsageToday: number;
   usersActiveInChatToday: number;
   estimatedAiCost: number | null;
+  primeProfilesCompleted?: number;
+  checkInsToday?: number;
+  outlookGenerationCount?: number;
 };
 
 type UsageResponse = {
@@ -111,6 +114,9 @@ function OverviewTab() {
           <Metric label="Active Today" value={state.data.overview.activeToday} />
           <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
           <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
+          <Metric label="Prime Profiles Completed" value={state.data.overview.primeProfilesCompleted ?? 0} />
+          <Metric label="Check-ins Today" value={state.data.overview.checkInsToday ?? 0} />
+          <Metric label="Outlook Generations" value={state.data.overview.outlookGenerationCount ?? 0} />
           <Metric label="Estimated AI Cost" value={state.data.overview.estimatedAiCost} />
         </div>
       ) : null}

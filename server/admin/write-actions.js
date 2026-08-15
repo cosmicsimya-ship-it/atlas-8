@@ -328,6 +328,8 @@ export async function erasePersonalData({ actorId, targetUserId, reason }) {
   if (boundedR && boundedR.error) return { ok: false, status: 400, error: boundedR.error };
 
   const memResult = await deleteUserMemory(targetUserId);
+  // Phase 3 check-ins live on the same user-memory record, so erase above
+  // removes primeCheckins with profile/facts. No separate store to wipe.
   let conversationsDeleted = 0;
   try {
     const convResult = await deleteAllUserConversations(targetUserId);

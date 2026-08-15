@@ -193,6 +193,23 @@ async function main() {
     ok("unrelated user's Today response never contains another user's name", !raw.includes('PrivateName123'));
   });
 
+  console.log('\n\u2500\u2500 cost safety on ordinary home refresh \u2500\u2500');
+  await withServer(async (base) => {
+    const r = await fetch(`${base}/api/prime/today`, { headers: headers('web:costUser', true) });
+    const b = await r.json();
+    ok('today payload reports zero AI calls', b.today.cost?.aiCalls === 0 && b.today.cost?.mode === 'deterministic');
+  });
+  {
+    const { readFileSync } = await import('fs');
+    const { dirname, join } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const todaySrc = readFileSync(join(root, 'server/prime/today.js'), 'utf8');
+    const outlookSrc = readFileSync(join(root, 'server/prime/outlook.js'), 'utf8');
+    ok('today.js does not import openai-client', !todaySrc.includes('openai-client'));
+    ok('outlook.js does not import openai-client', !outlookSrc.includes('openai-client'));
+  }
+
   console.log(`\nTotal: ${passed} passed, ${failed} failed`);
   rmSync(tmpMemDir, { recursive: true, force: true });
   rmSync(tmpSubDir, { recursive: true, force: true });

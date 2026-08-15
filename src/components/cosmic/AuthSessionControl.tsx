@@ -320,7 +320,7 @@ export default function AuthSessionControl({
               ) : null}
               {session?.plan === 'free' || session?.plan === 'premium' ? (
                 <Link
-                  to="/lara-prime"
+                  to={session.plan === 'premium' || session.experience?.canAccessPrime ? '/prime' : '/lara-prime'}
                   className="mt-0.5 self-start text-left text-[10px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
                 >
                   {session.plan === 'premium' || session.experience?.canAccessPrime
@@ -357,7 +357,7 @@ export default function AuthSessionControl({
             </button>
             {session?.plan === 'free' || session?.plan === 'premium' ? (
               <Link
-                to="/lara-prime"
+                to={session.plan === 'premium' || session.experience?.canAccessPrime ? '/prime' : '/lara-prime'}
                 className={`${actionBtnClass} sm:hidden`}
                 aria-label={
                   session.plan === 'premium' || session.experience?.canAccessPrime

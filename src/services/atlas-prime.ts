@@ -35,6 +35,19 @@ export const RELATIONSHIP_STATUS_OPTIONS = [
   'prefer_not_to_say',
 ] as const;
 
+export const ENERGY_OPTIONS = [
+  { value: 'low', label: 'Düşük' },
+  { value: 'steady', label: 'Dengeli' },
+  { value: 'high', label: 'Yüksek' },
+] as const;
+
+export const FOCUS_OPTIONS = [
+  { value: 'restore', label: 'Toparlan' },
+  { value: 'think', label: 'Düşün' },
+  { value: 'create', label: 'Üret' },
+  { value: 'connect', label: 'Bağlan' },
+] as const;
+
 export type PrimeCompleteness = {
   hasBirthDate: boolean;
   hasBirthTime: boolean;
@@ -44,6 +57,45 @@ export type PrimeCompleteness = {
   numerologyAvailable: boolean;
   natalPlanetsAvailable: boolean;
   natalHousesAvailable: boolean;
+  accountFunctional?: boolean;
+  deeperPersonalizationReady?: boolean;
+  showCompleteProfileCta?: boolean;
+  ctaLabel?: string;
+  missingForDeeperPersonalization?: Array<{ field: string; unlocks: string }>;
+};
+
+export type PrimeCheckin = {
+  date: string;
+  energy: 'low' | 'steady' | 'high';
+  focus: 'restore' | 'think' | 'create' | 'connect';
+  intention: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PrimeFrequency = {
+  level: 'LOW' | 'BALANCED' | 'HIGH';
+  framing: string;
+  recommendation: string;
+  recommendationLabel: string;
+};
+
+export type PrimeOutlookItem = {
+  date: string;
+  window: string;
+  title: string;
+  why: string;
+  action: { label: string; href: string } | null;
+  provenance: string;
+};
+
+export type PrimeOutlook = {
+  available: boolean;
+  items: PrimeOutlookItem[];
+  reason: string | null;
+  message: string | null;
+  horizonDays?: number;
+  cost?: { mode: string; aiCalls: number };
 };
 
 export type PrimeToday = {
@@ -70,6 +122,26 @@ export type PrimeToday = {
     messageCount: number;
   } | null;
   usage: { plan: string; dailyUsed: number; dailyLimit: number };
+  checkIn?: {
+    date: string;
+    record: PrimeCheckin | null;
+    frequency: PrimeFrequency | null;
+    previous: {
+      date: string;
+      energy: PrimeCheckin['energy'];
+      focus: PrimeCheckin['focus'];
+      intention: string | null;
+    } | null;
+  } | null;
+  outlook?: PrimeOutlook;
+  memoryContinuity?: {
+    available: boolean;
+    statement: string | null;
+    kind: string | null;
+    action: { label: string; href: string };
+  };
+  primeWorld?: boolean;
+  cost?: { mode: string; aiCalls: number; note?: string };
 };
 
 export type PrimeMemoryFact = { key: string; value: string };
@@ -105,4 +177,37 @@ export async function fetchPrimeMemory(): Promise<PrimeMemoryFact[]> {
 
 export async function deletePrimeMemoryFact(key: string): Promise<void> {
   await apiRequest(`/api/prime/memory/${encodeURIComponent(key)}`, { method: 'DELETE' });
+}
+
+export async function fetchPrimeCheckinToday(): Promise<{
+  date: string;
+  checkin: PrimeCheckin | null;
+  frequency: PrimeFrequency | null;
+}> {
+  const res = await apiRequest<{
+    ok: boolean;
+    date: string;
+    checkin: PrimeCheckin | null;
+    frequency: PrimeFrequency | null;
+  }>('/api/prime/checkin/today', { method: 'GET' });
+  return { date: res.date, checkin: res.checkin, frequency: res.frequency };
+}
+
+export async function submitPrimeCheckin(input: {
+  energy: PrimeCheckin['energy'];
+  focus: PrimeCheckin['focus'];
+  intention?: string | null;
+}): Promise<{ checkin: PrimeCheckin; frequency: PrimeFrequency | null }> {
+  const res = await apiRequest<{ ok: boolean; checkin: PrimeCheckin; frequency: PrimeFrequency | null }>(
+    '/api/prime/checkin',
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return { checkin: res.checkin, frequency: res.frequency };
+}
+
+export async function fetchPrimeOutlook(): Promise<PrimeOutlook> {
+  const res = await apiRequest<{ ok: boolean; outlook: PrimeOutlook }>('/api/prime/outlook', {
+    method: 'GET',
+  });
+  return res.outlook;
 }

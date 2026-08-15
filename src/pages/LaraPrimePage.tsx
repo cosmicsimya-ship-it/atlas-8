@@ -229,10 +229,10 @@ export default function LaraPrimePage() {
               : ''}
           </p>
           <Link
-            to="/lara-prime"
+            to="/prime"
             className="atlas-focus mt-6 inline-flex rounded-md border border-white/14 bg-white/[0.04] px-4 py-2.5 text-sm text-[#e8ecf2] transition hover:bg-white/[0.08]"
           >
-            Lara Prime’a dön
+            Kişisel merkeze git
           </Link>
         </div>
       );

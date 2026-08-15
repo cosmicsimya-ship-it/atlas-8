@@ -35,6 +35,8 @@ const {
   upsertSubscription,
 } = await import('../server/entitlements/index.js');
 const { resetMemoryStoreForTests, updateUserMemory } = await import('../server/user-memory.js');
+const { saveTodayCheckin } = await import('../server/prime/checkin.js');
+const { updatePrimeProfile } = await import('../server/prime/profile.js');
 const { recordChatUsage, resetChatUsageForTests, getChatDailyQuotaConfig } = await import(
   '../server/usage/chat-usage.js'
 );
@@ -156,6 +158,8 @@ async function main() {
   for (let i = 0; i < 32; i++) recordChatUsage(primeUser.userId); // 32/40 = 80% exactly for a FREE user near-limit check below
   await updateUserMemory(free.userId, { facts: { f1: 'note one', f2: 'note two' } });
   logAdminAudit({ action: 'test.action', actor: admin.userId, targetUserId: free.userId, result: 'ok' });
+  await updatePrimeProfile(prime.userId, { birth: { date: '1991-04-12' } });
+  await saveTodayCheckin(prime.userId, { energy: 'steady', focus: 'think', intention: 'secret-checkin-text-xyz' });
 
   console.log('\n\u2500\u2500 AUTH \u2500\u2500');
   await withServer(async (base) => {
@@ -169,6 +173,20 @@ async function main() {
       const rAdmin = await fetch(`${base}${path}`, { headers: headers(admin.userId, true, ['user', 'admin']) });
       ok(`admin allowed on ${path}`, rAdmin.status === 200);
     }
+  });
+
+  console.log('\n\u2500\u2500 OVERVIEW AGGREGATES \u2500\u2500');
+  await withServer(async (base) => {
+    const adminHdrs = headers(admin.userId, true, ['admin']);
+    const r = await fetch(`${base}/api/admin/overview`, { headers: adminHdrs });
+    const b = await r.json();
+    ok('primeProfilesCompleted is a number', typeof b.overview.primeProfilesCompleted === 'number');
+    ok('checkInsToday is a number', typeof b.overview.checkInsToday === 'number');
+    ok('outlookGenerationCount is a number', typeof b.overview.outlookGenerationCount === 'number');
+    ok('completed prime profile counted', b.overview.primeProfilesCompleted >= 1);
+    ok('check-in today counted', b.overview.checkInsToday >= 1);
+    const raw = JSON.stringify(b);
+    ok('overview never leaks private check-in intention text', !raw.includes('secret-checkin-text-xyz'));
   });
 
   console.log('\n\u2500\u2500 USERS \u2500\u2500');

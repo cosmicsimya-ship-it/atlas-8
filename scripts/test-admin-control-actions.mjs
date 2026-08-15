@@ -25,6 +25,7 @@ const { ATLAS_PLANS, configureSubscriptionStore, resetSubscriptionStoreForTests,
 );
 const { resolveEntitlements } = await import('../server/entitlements/resolve.js');
 const { resetMemoryStoreForTests, updateUserMemory, getUserMemory } = await import('../server/user-memory.js');
+const { saveTodayCheckin, getTodayCheckin } = await import('../server/prime/checkin.js');
 const { configureConversationStore, resetConversationStoreForTests, appendMessage, listUserConversations } =
   await import('../server/conversations.js');
 const { recordChatUsage, resetChatUsageForTests, getChatUsageSnapshot } = await import('../server/usage/chat-usage.js');
@@ -291,13 +292,17 @@ async function main() {
     await updateUserMemory(t9.userId, { facts: { f1: 'secret note' } });
     await appendMessage(t9.userId, null, { role: 'user', content: 'a message' });
     await updateUserMemory(free.userId, { facts: { f_other: 'unrelated' } });
+    await saveTodayCheckin(t9.userId, { energy: 'steady', focus: 'think', intention: 'phase3-private-intention' });
+    await saveTodayCheckin(free.userId, { energy: 'high', focus: 'create', intention: 'unrelated-checkin' });
 
     const r = await fetch(`${base}/api/admin/users/${t9.userId}/privacy/erase`, { method: 'POST', headers: adminHdrs, body: JSON.stringify({ reason: 'support request' }) });
     const b = await r.json();
     ok('erase only intended scope (works)', r.status === 200 && b.memoryErased === true && b.conversationsDeleted === 1);
     ok('memory actually gone', Object.keys(getUserMemory(t9.userId)?.facts || {}).length === 0);
     ok('conversations actually gone', listUserConversations(t9.userId).length === 0);
+    ok('phase 3 check-in erased with privacy erase', getTodayCheckin(t9.userId).checkin === null);
     ok("cross-user erase impossible (unrelated user's data survives)", Object.keys(getUserMemory(free.userId)?.facts || {}).length === 1);
+    ok("unrelated account's check-in survives erase", getTodayCheckin(free.userId).checkin?.intention === 'unrelated-checkin');
   });
 
   console.log('\n\u2500\u2500 AUDIT \u2500\u2500');

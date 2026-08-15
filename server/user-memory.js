@@ -47,6 +47,7 @@ export function getMemoryFilePath() {
  *   },
  *   preferences: JsonObject,
  *   facts: JsonObject,
+ *   primeCheckins: Array<Record<string, unknown>>,
  *   updatedAt: string|null,
  * }}
  */
@@ -72,6 +73,8 @@ export function createEmptyUserMemory() {
     },
     // Logical equivalent of user_memories rows (key/value map).
     facts: {},
+    // Phase 3 Prime check-ins — owner-scoped, erased with the rest of memory.
+    primeCheckins: [],
     updatedAt: null,
   };
 }
@@ -239,6 +242,46 @@ export function getUserMemory(userId) {
   return normalizeUserMemory(existing);
 }
 
+const MAX_STORED_CHECKINS = 60;
+const MAX_CHECKIN_INTENTION = 240;
+
+/**
+ * Backward-compatible, bounded sanitizer. Strict enum validation lives in
+ * server/prime/checkin.js — this only prevents unbounded/malformed blobs
+ * from surviving a memory round-trip.
+ * @param {unknown} raw
+ * @returns {Array<Record<string, unknown>>}
+ */
+function sanitizePrimeCheckins(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const entry of raw.slice(-MAX_STORED_CHECKINS)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const date = typeof entry.date === 'string' ? entry.date.trim().slice(0, 10) : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    out.push({
+      date,
+      energy: typeof entry.energy === 'string' ? entry.energy.trim().slice(0, 16) : null,
+      focus: typeof entry.focus === 'string' ? entry.focus.trim().slice(0, 16) : null,
+      intention:
+        typeof entry.intention === 'string' ? entry.intention.trim().slice(0, MAX_CHECKIN_INTENTION) || null : null,
+      createdAt: typeof entry.createdAt === 'string' ? entry.createdAt.slice(0, 40) : null,
+      updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt.slice(0, 40) : null,
+    });
+  }
+  return out;
+}
+
+/**
+ * UserIds that currently have a memory record. Admin aggregates only —
+ * never returned to clients as a directory.
+ * @returns {string[]}
+ */
+export function listStoredMemoryUserIds() {
+  const store = loadMemory();
+  return Object.keys(store.users || {}).filter((id) => isValidUserId(id));
+}
+
 function normalizeUserMemory(raw) {
   const base = createEmptyUserMemory();
   if (!raw || typeof raw !== 'object') {
@@ -273,6 +316,8 @@ function normalizeUserMemory(raw) {
     raw.facts && typeof raw.facts === 'object' && !Array.isArray(raw.facts)
       ? { ...raw.facts }
       : {};
+
+  base.primeCheckins = sanitizePrimeCheckins(raw.primeCheckins);
 
   base.updatedAt = typeof raw.updatedAt === 'string' ? raw.updatedAt : null;
 
@@ -350,6 +395,10 @@ export async function updateUserMemory(userId, partial) {
 
     if (partial.facts && typeof partial.facts === 'object') {
       current.facts = { ...current.facts, ...partial.facts };
+    }
+
+    if (partial.primeCheckins !== undefined) {
+      current.primeCheckins = sanitizePrimeCheckins(partial.primeCheckins);
     }
 
     current.updatedAt = new Date().toISOString();

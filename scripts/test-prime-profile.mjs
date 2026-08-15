@@ -188,6 +188,28 @@ async function main() {
     ok('explicit null birth.time (unknown) accepted', rNull.status === 200);
   });
 
+  console.log('\n\u2500\u2500 completeness (personalization vs account) \u2500\u2500');
+  {
+    const { profileCompleteness } = await import('../server/prime/profile.js');
+    const empty = profileCompleteness({
+      displayName: null,
+      birth: { date: null, time: null, place: null, timezone: null },
+      relationshipStatus: null,
+    });
+    ok('account remains functional without profile fields', empty.accountFunctional === true);
+    ok('CTA shown when birth date missing (deeper personalization)', empty.showCompleteProfileCta === true && empty.deeperPersonalizationReady === false);
+    ok('CTA label is Profilini tamamla', empty.ctaLabel === 'Profilini tamamla');
+
+    const dateOnly = profileCompleteness({
+      displayName: 'Ada',
+      birth: { date: '1990-01-15', time: null, place: 'Ankara, Turkey', timezone: 'Europe/Istanbul' },
+      relationshipStatus: null,
+    });
+    ok('date-only profile unlocks numerology honestly', dateOnly.numerologyAvailable === true && dateOnly.deeperPersonalizationReady === true);
+    ok('date-only does not claim houses/ascendant', dateOnly.natalHousesAvailable === false);
+    ok('date-only does not show blocking CTA (birth date present)', dateOnly.showCompleteProfileCta === false);
+  }
+
   console.log(`\nTotal: ${passed} passed, ${failed} failed`);
   rmSync(tmpDir, { recursive: true, force: true });
   process.exit(failed > 0 ? 1 : 0);

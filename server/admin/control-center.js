@@ -13,6 +13,8 @@ import { getChatUsageSnapshot, getChatUsageOverview, getChatDailyQuotaConfig } f
 import { listUserConversations } from '../conversations.js';
 import { getUserMemory } from '../user-memory.js';
 import { getPrimeProfile, profileCompleteness } from '../prime/profile.js';
+import { countCheckinsOnDate, civilDateKey } from '../prime/checkin.js';
+import { getOutlookBuildCount } from '../prime/outlook.js';
 import { listAdminAuditEvents } from '../auth/admin-audit.js';
 import { isVoiceConfigured, getVoice, getLaraMasterPath } from '../voice/registry.js';
 import { getBillingConfig } from '../billing/config.js';
@@ -140,14 +142,34 @@ export function getAdminUserDetail(userId) {
 export function getAdminOverview() {
   const accounts = listAllAccounts();
   let primeUsers = 0;
+  let primeProfilesCompleted = 0;
   for (const account of accounts) {
-    if (resolveAccountEntitlements(account).plan === ATLAS_PLANS.PREMIUM) primeUsers += 1;
+    const resolved = resolveAccountEntitlements(account);
+    if (resolved.plan !== ATLAS_PLANS.PREMIUM) continue;
+    primeUsers += 1;
+    try {
+      const profileResult = getPrimeProfile(account.userId);
+      if (profileResult.ok && profileCompleteness(profileResult.profile).deeperPersonalizationReady) {
+        primeProfilesCompleted += 1;
+      }
+    } catch {
+      /* skip unreadable profile */
+    }
   }
   const totalUsers = accounts.length;
   const freeUsers = totalUsers - primeUsers;
 
   const usageOverview = getChatUsageOverview();
   const quotaConfig = getChatDailyQuotaConfig();
+
+  const todayKey = civilDateKey('Europe/Istanbul');
+  let checkInsToday = 0;
+  try {
+    // Write path is Prime-gated. Aggregate counts only — never intention text.
+    checkInsToday = countCheckinsOnDate(todayKey);
+  } catch {
+    checkInsToday = 0;
+  }
 
   return {
     totalUsers,
@@ -158,6 +180,9 @@ export function getAdminOverview() {
     usersActiveInChatToday: usageOverview.usersActiveToday,
     quotaConfig,
     estimatedAiCost: null, // see getAdminCosts() — not yet authoritative
+    primeProfilesCompleted,
+    checkInsToday,
+    outlookGenerationCount: getOutlookBuildCount(),
   };
 }
 

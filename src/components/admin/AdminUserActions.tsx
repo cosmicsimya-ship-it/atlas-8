@@ -358,7 +358,7 @@ function DisableAccountDialog({ userId, onClose, onDone }: { userId: string; onC
   );
 }
 
-const ERASE_SCOPE_ITEMS = ['memory/profile/preferences', 'conversations'];
+const ERASE_SCOPE_ITEMS = ['memory/profile/preferences', 'prime check-ins', 'conversations'];
 
 function EraseDataDialog({
   userId,

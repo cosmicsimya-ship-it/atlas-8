@@ -24,6 +24,8 @@ import { getChatUsageSnapshot } from './usage/chat-usage.js';
 import { getPrimeProfile, updatePrimeProfile } from './prime/profile.js';
 import { listPrimeMemoryFacts, deletePrimeMemoryFact } from './prime/memory.js';
 import { buildPrimeToday } from './prime/today.js';
+import { getTodayCheckin, saveTodayCheckin, listCheckinHistory } from './prime/checkin.js';
+import { buildSevenDayOutlookTracked } from './prime/outlook.js';
 import {
   listAdminUsers,
   getAdminUserDetail,
@@ -111,6 +113,7 @@ import { getVoiceConfig } from './voice/config.js';
 import {
   createEntitlementsRouter,
   requireVoiceLara,
+  requirePrimeWorld,
   buildEntitlementsResponse,
 } from './entitlements/index.js';
 import {
@@ -760,6 +763,72 @@ app.delete(
       return res.status(status).json({ ok: false, error: result.error });
     }
     return res.json({ ok: true, deleted: true });
+  },
+);
+
+const requirePrimeWorldGate = requirePrimeWorld();
+
+app.get(
+  '/api/prime/checkin/today',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requirePrimeWorldGate,
+  primeRateLimit,
+  (req, res) => {
+    const result = getTodayCheckin(req.auth.userId);
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true, date: result.date, checkin: result.checkin, frequency: result.frequency });
+  },
+);
+
+app.get(
+  '/api/prime/checkin/history',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requirePrimeWorldGate,
+  primeRateLimit,
+  (req, res) => {
+    const result = listCheckinHistory(req.auth.userId, { limit: req.query.limit });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true, items: result.items });
+  },
+);
+
+app.post(
+  '/api/prime/checkin',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  requirePrimeWorldGate,
+  primeRateLimit,
+  async (req, res) => {
+    const result = await saveTodayCheckin(req.auth.userId, req.body ?? {});
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true, checkin: result.checkin, frequency: result.frequency });
+  },
+);
+
+app.get(
+  '/api/prime/outlook',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requirePrimeWorldGate,
+  primeRateLimit,
+  (req, res) => {
+    try {
+      const profileResult = getPrimeProfile(req.auth.userId);
+      const profile = profileResult.ok ? profileResult.profile : null;
+      const todayCheckin = getTodayCheckin(req.auth.userId);
+      const outlook = buildSevenDayOutlookTracked({
+        profile,
+        checkin: todayCheckin.ok ? todayCheckin.checkin : null,
+        timezone: profile?.birth?.timezone || null,
+      });
+      return res.json({ ok: true, outlook });
+    } catch (err) {
+      console.error('[ATLAS] prime/outlook error:', err.message);
+      return res.status(500).json({ ok: false, error: 'Outlook service unavailable' });
+    }
   },
 );
 

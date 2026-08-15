@@ -31,6 +31,55 @@ export function listPrimeMemoryFacts(userId) {
  * @param {string} userId
  * @param {string} factKey
  */
+const MAX_CONTINUITY_CHARS = 80;
+
+function truncate(value, max = MAX_CONTINUITY_CHARS) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
+/**
+ * One continuity statement for Prime Home. Never dumps the fact list.
+ * Never invents a focus the user did not save.
+ * @param {string} userId
+ */
+export function buildMemoryContinuity(userId) {
+  const listed = listPrimeMemoryFacts(userId);
+  if (!listed.ok || !listed.facts.length) {
+    return {
+      available: false,
+      statement: null,
+      kind: null,
+      action: { label: 'Atlas ile konuş', href: '/atlas' },
+    };
+  }
+  const latest = listed.facts[listed.facts.length - 1];
+  const snippet = truncate(latest.value);
+  if (!snippet) {
+    return {
+      available: false,
+      statement: null,
+      kind: null,
+      action: { label: 'Atlas ile konuş', href: '/atlas' },
+    };
+  }
+  return {
+    available: true,
+    kind: 'recently_saved',
+    statement: `Yakın zamanda kaydedilen: ${snippet}`,
+    factKey: latest.key,
+    action: { label: 'Kaldığın yerden devam et', href: '/atlas' },
+  };
+}
+
+/**
+ * Owner-scoped, IDOR-safe by construction — deleteMemoryField only ever
+ * touches the given userId's own bucket.
+ * @param {string} userId
+ * @param {string} factKey
+ */
 export async function deletePrimeMemoryFact(userId, factKey) {
   if (!isValidUserId(userId)) return { ok: false, error: 'Invalid user ID' };
   if (typeof factKey !== 'string' || !factKey.trim()) {
