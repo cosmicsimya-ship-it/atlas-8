@@ -1,0 +1,8 @@
+node_modules/
+tmp/
+tmp-lara-prime-qa/
+release/
+dist/
+data/
+.git/cursor/
+voice-assets/processed/
