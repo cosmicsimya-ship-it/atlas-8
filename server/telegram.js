@@ -28,6 +28,19 @@ import {
 } from './telegram-identity-log.js';
 import { telegramHistoryScopeKey } from './telegram-turn-intent.js';
 import {
+  buildContextualPipelineMessage,
+  createGroupContextEntry,
+  createProcessedUpdateTracker,
+  inspectContextualWake,
+  isWakeWordOnly,
+  looksLikeActionableRequest,
+  markContextEntryAnswered,
+  resolveContextualWake,
+  shouldIgnoreTelegramMessage,
+  telegramGroupScopeKey,
+  trimGroupContext,
+} from './telegram-group-context.js';
+import {
   resolveMultimodalInbound,
   detectInboundKind,
   TELEGRAM_MEDIA_DIR,
@@ -37,6 +50,7 @@ import {
   createInFlightQueue,
   createPollingSupervisor,
   detectClockJump,
+  hashChatId,
   logTelegramMessageTrace,
   withRetry,
   TELEGRAM_RESILIENCE_VERSION,
@@ -54,9 +68,21 @@ const BACKEND_MESSAGE_URL = `${BACKEND_URL}/api/atlas/message`;
 const POLL_LOCK_FILE = join(__dirname, '..', 'data', 'telegram.poll.lock');
 const HEARTBEAT_FILE = join(__dirname, '..', 'data', 'telegram.heartbeat.json');
 const ENABLE_POLLING = process.env.TELEGRAM_ENABLE_POLLING !== 'false';
+const TELEGRAM_STARTED_AT = new Date().toISOString();
 
 const BACKEND_UNAVAILABLE = normalizeErrorReply('BACKEND_UNAVAILABLE');
 const UNEXPECTED_ERROR = normalizeErrorReply('ENGINE_FAILURE');
+
+function safeTelegramError(error) {
+  return String(error?.message ?? error ?? 'unknown')
+    .replace(/bot\d+:[A-Za-z0-9_-]+/g, 'bot[REDACTED]')
+    .replace(/\b\d{8,10}:[A-Za-z0-9_-]{20,}\b/g, '[REDACTED]')
+    .replace(/(Authorization\s*:\s*)\S+/gi, '$1[REDACTED]');
+}
+
+function logGroupContextTrace(fields) {
+  console.log(`[Telegram/group-context] ${JSON.stringify(fields)}`);
+}
 
 function isBackendUnreachable(error) {
   return axios.isAxiosError(error) && !error.response;
@@ -191,11 +217,16 @@ setInterval(() => {
   lastWallClock = now;
 }, 15_000).unref?.();
 
-bot
+const botIdentityReady = bot
   .getMe()
   .then((me) => {
     botIdentity = { id: me.id, username: me.username };
-    console.log(`[Telegram] Bot identity: @${me.username ?? 'unknown'} (id=${me.id})`);
+    console.log(`[Telegram/process] ${JSON.stringify({
+      event: 'identity_ready',
+      pid: process.pid,
+      startedAt: TELEGRAM_STARTED_AT,
+      identity: 'ready',
+    })}`);
     console.log(
       '[Telegram] Multimodal: text + photo (OpenAI vision via Atlas pipeline).',
     );
@@ -211,13 +242,23 @@ bot
         'Windows sleep suspends Node; screen lock alone usually does not. ' +
         'After wake, watchdog reconnects polling automatically.',
     );
+    return true;
   })
   .catch((err) => {
-    console.warn('[Telegram] getMe failed:', err.message);
+    console.warn(`[Telegram/process] ${JSON.stringify({
+      event: 'identity_failed',
+      pid: process.pid,
+      startedAt: TELEGRAM_STARTED_AT,
+      identity: 'not_ready',
+      error: safeTelegramError(err),
+    })}`);
+    return false;
   });
 
 /** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string, userId?: string|null, messageThreadId?: string|number|null }>>} */
 const chatHistories = new Map();
+const groupInboundContexts = new Map();
+const processedUpdates = createProcessedUpdateTracker(2000);
 const MAX_HISTORY_TURNS = 20;
 let firstFromIdLogged = false;
 
@@ -261,6 +302,34 @@ function historyKeyForMessage(msg) {
 
 function getChatHistory(conversationId) {
   return chatHistories.get(conversationId) ?? [];
+}
+
+function getGroupInboundContext(msg) {
+  const scope = telegramGroupScopeKey(msg);
+  return scope ? groupInboundContexts.get(scope) ?? [] : [];
+}
+
+function rememberGroupInbound(msg, text, options = {}) {
+  const scope = telegramGroupScopeKey(msg);
+  if (!scope) return;
+  const nowMs = options.nowMs ?? Date.now();
+  const recent = getGroupInboundContext(msg);
+  groupInboundContexts.set(
+    scope,
+    trimGroupContext([
+      ...recent,
+      createGroupContextEntry(msg, text, { ...options, nowMs }),
+    ], nowMs),
+  );
+}
+
+function markGroupInboundAnswered(msg, messageId) {
+  const scope = telegramGroupScopeKey(msg);
+  if (!scope) return;
+  groupInboundContexts.set(
+    scope,
+    markContextEntryAnswered(getGroupInboundContext(msg), messageId),
+  );
 }
 
 /**
@@ -363,7 +432,10 @@ async function forwardToPipeline(msg, resolveOpts = {}) {
   const normalized = normalizeTelegramMessage(
     msg,
     history,
-    normalizeOptions(resolveOpts),
+    normalizeOptions({
+      ...resolveOpts,
+      conversationId: resolveOpts.conversationId,
+    }),
   );
   const fromId = msg.from?.id != null ? String(msg.from.id) : null;
   const replyMsg = msg.reply_to_message;
@@ -415,6 +487,10 @@ async function forwardToPipeline(msg, resolveOpts = {}) {
       ...(normalized.metadata ?? {}),
       ...(fromId ? { telegramFromId: fromId } : { telegramFromId: null }),
       chatId: String(msg.chat.id),
+      ...(resolveOpts.contextualSource
+        ? { contextualWake: true, contextualSourceMessageId: resolveOpts.contextualSource.messageId ?? null,
+            contextualSourceSpeakerKey: resolveOpts.contextualSource.userId ?? null }
+        : {}),
       messageThreadId: msg.message_thread_id ?? null,
       replyTargetMessageId: replyMsg?.message_id ?? null,
       repliedToText,
@@ -497,7 +573,9 @@ async function forwardToPipeline(msg, resolveOpts = {}) {
  */
 async function processOneMessage(msg) {
   const chatId = msg.chat.id;
-  const conversationId = String(chatId);
+  const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
+  if (isGroupChat && !botIdentity) await botIdentityReady;
+  const conversationId = isGroupChat ? telegramGroupScopeKey(msg) : String(chatId);
   const receivedAt = new Date().toISOString();
   const inboundText = msg.text || msg.caption || '';
   const messageLength = inboundText.length;
@@ -520,7 +598,6 @@ async function processOneMessage(msg) {
     return;
   }
 
-  const isGroupChat = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
   const inboundTextForGate = (msg.text || msg.caption || '').trim();
   const fromIdForGate =
     msg.from?.id != null
@@ -531,12 +608,62 @@ async function processOneMessage(msg) {
   const addressedToBot =
     isTelegramReplyToBot(msg, botIdentity) ||
     isTelegramGroupMessageAddressedToBot(msg, inboundTextForGate, botIdentity);
+  const nowMs = Number(msg.date) ? Number(msg.date) * 1000 : Date.now();
+  const groupScope = isGroupChat ? telegramGroupScopeKey(msg) : null;
+  const recentContext = isGroupChat ? getGroupInboundContext(msg) : [];
+  const contextInspection = isGroupChat
+    ? inspectContextualWake(recentContext, {
+        text: inboundTextForGate,
+        botUsername: botIdentity?.username,
+        nowMs,
+      })
+    : null;
+  const contextualWakeRequest = isGroupChat
+    ? resolveContextualWake(recentContext, {
+        text: inboundTextForGate,
+        botUsername: botIdentity?.username,
+        nowMs,
+      })
+    : null;
+  if (isGroupChat) {
+    if (contextualWakeRequest) {
+      markGroupInboundAnswered(msg, contextualWakeRequest.source.messageId);
+    }
+    rememberGroupInbound(msg, inboundTextForGate, { nowMs, wasAddressed: addressedToBot });
+    if (typeof msg.text === 'string') {
+      const contextAfter = getGroupInboundContext(msg);
+      const storedEntry = contextAfter.at(-1) ?? null;
+      logGroupContextTrace({
+        pid: process.pid,
+        updateId: msg.message_id ?? null,
+        scopeHash: groupScope == null ? null : hashChatId(groupScope),
+        messageThreadId: msg.message_thread_id ?? null,
+        isTopicMessage: msg.is_topic_message === true,
+        messageType: 'text',
+        messageLength: inboundTextForGate.length,
+        wakeOnly: isWakeWordOnly(inboundTextForGate, botIdentity?.username),
+        addressedToBot,
+        bufferAdded: storedEntry?.messageId === (msg.message_id ?? null),
+        bufferSizeBefore: recentContext.length,
+        bufferSizeAfter: contextAfter.length,
+        currentActionable: looksLikeActionableRequest(inboundTextForGate),
+        wasAddressed: storedEntry?.wasAddressed === true,
+        answered: storedEntry?.answered === true,
+        candidateMessageId: contextInspection?.candidate?.messageId ?? null,
+        candidateActionable: contextInspection?.candidate?.actionable ?? null,
+        candidateWasAddressed: contextInspection?.candidate?.wasAddressed ?? null,
+        candidateAnswered: contextInspection?.candidate?.answered ?? null,
+        contextualWakeMatched: Boolean(contextualWakeRequest),
+        contextualWakeReason: contextInspection?.reason ?? 'not_group',
+      });
+    }
+  }
   const allowForward = shouldForwardGroupMessage({
     message: inboundTextForGate || 'media',
     conversationId,
     userId: fromIdForGate,
     isGroup: isGroupChat,
-    addressedToBot,
+    addressedToBot: addressedToBot || Boolean(contextualWakeRequest),
   });
 
   if (isGroupChat && !allowForward) {
@@ -640,7 +767,9 @@ async function processOneMessage(msg) {
       return;
     }
 
-    const healthHint = detectHealthSafetyIntent(resolved.message);
+    const effectiveMessage = contextualWakeRequest?.text || resolved.message;
+    const pipelineMsg = buildContextualPipelineMessage(msg, contextualWakeRequest);
+    const healthHint = detectHealthSafetyIntent(effectiveMessage);
     console.log(
       `[Telegram] Inbound ${resolved.kind}` +
         (resolved.image ? ' +image' : '') +
@@ -651,8 +780,11 @@ async function processOneMessage(msg) {
 
     await bot.sendChatAction(chatId, 'typing');
 
-    const { backend, normalized, retryCount } = await forwardToPipeline(msg, {
-      resolvedMessage: resolved.message,
+    const { backend, normalized, retryCount } = await forwardToPipeline(pipelineMsg, {
+      resolvedMessage: effectiveMessage,
+      conversationId,
+      contextualSource: contextualWakeRequest?.source ?? null,
+      allowActiveSession: Boolean(contextualWakeRequest),
       mediaKind: resolved.metadata?.mediaKind ?? (inboundKind === 'text' ? null : inboundKind),
       extraMetadata: {
         ...(resolved.metadata || {}),
@@ -703,6 +835,7 @@ async function processOneMessage(msg) {
       userId: normalized.userId,
       messageThreadId: msg.message_thread_id ?? null,
     });
+    if (isGroupChat) markGroupInboundAnswered(msg, msg.message_id);
     await sendReplySafe(msg, reply, {
       ...traceBase,
       intent: backend.intent ?? healthHint.intent ?? null,
@@ -767,6 +900,8 @@ async function processOneMessage(msg) {
 }
 
 async function handleMessage(msg) {
+  if (shouldIgnoreTelegramMessage(msg)) return;
+  if (!processedUpdates.shouldProcess(msg)) return;
   logFirstTelegramFromId(msg);
   pollingSupervisor.touch('message');
 

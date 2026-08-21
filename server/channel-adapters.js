@@ -219,8 +219,8 @@ export function extractTelegramText(msg) {
 export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = null) {
   const raw = text ?? '';
   const lower = raw.toLowerCase();
-  // Word-ish "atlas" / @atlas — avoid matching unrelated substrings mid-token.
-  if (/(?:^|[\s@])atlas(?:[\s,!?.:;…]|$)/iu.test(lower) || /^@?atlas\b/iu.test(lower)) {
+  // Atlas plus supported Turkish address suffixes; avoid unrelated longer words.
+  if (/(?:^|[^\p{L}\p{N}_])@?atlas(?=$|[^\p{L}\p{N}_]|c[ıi]m\b|[ıi]m\b)/iu.test(lower)) {
     return true;
   }
 
@@ -229,7 +229,6 @@ export function isTelegramGroupMessageAddressedToBot(msg, text, botIdentity = nu
     if (botIdentity?.id != null && Number(replyFrom.id) === Number(botIdentity.id)) {
       return true;
     }
-    if (replyFrom.is_bot === true) return true;
   }
 
   const username = botIdentity?.username?.replace(/^@/, '').toLowerCase();
@@ -275,7 +274,7 @@ export function isTelegramReplyToBot(msg, botIdentity = null) {
   const replyFrom = msg?.reply_to_message?.from;
   if (!replyFrom) return false;
   if (botIdentity?.id != null && Number(replyFrom.id) === Number(botIdentity.id)) return true;
-  return replyFrom.is_bot === true;
+  return false;
 }
 
 /**
@@ -292,6 +291,7 @@ export function isTelegramReplyToBot(msg, botIdentity = null) {
  *   mediaKind?: string|null,
  *   extraMetadata?: Record<string, unknown>,
  *   image?: AtlasImageAttachment,
+ *   conversationId?: string,
  * } | null} [options]
  */
 export function normalizeTelegramMessage(msg, history = [], options = null) {
@@ -345,7 +345,7 @@ export function normalizeTelegramMessage(msg, history = [], options = null) {
   const normalized = {
     channel: 'telegram',
     userId: resolvedUserId,
-    conversationId: String(msg.chat.id),
+    conversationId: String(options?.conversationId ?? msg.chat.id),
     message: text,
     history,
     // Sender display fields: Telegram from.* / sender_chat only — never from message text.
