@@ -9,7 +9,12 @@
 // safe list is simply { key, value, } pairs with no extra fields to redact.
 // ═══════════════════════════════════════════════════════════════════════
 
-import { getUserMemory, deleteMemoryField, isValidUserId } from '../user-memory.js';
+import {
+  deleteMemoryField,
+  getLatestUserMemoryFact,
+  getUserMemory,
+  isValidUserId,
+} from '../user-memory.js';
 
 /**
  * @param {string} userId
@@ -55,7 +60,15 @@ export function buildMemoryContinuity(userId) {
       action: { label: 'Atlas ile konuş', href: '/atlas' },
     };
   }
-  const latest = listed.facts[listed.facts.length - 1];
+  const latest = getLatestUserMemoryFact(userId);
+  if (!latest) {
+    return {
+      available: false,
+      statement: null,
+      kind: null,
+      action: { label: 'Atlas ile konuş', href: '/atlas' },
+    };
+  }
   const snippet = truncate(latest.value);
   if (!snippet) {
     return {
@@ -85,9 +98,8 @@ export async function deletePrimeMemoryFact(userId, factKey) {
   if (typeof factKey !== 'string' || !factKey.trim()) {
     return { ok: false, error: 'Invalid fact key' };
   }
-  // Reject path-traversal-style keys — facts are a flat map, dots would be
-  // (mis)interpreted as a nested path by deleteMemoryField's dot-path walk.
-  if (factKey.includes('.') || factKey.includes('__proto__') || factKey.includes('constructor')) {
+  // Dotted V2 public keys (preference.* / habit.*) are valid; reject unsafe segments.
+  if (!/^[a-zA-Z0-9_.-]+$/.test(factKey) || factKey.includes('__proto__') || factKey.includes('constructor')) {
     return { ok: false, error: 'Invalid fact key' };
   }
   const existing = getUserMemory(userId);

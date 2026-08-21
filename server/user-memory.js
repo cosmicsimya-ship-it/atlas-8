@@ -15,6 +15,10 @@ import {
 } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { isMemoryV2Enabled } from './memory/config.js';
+import { applyLegacyPartialUpdate, eraseUserMemoryV2, legacyMemoryFromStore, replaceLegacyMemory } from './memory/legacy-adapter.js';
+import { countMemories, findActiveByKey, listActiveMemories, listAllUserIds, softDeleteMemory } from './memory/store.js';
+import { mirrorUserMemoryToJson, removeUserFromJsonMirror } from './memory/json-mirror.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = join(__dirname, '..', 'data');
@@ -230,18 +234,20 @@ async function withWriteLock(fn) {
  * @returns {ReturnType<typeof createEmptyUserMemory>}
  */
 export function getUserMemory(userId) {
-  if (!isValidUserId(userId)) {
-    throw new Error('Invalid user ID');
+  if (!isValidUserId(userId)) throw new Error('Invalid user ID');
+  if (isMemoryV2Enabled()) {
+    try {
+      if (countMemories(userId) > 0) {
+        return withPrimeCheckinsFromLegacy(userId, legacyMemoryFromStore(userId));
+      }
+      return getLegacyUserMemory(userId);
+    } catch (err) {
+      console.error('[Memory] V2 read failed; falling back to JSON:', err.message);
+      return getLegacyUserMemory(userId);
+    }
   }
-
-  const store = loadMemory();
-  const existing = store.users[userId];
-  if (!existing) {
-    return createEmptyUserMemory();
-  }
-  return normalizeUserMemory(existing);
+  return getLegacyUserMemory(userId);
 }
-
 const MAX_STORED_CHECKINS = 60;
 const MAX_CHECKIN_INTENTION = 240;
 
@@ -272,6 +278,67 @@ function sanitizePrimeCheckins(raw) {
   return out;
 }
 
+function getLegacyUserMemory(userId) {
+  const store = loadMemory();
+  const existing = store.users[userId];
+  return existing ? normalizeUserMemory(existing) : createEmptyUserMemory();
+}
+
+function withPrimeCheckinsFromLegacy(userId, memory) {
+  const legacy = getLegacyUserMemory(userId);
+  return { ...memory, primeCheckins: sanitizePrimeCheckins(legacy.primeCheckins) };
+}
+
+/**
+ * Storage-agnostic latest user-facing fact for Prime continuity.
+ * Never returns V2 ids, status, scores, or storage metadata.
+ * @param {string} userId
+ * @returns {{ key: string, value: string }|null}
+ */
+export function getLatestUserMemoryFact(userId) {
+  if (!isValidUserId(userId)) return null;
+  if (!isMemoryV2Enabled()) {
+    const facts = Object.entries(getLegacyUserMemory(userId).facts || {});
+    const latest = facts.at(-1);
+    return latest ? { key: latest[0], value: String(latest[1] ?? '') } : null;
+  }
+  try {
+    const records = listActiveMemories(userId)
+      .filter((memory) =>
+        memory.type === 'fact' ||
+        memory.key?.startsWith('facts.') ||
+        memory.key?.startsWith('preference.') ||
+        memory.key?.startsWith('habit.'),
+      )
+      .sort((a, b) =>
+        String(a.updatedAt || a.createdAt || '').localeCompare(
+          String(b.updatedAt || b.createdAt || ''),
+        ),
+      );
+    const latest = records.at(-1);
+    if (!latest) return null;
+    const key = latest.key?.startsWith('facts.')
+      ? latest.key.slice('facts.'.length)
+      : latest.key || `note_${String(latest.id).replace(/[^a-zA-Z0-9]/g, '').slice(-10)}`;
+    return { key, value: String(latest.value ?? latest.text ?? '') };
+  } catch (err) {
+    console.error('[Memory] V2 latest fact read failed; falling back to JSON:', err.message);
+    const facts = Object.entries(getLegacyUserMemory(userId).facts || {});
+    const latest = facts.at(-1);
+    return latest ? { key: latest[0], value: String(latest[1] ?? '') } : null;
+  }
+}
+
+async function writePrimeCheckinsExtension(userId, rawCheckins) {
+  return withWriteLock(() => {
+    const store = loadMemory();
+    const current = normalizeUserMemory(store.users[userId] ?? createEmptyUserMemory());
+    current.primeCheckins = sanitizePrimeCheckins(rawCheckins);
+    current.updatedAt = new Date().toISOString();
+    store.users[userId] = current;
+    return saveMemory(store);
+  });
+}
 /**
  * UserIds that currently have a memory record. Admin aggregates only —
  * never returned to clients as a directory.
@@ -279,7 +346,14 @@ function sanitizePrimeCheckins(raw) {
  */
 export function listStoredMemoryUserIds() {
   const store = loadMemory();
-  return Object.keys(store.users || {}).filter((id) => isValidUserId(id));
+  const legacyIds = Object.keys(store.users || {}).filter((id) => isValidUserId(id));
+  if (!isMemoryV2Enabled()) return legacyIds;
+  try {
+    return [...new Set([...listAllUserIds(), ...legacyIds])].filter((id) => isValidUserId(id));
+  } catch (err) {
+    console.error('[Memory] V2 user listing failed; falling back to JSON:', err.message);
+    return legacyIds;
+  }
 }
 
 function normalizeUserMemory(raw) {
@@ -342,6 +416,16 @@ export async function setUserMemory(userId, memory) {
     return { ok: false, error: 'Invalid memory object' };
   }
 
+  if (isMemoryV2Enabled()) {
+    const normalized = normalizeUserMemory(memory);
+    const opaqueSaved = await writePrimeCheckinsExtension(userId, normalized.primeCheckins);
+    if (!opaqueSaved.ok) return opaqueSaved;
+    const result = await replaceLegacyMemory(userId, normalized);
+    if (result.ok === false) return result;
+    const mirrored = await mirrorUserMemoryToJson(userId);
+    if (mirrored.ok === false) return mirrored;
+    return { ok: true, memory: getUserMemory(userId) };
+  }
   return withWriteLock(() => {
     const store = loadMemory();
     const normalized = normalizeUserMemory(memory);
@@ -366,6 +450,22 @@ export async function updateUserMemory(userId, partial) {
     return { ok: false, error: 'Invalid user ID' };
   }
 
+  if (isMemoryV2Enabled()) {
+    if (partial?.primeCheckins !== undefined) {
+      const opaqueSaved = await writePrimeCheckinsExtension(userId, partial.primeCheckins);
+      if (!opaqueSaved.ok) return opaqueSaved;
+    }
+    const managedPartial = {
+      ...(partial?.profile && typeof partial.profile === 'object' ? { profile: partial.profile } : {}),
+      ...(partial?.preferences && typeof partial.preferences === 'object' ? { preferences: partial.preferences } : {}),
+      ...(partial?.facts && typeof partial.facts === 'object' ? { facts: partial.facts } : {}),
+    };
+    const result = await applyLegacyPartialUpdate(userId, managedPartial);
+    if (result.ok === false) return result;
+    const mirrored = await mirrorUserMemoryToJson(userId);
+    if (mirrored.ok === false) return mirrored;
+    return { ok: true, memory: getUserMemory(userId) };
+  }
   return withWriteLock(() => {
     const store = loadMemory();
     const current = normalizeUserMemory(store.users[userId] ?? createEmptyUserMemory());
@@ -420,6 +520,10 @@ export async function deleteUserMemory(userId) {
     return { ok: false, error: 'Invalid user ID' };
   }
 
+  if (isMemoryV2Enabled()) {
+    return eraseAllUserMemoryData(userId);
+  }
+
   return withWriteLock(() => {
     const store = loadMemory();
     if (!store.users[userId]) {
@@ -435,6 +539,21 @@ export async function deleteUserMemory(userId) {
   });
 }
 
+/** Privacy erase across both storage backends, independent of feature flag. */
+export async function eraseAllUserMemoryData(userId) {
+  if (!isValidUserId(userId)) return { ok: false, error: 'Invalid user ID' };
+  let v2Error = null;
+  try {
+    await eraseUserMemoryV2(userId);
+  } catch (err) {
+    v2Error = err;
+    console.error('[Memory] V2 erase failed; JSON erase will still be attempted:', err.message);
+  }
+  const removed = await removeUserFromJsonMirror(userId);
+  if (removed.ok === false) return removed;
+  if (v2Error) return { ok: false, error: `v2_erase_failed:${v2Error.message}`, jsonErased: true };
+  return { ok: true };
+}
 /**
  * @param {string} path dot-separated e.g. profile.name or preferences.theme
  */
@@ -478,6 +597,13 @@ export async function setMemoryField(userId, path, value) {
     return { ok: false, error: 'Invalid field path' };
   }
 
+  if (isMemoryV2Enabled()) {
+    const root = segments[0];
+    if (root === 'primeCheckins' && segments.length === 1) return updateUserMemory(userId, { primeCheckins: value });
+    if (!['profile', 'preferences', 'facts'].includes(root) || segments.length < 2) return { ok: false, error: 'Invalid V2 field path' };
+    const field = segments.slice(1).join('.');
+    return updateUserMemory(userId, { [root]: { [field]: value } });
+  }
   return withWriteLock(() => {
     const store = loadMemory();
     const memory = normalizeUserMemory(store.users[userId] ?? createEmptyUserMemory());
@@ -519,6 +645,19 @@ export async function deleteMemoryField(userId, path) {
     return { ok: false, error: 'Invalid field path' };
   }
 
+  if (isMemoryV2Enabled()) {
+    const root = segments[0];
+    if (!['profile', 'preferences', 'facts'].includes(root) || segments.length < 2) return { ok: false, error: 'Invalid V2 field path' };
+    const field = segments.slice(1).join('.');
+    const key = root === 'facts' && /^(preference|habit)\./.test(field) ? field : `${root}.${field}`;
+    const existing = findActiveByKey(userId, key);
+    if (!existing) return { ok: false, error: 'Field not found' };
+    const deleted = await softDeleteMemory(userId, existing.id);
+    if (!deleted.ok) return deleted;
+    const mirrored = await mirrorUserMemoryToJson(userId);
+    if (mirrored.ok === false) return mirrored;
+    return { ok: true, memory: getUserMemory(userId) };
+  }
   return withWriteLock(() => {
     const store = loadMemory();
     const memory = normalizeUserMemory(store.users[userId] ?? createEmptyUserMemory());
