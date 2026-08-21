@@ -33,7 +33,9 @@ export const SERVICES = {
     scriptArgs: ['server/telegram.js'],
     logFile: join('data', 'logs', 'atlas-telegram.log'),
     requiresEnv: 'TELEGRAM_BOT_TOKEN',
-    startTimeoutMs: 15_000,
+    startTimeoutMs: 20_000,
+    readinessObservationMs: 10_000,
+    readinessPollMs: 250,
   },
 };
 

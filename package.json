@@ -10,6 +10,7 @@
     "seo:generate": "node scripts/generate-seo-files.mjs",
     "prepare:production": "node scripts/prepare-production.mjs",
     "atlas:start": "node scripts/atlas-startup/cli.mjs start",
+    "test:telegram-startup-readiness": "node scripts/test-telegram-startup-readiness.mjs",
     "atlas:stop": "node scripts/atlas-startup/cli.mjs stop",
     "atlas:status": "node scripts/atlas-startup/cli.mjs status",
     "atlas:restart": "node scripts/atlas-startup/cli.mjs restart",

@@ -77,8 +77,8 @@ function owns(root, serviceKey, pid) {
   });
 }
 
-export function getTelegramPollLockOwner() {
-  const lockPath = getPollLockPath();
+export function getTelegramPollLockOwner(root = getProjectRoot()) {
+  const lockPath = getPollLockPath(root);
   if (!existsSync(lockPath)) return null;
   try {
     const pid = parseInt(readFileSync(lockPath, 'utf8').trim(), 10);
@@ -151,7 +151,7 @@ export async function inspectService(serviceKey, root = getProjectRoot()) {
   if (serviceKey === 'telegram') {
     cleanStaleTelegramArtifacts(root);
     pid = readPidFile(pidPath);
-    const lockPid = getTelegramPollLockOwner();
+    const lockPid = getTelegramPollLockOwner(root);
     if (lockPid && isProcessRunning(lockPid)) {
       if (owns(root, 'telegram', lockPid)) {
         pid = lockPid;
@@ -296,6 +296,106 @@ function appendProcessEvent(logPath, event, fields = {}) {
   writeFileSync(logPath, `${line}\n`, { encoding: 'utf8', flag: 'a' });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Telegram is ready only after its own heartbeat is observed and it remains
+ * alive/conflict-free for a full stability window.
+ */
+export async function observeTelegramReadiness({
+  pid,
+  startedAtMs,
+  timeoutMs,
+  observationMs,
+  pollMs,
+  isAlive,
+  readHeartbeat,
+  hasConflict,
+  wait = sleep,
+  now = Date.now,
+}) {
+  const heartbeatDeadline = now() + timeoutMs;
+  let heartbeatObserved = false;
+  let observationDeadline = null;
+
+  while (true) {
+    if (hasConflict()) {
+      return { ok: false, reason: 'conflict' };
+    }
+    if (!isAlive(pid)) {
+      return { ok: false, reason: 'early_exit' };
+    }
+
+    const heartbeat = readHeartbeat();
+    const heartbeatAt = Date.parse(heartbeat?.lastUpdateAt ?? '');
+    if (
+      heartbeat?.pid === pid &&
+      Number.isFinite(heartbeatAt) &&
+      heartbeatAt >= startedAtMs
+    ) {
+      if (!heartbeatObserved) {
+        heartbeatObserved = true;
+        observationDeadline = now() + observationMs;
+      }
+      if (now() >= observationDeadline) {
+        return { ok: true, reason: 'stable' };
+      }
+    } else if (!heartbeatObserved && now() >= heartbeatDeadline) {
+      return { ok: false, reason: 'heartbeat_timeout' };
+    }
+
+    await wait(pollMs);
+  }
+}
+
+function readTelegramHeartbeat(root) {
+  const path = join(getDataDir(root), 'telegram.heartbeat.json');
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function readLogSince(logPath, byteOffset) {
+  if (!logPath || !existsSync(logPath)) return '';
+  try {
+    return readFileSync(logPath).subarray(byteOffset).toString('utf8');
+  } catch {
+    return '';
+  }
+}
+
+export async function cleanupFailedTelegramStart(root, pid) {
+  const pidPath = getPidPath(SERVICES.telegram, root);
+  if (isProcessRunning(pid) && owns(root, 'telegram', pid)) {
+    try {
+      process.kill(pid);
+    } catch {
+      /* process may have exited between checks */
+    }
+    const deadline = Date.now() + 2000;
+    while (isProcessRunning(pid) && Date.now() < deadline) {
+      await sleep(100);
+    }
+  }
+
+  if (readPidFile(pidPath) === pid) removePidFile(pidPath);
+
+  const lockPath = getPollLockPath(root);
+  const lockPid = getTelegramPollLockOwner(root);
+  if (existsSync(lockPath) && (lockPid === pid || !isProcessRunning(lockPid))) {
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function spawnDetached(command, args, root, options = {}) {
   // Windows: spawning *.cmd/*.bat with detached:true without shell throws EINVAL.
   const needsShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
@@ -363,7 +463,7 @@ export async function startService(serviceKey, root = getProjectRoot()) {
 
   if (serviceKey === 'telegram') {
     cleanStaleTelegramArtifacts(root);
-    const lockPid = getTelegramPollLockOwner();
+    const lockPid = getTelegramPollLockOwner(root);
     if (lockPid && isProcessRunning(lockPid)) {
       if (owns(root, 'telegram', lockPid)) {
         const running = await inspectService('telegram', root);
@@ -393,8 +493,18 @@ export async function startService(serviceKey, root = getProjectRoot()) {
   }
 
   let pid;
+  let telegramStartedAtMs = null;
+  let telegramLogOffset = 0;
   const nodeCmd = resolveNodeCmd();
   const npmCmd = resolveNpmCmd();
+
+  if (serviceKey === 'telegram') {
+    telegramStartedAtMs = Date.now();
+    const telegramLogPath = service.logFile ? join(root, service.logFile) : null;
+    if (telegramLogPath && existsSync(telegramLogPath)) {
+      telegramLogOffset = readFileSync(telegramLogPath).length;
+    }
+  }
 
   if (service.scriptArgs) {
     pid = spawnDetached(nodeCmd, service.scriptArgs, root, {
@@ -430,10 +540,21 @@ export async function startService(serviceKey, root = getProjectRoot()) {
       };
     }
   } else if (serviceKey === 'telegram') {
-    await new Promise((r) => setTimeout(r, 2000));
-    const lockPid = getTelegramPollLockOwner();
-    const alive = isProcessRunning(pid);
-    if (lockPid === pid || (alive && owns(root, 'telegram', pid))) {
+    const telegramLogPath = service.logFile ? join(root, service.logFile) : null;
+    const readiness = await observeTelegramReadiness({
+      pid,
+      startedAtMs: telegramStartedAtMs,
+      timeoutMs: service.startTimeoutMs,
+      observationMs: service.readinessObservationMs,
+      pollMs: service.readinessPollMs,
+      isAlive: isProcessRunning,
+      readHeartbeat: () => readTelegramHeartbeat(root),
+      hasConflict: () => /409\s+Conflict|polling conflict|terminated by other getUpdates/i.test(
+        readLogSince(telegramLogPath, telegramLogOffset),
+      ),
+    });
+    const lockPid = getTelegramPollLockOwner(root);
+    if (readiness.ok && lockPid === pid && owns(root, 'telegram', pid)) {
       return {
         key: serviceKey,
         label: service.label,
@@ -441,17 +562,26 @@ export async function startService(serviceKey, root = getProjectRoot()) {
         pid,
         port: null,
         started: true,
-        message: 'Telegram bot started.',
+        message: 'Telegram bot ready after heartbeat stability window.',
       };
     }
+
+    await cleanupFailedTelegramStart(root, pid);
+    const reason = readiness.ok && lockPid !== pid
+      ? 'polling lock not confirmed'
+      : readiness.reason === 'conflict'
+        ? '409 Conflict detected during readiness window'
+        : readiness.reason === 'early_exit'
+          ? 'process exited during readiness window'
+          : 'heartbeat readiness timed out';
     return {
       key: serviceKey,
       label: service.label,
       state: 'failed',
-      pid: alive ? pid : null,
+      pid: null,
       port: null,
       started: true,
-      message: alive ? 'Telegram process running but polling lock not confirmed.' : 'Telegram process exited early.',
+      message: `Telegram startup failed: ${reason}.`,
     };
   }
 
@@ -493,7 +623,7 @@ export async function stopService(serviceKey, root = getProjectRoot()) {
 
   if (serviceKey === 'telegram') {
     const lockPath = getPollLockPath(root);
-    const lockPid = getTelegramPollLockOwner();
+    const lockPid = getTelegramPollLockOwner(root);
     if (lockPid === pid && existsSync(lockPath)) {
       try {
         unlinkSync(lockPath);
