@@ -31,6 +31,7 @@ export const SERVICES = {
     pidFile: 'atlas-telegram.pid',
     pollLockFile: 'telegram.poll.lock',
     scriptArgs: ['server/telegram.js'],
+    logFile: join('data', 'logs', 'atlas-telegram.log'),
     requiresEnv: 'TELEGRAM_BOT_TOKEN',
     startTimeoutMs: 15_000,
   },

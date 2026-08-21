@@ -1,5 +1,14 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { spawn } from 'child_process';
+import { dirname, join } from 'path';
 import { SERVICES } from './config.mjs';
 import {
   getPidPath,
@@ -277,17 +286,63 @@ export async function inspectAllServices(root = getProjectRoot()) {
   return results;
 }
 
-function spawnDetached(command, args, root) {
+function appendProcessEvent(logPath, event, fields = {}) {
+  if (!logPath) return;
+  const line = JSON.stringify({
+    at: new Date().toISOString(),
+    event,
+    ...fields,
+  });
+  writeFileSync(logPath, `${line}\n`, { encoding: 'utf8', flag: 'a' });
+}
+
+function spawnDetached(command, args, root, options = {}) {
   // Windows: spawning *.cmd/*.bat with detached:true without shell throws EINVAL.
   const needsShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
-  const child = spawn(command, args, {
-    cwd: root,
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    shell: needsShell,
-    env: { ...process.env },
-  });
+  const logPath = options.logFile ? join(root, options.logFile) : null;
+  let stdoutFd = null;
+  let stderrFd = null;
+  if (logPath) {
+    mkdirSync(dirname(logPath), { recursive: true });
+    stdoutFd = openSync(logPath, 'a');
+    stderrFd = openSync(logPath, 'a');
+    appendProcessEvent(logPath, 'spawn_requested', { service: options.serviceKey ?? 'unknown' });
+  }
+
+  let child;
+  try {
+    child = spawn(command, args, {
+      cwd: root,
+      detached: true,
+      stdio: logPath ? ['ignore', stdoutFd, stderrFd] : 'ignore',
+      windowsHide: true,
+      shell: needsShell,
+      env: { ...process.env },
+    });
+  } finally {
+    if (stdoutFd != null) closeSync(stdoutFd);
+    if (stderrFd != null) closeSync(stderrFd);
+  }
+  if (logPath) {
+    appendProcessEvent(logPath, 'spawned', {
+      service: options.serviceKey ?? 'unknown',
+      pid: child.pid,
+    });
+    child.once('error', (error) => {
+      appendProcessEvent(logPath, 'spawn_error', {
+        service: options.serviceKey ?? 'unknown',
+        code: error?.code ?? 'unknown',
+      });
+    });
+    child.once('exit', (code, signal) => {
+      appendProcessEvent(logPath, 'process_exit_observed', {
+        service: options.serviceKey ?? 'unknown',
+        pid: child.pid,
+        code: code ?? null,
+        signal: signal ?? null,
+      });
+    });
+  }
   child.unref();
   return child.pid;
 }
@@ -342,9 +397,15 @@ export async function startService(serviceKey, root = getProjectRoot()) {
   const npmCmd = resolveNpmCmd();
 
   if (service.scriptArgs) {
-    pid = spawnDetached(nodeCmd, service.scriptArgs, root);
+    pid = spawnDetached(nodeCmd, service.scriptArgs, root, {
+      serviceKey,
+      logFile: service.logFile,
+    });
   } else if (service.npmScript) {
-    pid = spawnDetached(npmCmd, ['run', service.npmScript], root);
+    pid = spawnDetached(npmCmd, ['run', service.npmScript], root, {
+      serviceKey,
+      logFile: service.logFile,
+    });
   } else {
     throw new Error(`No start command configured for ${serviceKey}`);
   }
