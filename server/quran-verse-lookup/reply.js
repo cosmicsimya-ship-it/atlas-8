@@ -11,6 +11,11 @@ import {
 } from './retrieve.js';
 import { getAyahCount } from './surah-map.js';
 import { detectCrossLayerSynthesisIntent } from '../cross-layer-synthesis/message-integration.js';
+import {
+  buildGroundedQuranExplanationPrompt,
+  sanitizeGroundedQuranExplanation,
+  wantsQuranExplanation,
+} from './explanation.js';
 
 export const MSG_SOURCE_UNAVAILABLE =
   'Ayet metnini güvenilir kaynaktan doğrulayamadığım için aktarmıyorum. Kur’an ayetlerini model hafızasından üretmem; yanlış ayet vermemek için bu isteği şu anda güvenilir biçimde karşılayamıyorum.';
@@ -29,12 +34,11 @@ export const MSG_TIMEOUT =
 
 export const MSG_MALFORMED =
   'Ayet kaynağından gelen yanıt doğrulanamadığı için metni aktarmıyorum.';
-
 /**
  * @param {import('./retrieve.js').VerseRetrievalResult} retrieved
  * @param {import('./parse.js').ParsedVerseLookup} parsed
  */
-export function buildQuranVerseLookupReply(retrieved, parsed) {
+export function buildQuranVerseLookupReply(retrieved, parsed, options = {}) {
   if (parsed?.parse_ok && !parsed.validation_ok) {
     if (parsed.error === 'invalid_surah') {
       return {
@@ -98,6 +102,9 @@ export function buildQuranVerseLookupReply(retrieved, parsed) {
     '',
     'Not: Bu metin Atlas yorumu veya tefsir değildir; yalnızca doğrulanmış kaynaktan aktarılmıştır.',
   );
+  if (options.explanation) {
+    lines.push('', 'Açıklaması:', options.explanation);
+  }
 
   return {
     reply: lines.join('\n'),
@@ -145,7 +152,20 @@ export async function tryDeterministicQuranVerseReply(input) {
     retrieved.translation = null;
   }
 
-  const built = buildQuranVerseLookupReply(retrieved, parsed);
+  let explanation = null;
+  if (retrieved.verified && wantsQuranExplanation(message) && typeof input?.explainVerse === 'function') {
+    try {
+      const generated = await input.explainVerse({
+        ...retrieved,
+        prompt: buildGroundedQuranExplanationPrompt(retrieved),
+      });
+      explanation = sanitizeGroundedQuranExplanation(generated, retrieved);
+    } catch {
+      // The verified verse remains useful even when explanation generation fails.
+    }
+  }
+
+  const built = buildQuranVerseLookupReply(retrieved, parsed, { explanation });
 
   return {
     handled: true,
@@ -168,6 +188,7 @@ export async function tryDeterministicQuranVerseReply(input) {
         error: retrieved.error,
         parse_ok: parsed.parse_ok,
         validation_ok: parsed.validation_ok,
+        explanation_generated: Boolean(explanation),
       },
       model: 'deterministic',
       provider: 'atlas-quran-verse-lookup',

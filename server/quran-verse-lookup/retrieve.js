@@ -3,10 +3,21 @@
  * NO SOURCE = NO VERSE. LLM fallback is forbidden.
  */
 
-export const QURAN_VERSE_LOOKUP_VERSION = 'quran-verse-lookup-v1';
+export const QURAN_VERSE_LOOKUP_VERSION = 'quran-verse-lookup-v2';
 
-/** Feature remains fail-closed until a verified VerseStore is injected. */
-export const QURAN_VERSE_TEXT_ENABLED = false;
+/**
+ * Master kill-switch. Verse text stays fail-closed (store defaults to null,
+ * see store/index.js#createVerseStore) unless an operator explicitly sets
+ * QURAN_VERSE_TEXT_ENABLED=true in the deployment environment.
+ * @param {object} [env]
+ */
+export function isQuranVerseTextEnabled(env = process.env) {
+  return String(env?.QURAN_VERSE_TEXT_ENABLED ?? '').trim().toLowerCase() === 'true';
+}
+
+/** Text is permitted only from an attributed, verified VerseStore response,
+ *  and only when explicitly enabled via QURAN_VERSE_TEXT_ENABLED=true. */
+export const QURAN_VERSE_TEXT_ENABLED = isQuranVerseTextEnabled();
 
 /**
  * @typedef {{
@@ -80,9 +91,10 @@ export async function retrieveVerifiedVerse(parsed, verseStore = null, opts = {}
     return { ...base, error: 'source_unavailable' };
   }
 
-  // Production gate: text delivery stays off until a verified corpus/API is cleared.
-  // Tests may pass allowTestStore with an injected fixture store only.
-  if (!QURAN_VERSE_TEXT_ENABLED && opts.allowTestStore !== true) {
+  // A store built with forceFixture (see store/index.js) is dev/test-only.
+  // Refuse it here too unless the caller explicitly opts in, so a fixture
+  // store accidentally reaching this function never silently answers.
+  if (verseStore.__fixture === true && opts.allowTestStore !== true) {
     return { ...base, error: 'source_unavailable' };
   }
 

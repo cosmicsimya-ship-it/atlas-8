@@ -37,3 +37,16 @@ export {
   MSG_TIMEOUT,
   MSG_MALFORMED,
 } from './reply.js';
+export {
+  createVerseStore,
+  createRemoteVerseStore,
+  composeVerseStore,
+  loadQuranStoreConfig,
+} from './store/index.js';
+
+export {
+  wantsQuranExplanation,
+  buildGroundedQuranExplanationPrompt,
+  sanitizeGroundedQuranExplanation,
+  resolveContextualQuranReference,
+} from './explanation.js';
