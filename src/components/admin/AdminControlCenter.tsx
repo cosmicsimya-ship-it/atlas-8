@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 
 import { apiRequest } from '../../services/api-client';
 import AdminUserActions from './AdminUserActions';
+import AdminFeedbackPanel from './AdminFeedbackPanel';
+import AdminErrorsPanel from './AdminErrorsPanel';
 
-type Tab = 'overview' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
+type Tab = 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
 
 type AdminUserRow = {
   userId: string;
@@ -17,6 +19,9 @@ type AdminUserRow = {
   lastActive: string | null;
 };
 
+type OverviewFeedbackRow = { id: string; createdAt: string; type: string; message: string; status: string; priority: string };
+type OverviewErrorRow = { id: string; lastSeen: string; severity: string; code: string; safeMessage: string; occurrenceCount: number; status: string };
+
 type Overview = {
   totalUsers: number;
   primeUsers: number;
@@ -28,6 +33,11 @@ type Overview = {
   primeProfilesCompleted?: number;
   checkInsToday?: number;
   outlookGenerationCount?: number;
+  backendStatus?: string;
+  openFeedbackCount?: number | null;
+  recentFeedback?: OverviewFeedbackRow[];
+  openErrorCount?: number | null;
+  recentErrors?: OverviewErrorRow[];
 };
 
 type UsageResponse = {
@@ -53,11 +63,13 @@ type AuditEvent = { eventId: string; timestamp: string; actor: string; action: s
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'feedback', label: 'Feedback' },
+  { id: 'errors', label: 'Errors' },
   { id: 'users', label: 'Users' },
   { id: 'prime', label: 'Prime' },
+  { id: 'health', label: 'System Health' },
   { id: 'usage', label: 'Usage' },
   { id: 'costs', label: 'Costs' },
-  { id: 'health', label: 'System Health' },
   { id: 'audit', label: 'Audit' },
 ];
 
@@ -107,17 +119,55 @@ function OverviewTab() {
   return (
     <StateWrapper state={state}>
       {state.status === 'ok' ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Metric label="Total Users" value={state.data.overview.totalUsers} />
-          <Metric label="Prime Users" value={state.data.overview.primeUsers} />
-          <Metric label="Free Users" value={state.data.overview.freeUsers} />
-          <Metric label="Active Today" value={state.data.overview.activeToday} />
-          <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
-          <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
-          <Metric label="Prime Profiles Completed" value={state.data.overview.primeProfilesCompleted ?? 0} />
-          <Metric label="Check-ins Today" value={state.data.overview.checkInsToday ?? 0} />
-          <Metric label="Outlook Generations" value={state.data.overview.outlookGenerationCount ?? 0} />
-          <Metric label="Estimated AI Cost" value={state.data.overview.estimatedAiCost} />
+        <div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Metric label="Backend Health" value={state.data.overview.backendStatus ?? 'unknown'} />
+            <Metric label="Total Users" value={state.data.overview.totalUsers} />
+            <Metric label="Prime Users" value={state.data.overview.primeUsers} />
+            <Metric label="Free Users" value={state.data.overview.freeUsers} />
+            <Metric label="Open Feedback" value={state.data.overview.openFeedbackCount ?? null} />
+            <Metric label="Open Errors / Incidents" value={state.data.overview.openErrorCount ?? null} />
+            <Metric label="Active Today" value={state.data.overview.activeToday} />
+            <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
+            <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
+            <Metric label="Prime Profiles Completed" value={state.data.overview.primeProfilesCompleted ?? 0} />
+            <Metric label="Check-ins Today" value={state.data.overview.checkInsToday ?? 0} />
+            <Metric label="Outlook Generations" value={state.data.overview.outlookGenerationCount ?? 0} />
+            <Metric label="Estimated AI Cost" value={state.data.overview.estimatedAiCost} />
+          </div>
+
+          <div className="mt-6 grid gap-6 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[12px] uppercase tracking-[0.1em] text-[#8b93a3]">Son Geri Bildirimler</p>
+              {!state.data.overview.recentFeedback || state.data.overview.recentFeedback.length === 0 ? (
+                <p className="text-sm text-[#8b93a3]">Yok.</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {state.data.overview.recentFeedback.map((f) => (
+                    <li key={f.id} className="flex items-center justify-between gap-2 border-b border-white/[0.06] py-1.5">
+                      <span className="truncate text-[#9aa3b2]">{f.type}: {f.message}</span>
+                      <span className="shrink-0 text-[11px] text-[#8b93a3]">{f.status}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 text-[12px] uppercase tracking-[0.1em] text-[#8b93a3]">Son Hatalar / Olaylar</p>
+              {!state.data.overview.recentErrors || state.data.overview.recentErrors.length === 0 ? (
+                <p className="text-sm text-[#8b93a3]">Yok.</p>
+              ) : (
+                <ul className="space-y-1.5 text-sm">
+                  {state.data.overview.recentErrors.map((e) => (
+                    <li key={e.id} className="flex items-center justify-between gap-2 border-b border-white/[0.06] py-1.5">
+                      <span className="truncate text-[#9aa3b2]">{e.code}: {e.safeMessage}</span>
+                      <span className="shrink-0 text-[11px] text-[#8b93a3]">{e.status} ×{e.occurrenceCount}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
     </StateWrapper>
@@ -424,6 +474,8 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
       </nav>
       <div className="mt-5">
         {tab === 'overview' ? <OverviewTab /> : null}
+        {tab === 'feedback' ? <AdminFeedbackPanel /> : null}
+        {tab === 'errors' ? <AdminErrorsPanel /> : null}
         {tab === 'users' ? <UsersTab actorUserId={actorUserId} /> : null}
         {tab === 'prime' ? <PrimeTab actorUserId={actorUserId} /> : null}
         {tab === 'usage' ? <UsageTab /> : null}

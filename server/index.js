@@ -44,6 +44,20 @@ import {
   setAccountDisabled,
   erasePersonalData,
 } from './admin/write-actions.js';
+import {
+  createFeedback,
+  listFeedback,
+  getFeedbackById,
+  updateFeedbackStatus,
+  updateFeedbackPriority,
+  setFeedbackAdminNote,
+} from './feedback/store.js';
+import {
+  recordError,
+  listErrors,
+  getErrorById,
+  updateErrorStatus,
+} from './admin/error-log.js';
 import { validateImageAttachment } from './entitlements/image-guard.js';
 import {
   appendMessage as appendConversationMessage,
@@ -833,6 +847,38 @@ app.get(
 );
 
 // ═══════════════════════════════════════════════════════════════════════
+// User feedback submission — feeds the Admin Control Center Feedback tab.
+// Any authenticated (non-anonymous) user may submit; listing/triage is
+// admin-only (see Admin Control Center section below).
+// ═══════════════════════════════════════════════════════════════════════
+const feedbackSubmitRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Çok fazla geri bildirim gönderildi. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `feedback-submit:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/feedback',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  feedbackSubmitRateLimit,
+  async (req, res) => {
+    const result = await createFeedback({
+      userId: req.auth.userId,
+      type: req.body?.type,
+      message: req.body?.message,
+      route: req.body?.route,
+      conversationId: req.body?.conversationId,
+      messageId: req.body?.messageId,
+    });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true, feedback: result.feedback });
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
 // Admin Control Center — Phase A. All routes: requireAuth + requireRole('admin').
 // Read-only (write actions deferred per audit — no safe subscription-store
 // write API with audit/rollback semantics exists yet).
@@ -978,6 +1024,98 @@ app.get(
       return res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[ATLAS] admin/audit error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Feedback panel (read). Structured user feedback
+// with a status/priority/note triage workflow.
+// ═══════════════════════════════════════════════════════════════════════
+app.get(
+  '/api/admin/feedback',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = listFeedback({
+        status: req.query.status,
+        priority: req.query.priority,
+        type: req.query.type,
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/feedback error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/feedback/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const entry = getFeedbackById(req.params.id);
+      if (!entry) return res.status(404).json({ ok: false, error: 'Feedback not found' });
+      return res.json({ ok: true, feedback: entry });
+    } catch (err) {
+      console.error('[ATLAS] admin/feedback/:id error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Error / Incident panel (read). Errors are
+// captured server-side (global error handler + explicit reports below);
+// this only ever exposes the already-redacted safeMessage, never a raw
+// stack trace or request payload.
+// ═══════════════════════════════════════════════════════════════════════
+app.get(
+  '/api/admin/errors',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = listErrors({
+        status: req.query.status,
+        severity: req.query.severity,
+        source: req.query.source,
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/errors error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/errors/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const entry = getErrorById(req.params.id);
+      if (!entry) return res.status(404).json({ ok: false, error: 'Error not found' });
+      return res.json({ ok: true, error: entry });
+    } catch (err) {
+      console.error('[ATLAS] admin/errors/:id error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
@@ -1142,6 +1280,154 @@ app.post(
       targetUserId: req.params.userId,
       reason: req.body?.reason,
     });
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Feedback panel (write). All mutating, all
+// requireAuth + requireRole('admin') + CSRF, all audited server-side.
+// ═══════════════════════════════════════════════════════════════════════
+app.patch(
+  '/api/admin/feedback/:id/status',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const before = getFeedbackById(req.params.id);
+    const result = await updateFeedbackStatus({ id: req.params.id, status: req.body?.status });
+    try {
+      logAdminAudit({
+        action: 'admin.feedback.status',
+        actor: req.auth.userId,
+        targetUserId: before?.userId ?? null,
+        result: result.ok ? 'ok' : 'error',
+        meta: { feedbackId: req.params.id, before: before?.status ?? null, after: result.ok ? result.feedback.status : null },
+      });
+    } catch {
+      /* audit failure must never block the mutation's response */
+    }
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.patch(
+  '/api/admin/feedback/:id/priority',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const before = getFeedbackById(req.params.id);
+    const result = await updateFeedbackPriority({ id: req.params.id, priority: req.body?.priority });
+    try {
+      logAdminAudit({
+        action: 'admin.feedback.priority',
+        actor: req.auth.userId,
+        targetUserId: before?.userId ?? null,
+        result: result.ok ? 'ok' : 'error',
+        meta: { feedbackId: req.params.id, before: before?.priority ?? null, after: result.ok ? result.feedback.priority : null },
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+app.patch(
+  '/api/admin/feedback/:id/note',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const before = getFeedbackById(req.params.id);
+    const result = await setFeedbackAdminNote({ id: req.params.id, note: req.body?.note });
+    try {
+      logAdminAudit({
+        action: 'admin.feedback.note',
+        actor: req.auth.userId,
+        targetUserId: before?.userId ?? null,
+        result: result.ok ? 'ok' : 'error',
+        meta: { feedbackId: req.params.id },
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin Control Center — Error / Incident panel (write).
+// ═══════════════════════════════════════════════════════════════════════
+app.patch(
+  '/api/admin/errors/:id/status',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const before = getErrorById(req.params.id);
+    const result = await updateErrorStatus({ id: req.params.id, status: req.body?.status });
+    try {
+      logAdminAudit({
+        action: 'admin.error.status',
+        actor: req.auth.userId,
+        targetUserId: null,
+        result: result.ok ? 'ok' : 'error',
+        meta: { errorId: req.params.id, before: before?.status ?? null, after: result.ok ? result.error.status : null },
+      });
+    } catch {
+      /* non-fatal */
+    }
+    return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
+  },
+);
+
+/**
+ * Manual incident entry — for cases an admin observes but that weren't
+ * auto-captured (e.g. reported by a user out-of-band). Goes through the
+ * same redact + fingerprint/dedup path as the automatic capture below.
+ */
+app.post(
+  '/api/admin/errors/report',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  rejectAdminAuthoritySpoof,
+  async (req, res) => {
+    const result = await recordError({
+      source: req.body?.source || 'admin_manual',
+      severity: req.body?.severity,
+      code: req.body?.code,
+      message: req.body?.message,
+      route: req.body?.route,
+      userId: req.body?.targetUserId,
+    });
+    try {
+      logAdminAudit({
+        action: 'admin.error.report',
+        actor: req.auth.userId,
+        targetUserId: req.body?.targetUserId ?? null,
+        result: result.ok ? 'ok' : 'error',
+        meta: { errorId: result.ok ? result.error.id : null, deduped: result.deduped ?? false },
+      });
+    } catch {
+      /* non-fatal */
+    }
     return res.status(result.ok ? 200 : (result.status ?? 400)).json(result);
   },
 );
@@ -2353,6 +2639,36 @@ app.use((err, req, res, next) => {
     });
   }
   return next(err);
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// Catch-all API error capture — feeds the Admin Control Center Error /
+// Incident panel. Only intercepts /api/* so non-API error behavior
+// (e.g. static asset serving) is unchanged. Message is redacted by
+// recordError() before it is ever persisted — no stack trace is stored.
+// ══════════════════════════════════════════════════════════════════════
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  if (!req.path.startsWith('/api')) return next(err);
+
+  recordError({
+    source: 'server',
+    severity: 'error',
+    code: err.code || err.name || 'unhandled_error',
+    message: err.message || String(err),
+    route: req.path,
+    userId: req.auth?.userId ?? null,
+  }).catch(() => {
+    /* error capture must never itself crash the response path */
+  });
+
+  console.error('[ATLAS] Unhandled API error:', err.message);
+  if (res.headersSent) return next(err);
+  return res.status(err.status || 500).json({
+    ok: false,
+    data: null,
+    error: { code: 'internal_error', message: 'Beklenmeyen bir hata oluştu.' },
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════

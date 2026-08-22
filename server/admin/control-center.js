@@ -18,6 +18,8 @@ import { getOutlookBuildCount } from '../prime/outlook.js';
 import { listAdminAuditEvents } from '../auth/admin-audit.js';
 import { isVoiceConfigured, getVoice, getLaraMasterPath } from '../voice/registry.js';
 import { getBillingConfig } from '../billing/config.js';
+import { listFeedback, countFeedbackByStatus } from '../feedback/store.js';
+import { listErrors, countErrorsByStatus } from './error-log.js';
 
 /** Deterministic, code-defined threshold — not an arbitrary anomaly model. */
 export const NEAR_LIMIT_THRESHOLD_RATIO = 0.8;
@@ -171,6 +173,35 @@ export function getAdminOverview() {
     checkInsToday = 0;
   }
 
+  let backendStatus = 'unknown';
+  try {
+    backendStatus = getAdminHealth().overallStatus;
+  } catch {
+    backendStatus = 'unknown';
+  }
+
+  let openFeedbackCount = null;
+  let recentFeedback = [];
+  try {
+    const feedbackCounts = countFeedbackByStatus();
+    openFeedbackCount = feedbackCounts.new + feedbackCounts.reviewing;
+    recentFeedback = listFeedback({ limit: 5 }).entries;
+  } catch {
+    openFeedbackCount = null;
+    recentFeedback = [];
+  }
+
+  let openErrorCount = null;
+  let recentErrors = [];
+  try {
+    const errorCounts = countErrorsByStatus();
+    openErrorCount = errorCounts.open + errorCounts.investigating;
+    recentErrors = listErrors({ limit: 5 }).entries;
+  } catch {
+    openErrorCount = null;
+    recentErrors = [];
+  }
+
   return {
     totalUsers,
     primeUsers,
@@ -183,6 +214,11 @@ export function getAdminOverview() {
     primeProfilesCompleted,
     checkInsToday,
     outlookGenerationCount: getOutlookBuildCount(),
+    backendStatus,
+    openFeedbackCount,
+    recentFeedback,
+    openErrorCount,
+    recentErrors,
   };
 }
 
