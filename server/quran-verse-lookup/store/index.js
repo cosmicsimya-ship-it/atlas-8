@@ -5,6 +5,14 @@ const DEFAULT_BASE_URL = 'https://api.acikkuran.com';
 export const DEFAULT_TRANSLATION_SOURCE_LABEL = 'Açık Kur’an API';
 export const FIXTURE_TRANSLATION_SOURCE_LABEL = 'test-fixture-canonical';
 
+const DEFAULT_ALQURAN_CLOUD_BASE_URL = 'https://api.alquran.cloud';
+export const ALQURAN_CLOUD_TRANSLATION_SOURCE_LABEL = 'Diyanet İşleri Başkanlığı Meali (alquran.cloud)';
+
+/** Per-request network timeout, independent of the outer retrieveVerifiedVerse
+ * deadline — so a hung provider yields to the next provider in the fallback
+ * chain instead of consuming the whole shared budget alone. */
+const PROVIDER_REQUEST_TIMEOUT_MS = 3000;
+
 /**
  * Small, clearly-labeled dev/test-only dataset. Never used in production
  * (see createVerseStore's forceFixture guard below) and never presented as
@@ -71,6 +79,7 @@ export function createRemoteVerseStore(options = {}) {
   const apiBase = baseUrl(options.baseUrl);
   const request = (url) => fetchImpl(url, {
     headers: { Accept: 'application/json', 'User-Agent': 'ATLAS-Quran-Lookup/1.0' },
+    signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
   });
   return {
     async getVerse(verseKey) {
@@ -104,6 +113,47 @@ export function createRemoteVerseStore(options = {}) {
 }
 
 /**
+ * Al Quran Cloud (api.alquran.cloud) — long-established, widely-used Quran
+ * API (Islamic Network); Arabic text from the Tanzil corpus, Turkish
+ * translation from the official Diyanet İşleri edition ("tr.diyanet").
+ * One combined request returns both editions. Same strict shape as
+ * createRemoteVerseStore: null on any missing/malformed field, never a guess.
+ */
+export function createAlQuranCloudVerseStore(options = {}) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') return null;
+  const apiBase = baseUrl(options.baseUrl || DEFAULT_ALQURAN_CLOUD_BASE_URL);
+  return {
+    async getVerse(verseKey) {
+      const ref = /^(\d{1,3}):(\d{1,3})$/.exec(String(verseKey || ''));
+      if (!ref) return null;
+      const endpoint = `${apiBase}/v1/ayah/${ref[1]}:${ref[2]}/editions/quran-uthmani,tr.diyanet`;
+      const response = await fetchImpl(endpoint, {
+        headers: { Accept: 'application/json', 'User-Agent': 'ATLAS-Quran-Lookup/1.0' },
+        signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      });
+      if (!response?.ok) return null;
+      const body = await response.json();
+      const editions = Array.isArray(body?.data) ? body.data : null;
+      if (!editions) return null;
+
+      const arabicRow = editions.find((item) => item?.edition?.identifier === 'quran-uthmani');
+      const translationRow = editions.find((item) => item?.edition?.identifier === 'tr.diyanet');
+      const arabic = typeof arabicRow?.text === 'string' ? arabicRow.text.trim() : null;
+      const translation =
+        typeof translationRow?.text === 'string' ? translationRow.text.trim() : null;
+      if (!arabic || !translation) return null;
+
+      return {
+        arabic,
+        translation,
+        translationSource: ALQURAN_CLOUD_TRANSLATION_SOURCE_LABEL,
+      };
+    },
+  };
+}
+
+/**
  * A fixture is dev/test-only; production always uses the live source (or
  * no source at all, fail-closed, until QURAN_VERSE_TEXT_ENABLED=true).
  */
@@ -124,18 +174,46 @@ export function createVerseStore(options = {}) {
   if (!textEnabled) return null;
   if (options.storeMode === 'off' || env.QURAN_VERSE_STORE === 'off') return null;
 
-  return createRemoteVerseStore({ baseUrl: options.baseUrl || env.QURAN_VERSE_API_BASE_URL, fetchImpl: options.fetchImpl });
+  // Provider fallback chain: Al Quran Cloud (Diyanet-sourced translation,
+  // currently reachable) first, Açık Kur'an API second — so either
+  // provider's outage alone never disables verse retrieval. Order is fixed;
+  // both remain fail-closed individually (never guess/fabricate).
+  const primaryStore = createAlQuranCloudVerseStore({
+    baseUrl: options.alQuranCloudBaseUrl || env.QURAN_VERSE_ALQURAN_CLOUD_BASE_URL,
+    fetchImpl: options.fetchImpl,
+  });
+  const secondaryStore = createRemoteVerseStore({
+    baseUrl: options.baseUrl || env.QURAN_VERSE_API_BASE_URL,
+    fetchImpl: options.fetchImpl,
+  });
+  return composeVerseStore(primaryStore, secondaryStore);
 }
 
+/**
+ * Chain two stores: try primary, fall through to secondary on a null result
+ * OR a thrown/rejected primary (network error, DNS failure, timeout abort) —
+ * a provider being down must not prevent trying the next one.
+ */
 export function composeVerseStore(primary, secondary) {
   if (!primary) return secondary || null;
   if (!secondary) return primary;
-  return { async getVerse(key) { return (await primary.getVerse(key)) ?? secondary.getVerse(key); } };
+  return {
+    async getVerse(key) {
+      try {
+        const result = await primary.getVerse(key);
+        if (result) return result;
+      } catch {
+        // Primary unreachable/failed — fall through to secondary below.
+      }
+      return secondary.getVerse(key);
+    },
+  };
 }
 
 export function loadQuranStoreConfig(env = process.env) {
   return {
     baseUrl: baseUrl(env.QURAN_VERSE_API_BASE_URL),
+    alQuranCloudBaseUrl: baseUrl(env.QURAN_VERSE_ALQURAN_CLOUD_BASE_URL || DEFAULT_ALQURAN_CLOUD_BASE_URL),
     storeMode: env.QURAN_VERSE_STORE || 'remote',
     textEnabled: isQuranVerseTextEnabled(env),
   };

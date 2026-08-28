@@ -10,6 +10,7 @@ import {
   resolveChatProfile,
 } from './atlas-prompt-loader.js';
 import { callOpenAI } from './openai-client.js';
+import { resolveContextualQuranReference } from './quran-verse-lookup/explanation.js';
 import { extractResponseText } from './atlas-response.js';
 import {
   withProviderRetry,
@@ -157,6 +158,7 @@ import {
 import {
   tryDeterministicQuranVerseReply,
   QURAN_VERSE_LOOKUP_VERSION,
+  createVerseStore,
   isQuranContextActive,
   buildNoSpontaneousQuranDirective,
   buildQuranFailClosedDirective,
@@ -1305,11 +1307,29 @@ export async function processAtlasMessage(input, options = {}) {
 
   // ── Quran verse lookup — zero-hallucination gate (before LLM / spiritual engines) ──
   // NO SOURCE = NO VERSE. Multi-layer synthesis keeps its own path.
-  if (!skipResolvers) {
+  // Must run on every turn regardless of skipResolvers (activation-continuation
+  // state): skipResolvers only means "skip the expensive first-turn identity/
+  // profile resolvers", not "this turn is safe to hand to the unrestricted LLM".
+  // Gating this deterministic check on !skipResolvers let a verse request sent
+  // mid-conversation (the common case once a DM/group session is active) fall
+  // straight through to callOpenAI with no verified-source check at all.
+  {
+    const contextualQuranReference = resolveContextualQuranReference(message, history);
     const quranVerse = await tryDeterministicQuranVerseReply({
-      message,
-      verseStore: options.verseStore ?? null,
+      message: contextualQuranReference ? `${contextualQuranReference} açıkla` : message,
+      verseStore: options.verseStore ?? createVerseStore(),
       retrieveOpts: options.quranRetrieveOpts ?? undefined,
+      explainVerse: async ({ prompt }) => {
+        const explain = options.callOpenAI ?? callOpenAI;
+        const result = await explain({
+          ...prompt,
+          temperature: 0.2,
+          maxTokens: 260,
+          userId,
+          source: 'quran_explain',
+        });
+        return result?.content ?? null;
+      },
     });
     if (quranVerse.handled) {
       return applyPrivacyGuardToResult(
@@ -2920,7 +2940,7 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
       userId,
       sessionId: input.conversationId ?? userId ?? 'anonymous',
       astrologyContext,
-      verseStore: options.verseStore ?? null,
+      verseStore: options.verseStore ?? createVerseStore(),
       intentInfo: synthesisIntent,
       casual: casualReflexBypass,
       stance: analyticStance,

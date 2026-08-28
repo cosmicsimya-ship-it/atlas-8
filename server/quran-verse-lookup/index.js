@@ -40,6 +40,7 @@ export {
 export {
   createVerseStore,
   createRemoteVerseStore,
+  createAlQuranCloudVerseStore,
   composeVerseStore,
   loadQuranStoreConfig,
 } from './store/index.js';
