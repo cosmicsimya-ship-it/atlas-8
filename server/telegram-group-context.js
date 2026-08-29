@@ -103,6 +103,26 @@ export function inspectContextualWake(recent, current) {
   return { wakeOnly, matched: true, reason: 'matched', candidate };
 }
 
+/** Per-user, per-group-scope key for the short-lived "recently addressed" wake window. */
+export function groupWakeKey(msg) {
+  const scope = telegramGroupScopeKey(msg);
+  const speaker = telegramSpeakerKey(msg);
+  return scope && speaker ? `${scope}::${speaker}` : null;
+}
+
+/** True only when a reply targets a real person other than the bot itself —
+ *  such a reply must never be auto-claimed by an active wake window. */
+export function isReplyToOtherPerson(msg, botIdentity = null) {
+  const replyFrom = msg?.reply_to_message?.from;
+  if (!replyFrom) return false;
+  if (botIdentity?.id != null && Number(replyFrom.id) === Number(botIdentity.id)) return false;
+  return true;
+}
+
+export function isGroupWakeActive(entry, nowMs = Date.now()) {
+  return Boolean(entry) && Number(entry.expiresAt) > nowMs;
+}
+
 export function markContextEntryAnswered(recent, messageId) {
   if (messageId == null) return recent;
   return (recent || []).map((entry) => entry.messageId === messageId ? { ...entry, answered: true } : entry);

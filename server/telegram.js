@@ -15,7 +15,6 @@ import {
 } from './channel-adapters.js';
 import {
   shouldForwardGroupMessage,
-  hasActiveSession,
 } from './conversation-activation.js';
 import {
   resolveFounderSession,
@@ -31,7 +30,11 @@ import {
   buildContextualPipelineMessage,
   createGroupContextEntry,
   createProcessedUpdateTracker,
+  GROUP_CONTEXT_MAX_AGE_MS,
+  groupWakeKey,
   inspectContextualWake,
+  isGroupWakeActive,
+  isReplyToOtherPerson,
   isWakeWordOnly,
   looksLikeActionableRequest,
   markContextEntryAnswered,
@@ -258,6 +261,17 @@ const botIdentityReady = bot
 /** @type {Map<string, Array<{ role: 'user' | 'assistant', content: string, userId?: string|null, messageThreadId?: string|number|null }>>} */
 const chatHistories = new Map();
 const groupInboundContexts = new Map();
+/**
+ * Per-process, per-(chat+user) "recently addressed" wake window — lets a
+ * group follow-up without re-mentioning the bot still reach the pipeline.
+ * Local to this process by design: telegram.js and server/index.js run as
+ * separate processes, so this cannot (and must not) rely on the backend's
+ * own in-memory activation sessions, which this process never sees.
+ * TTL reuses GROUP_CONTEXT_MAX_AGE_MS (5 min) — the existing "how long is a
+ * recent group message still contextually relevant" window already tuned
+ * for this same file, rather than inventing a second magic number.
+ */
+const groupWakeState = new Map();
 const processedUpdates = createProcessedUpdateTracker(2000);
 const MAX_HISTORY_TURNS = 20;
 let firstFromIdLogged = false;
@@ -330,6 +344,27 @@ function markGroupInboundAnswered(msg, messageId) {
     scope,
     markContextEntryAnswered(getGroupInboundContext(msg), messageId),
   );
+}
+
+/** Start/refresh the wake window for this user in this group right after Atlas replies. */
+function setGroupWakeState(msg, nowMs = Date.now()) {
+  const key = groupWakeKey(msg);
+  if (!key) return;
+  groupWakeState.set(key, { expiresAt: nowMs + GROUP_CONTEXT_MAX_AGE_MS });
+}
+
+/**
+ * Whether this group message should be treated as an unaddressed continuation
+ * of a recently-addressed conversation. A reply to a different real person is
+ * never auto-claimed, even with an active wake window.
+ */
+function hasGroupWakeState(msg, nowMs = Date.now()) {
+  if (isReplyToOtherPerson(msg, botIdentity)) return false;
+  const key = groupWakeKey(msg);
+  if (!key) return false;
+  if (isGroupWakeActive(groupWakeState.get(key), nowMs)) return true;
+  groupWakeState.delete(key);
+  return false;
 }
 
 /**
@@ -658,12 +693,13 @@ async function processOneMessage(msg) {
       });
     }
   }
+  const groupWakeActive = isGroupChat ? hasGroupWakeState(msg, nowMs) : false;
   const allowForward = shouldForwardGroupMessage({
     message: inboundTextForGate || 'media',
     conversationId,
     userId: fromIdForGate,
     isGroup: isGroupChat,
-    addressedToBot: addressedToBot || Boolean(contextualWakeRequest),
+    addressedToBot: addressedToBot || Boolean(contextualWakeRequest) || groupWakeActive,
   });
 
   if (isGroupChat && !allowForward) {
@@ -690,7 +726,7 @@ async function processOneMessage(msg) {
         normalizeOptions({
           resolvedMessage: msg.text || msg.caption || 'media',
           mediaKind: inboundKind === 'text' ? null : inboundKind,
-          allowActiveSession: hasActiveSession(conversationId, fromIdForGate),
+          allowActiveSession: groupWakeActive,
         }),
       );
     }
@@ -835,7 +871,10 @@ async function processOneMessage(msg) {
       userId: normalized.userId,
       messageThreadId: msg.message_thread_id ?? null,
     });
-    if (isGroupChat) markGroupInboundAnswered(msg, msg.message_id);
+    if (isGroupChat) {
+      markGroupInboundAnswered(msg, msg.message_id);
+      setGroupWakeState(msg);
+    }
     await sendReplySafe(msg, reply, {
       ...traceBase,
       intent: backend.intent ?? healthHint.intent ?? null,
