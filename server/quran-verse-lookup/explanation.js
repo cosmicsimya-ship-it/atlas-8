@@ -4,7 +4,11 @@
  * request for a model-generated explanation and rejects unsafe model output.
  */
 
-const EXPLANATION_REQUEST = /\b(a[cç][ıi]kla|yorumla|ne\s+demek|ne\s+anlat[ıi]yor)\b/i;
+// \w* suffixes catch conjugated forms ("açıklar mısın", "yorumlar mısın") that a
+// bare trailing \b would miss, since "r" keeps the word boundary from landing
+// right after "-kla"/"-mla".
+const EXPLANATION_REQUEST =
+  /\b(a[cç][ıi]kla\w*|yorumla\w*|ne\s+demek|ne\s+anlat[ıi]yor|anlam[ıi]\s+ne|ne\s+anlama)\b/i;
 
 export function wantsQuranExplanation(message) {
   return EXPLANATION_REQUEST.test(String(message ?? ''));

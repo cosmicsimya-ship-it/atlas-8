@@ -334,22 +334,22 @@ export function assessReferentialSufficiency(input) {
     };
   }
 
-  // Tarot / dream / astrology short continuations only when a live session or stored engine domain exists.
+  // Tarot / dream / astrology / quran short continuations only when a live session or stored engine domain exists.
   // Deictic "bu kişi…" discovery asks must NOT skip clarification via preserveActiveDomain alone.
   const engineDomain =
     ctx?.freshestSessionDomain ||
     (ctx?.liveSessions && ctx.liveSessions[0]) ||
-    (['tarot', 'dream', 'astrology', 'numerology'].includes(ctx?.primaryDomain)
+    (['tarot', 'dream', 'astrology', 'numerology', 'quran'].includes(ctx?.primaryDomain)
       ? ctx.primaryDomain
       : null) ||
-    (['tarot', 'dream', 'astrology', 'numerology'].includes(storedDomain) ? storedDomain : null);
+    (['tarot', 'dream', 'astrology', 'numerology', 'quran'].includes(storedDomain) ? storedDomain : null);
 
   if (
     isShortSymbolicFollowUp(message) &&
     engineDomain &&
     (ctx?.liveSessions?.length ||
       ctx?.freshestSessionDomain ||
-      (storedDomain && ['tarot', 'dream', 'astrology', 'numerology'].includes(storedDomain)))
+      (storedDomain && ['tarot', 'dream', 'astrology', 'numerology', 'quran'].includes(storedDomain)))
   ) {
     // Still block hungry discovery asks that lack bindable prior
     if (!(isReferentHungryAsk(message) && !historyHasBindablePrior(history))) {

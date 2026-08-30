@@ -79,6 +79,13 @@ const FIXTURE_STORE = {
         translationSource: 'test-fixture-canonical',
       };
     }
+    if (verseKey === '12:87') {
+      return {
+        arabic: 'يَا بَنِيَّ اذْهَبُوا فَتَحَسَّسُوا مِنْ يُوسُفَ وَأَخِيهِ',
+        translation: 'Ey oğullarım! Gidin, Yûsuf’u ve kardeşini araştırın.',
+        translationSource: 'test-fixture-canonical',
+      };
+    }
     return null;
   },
 };
@@ -515,6 +522,107 @@ for (const key of keys) {
 
   const composed = composeVerseStore(null, null);
   record('compose both null → null', composed === null);
+}
+
+// ── Regression: Telegram group two-turn continuity (12:87 → follow-up) ─
+// Reported bug: after a verified verse reply, a natural follow-up like
+// "Peki bunun anlamı ne?" got a generic "which topic do you mean?"
+// clarifying reply instead of the verse explanation.
+{
+  const CLARIFY_MARKERS = [
+    'neyi kastediyorsun',
+    'hangi bağlamda',
+    'hangisinden bahsediyorsun',
+    'kimden bahsediyorsun',
+    'neyin tekrar ettiğini',
+    'hangi konu',
+    'hangi tarih',
+  ];
+  const looksLikeGenericClarify = (reply) =>
+    CLARIFY_MARKERS.some((m) => String(reply || '').toLocaleLowerCase('tr-TR').includes(m));
+
+  async function runTwoTurn(followUpMessage) {
+    const conversationId = `quran-continuity-${Math.random().toString(36).slice(2, 7)}`;
+    const turn1 = await processAtlasMessage(
+      {
+        message: 'Atlas 12:87 ayet nedir?',
+        channel: 'telegram',
+        conversationId,
+        userId: 'telegram:continuity-test-user',
+        history: [],
+      },
+      {
+        verseStore: FIXTURE_STORE,
+        quranRetrieveOpts: { allowTestStore: true },
+        callOpenAI: mockLlm('LLM UYDURMA — asla görünmemeli'),
+      },
+    );
+
+    const history = [
+      { role: 'user', content: 'Atlas 12:87 ayet nedir?' },
+      { role: 'assistant', content: turn1.reply },
+    ];
+
+    const turn2 = await processAtlasMessage(
+      {
+        message: followUpMessage,
+        channel: 'telegram',
+        conversationId,
+        userId: 'telegram:continuity-test-user',
+        history,
+      },
+      {
+        verseStore: FIXTURE_STORE,
+        quranRetrieveOpts: { allowTestStore: true },
+        callOpenAI: async ({ userPrompt } = {}) => ({
+          content: `Bu ayet Hz. Yûsuf kıssasında kardeşlerinin onu ve Bünyamin'i aramaya gidişini anlatır. (ctx-has-verse=${/12:87/.test(
+            String(userPrompt || ''),
+          )})`,
+          model: 'mock',
+          provider: 'test',
+          tokensUsed: 1,
+          costUsd: 0,
+          latencyMs: 1,
+        }),
+      },
+    );
+
+    return { turn1, turn2 };
+  }
+
+  const followUps = [
+    'Peki bunun anlamı ne?',
+    'Bu ne anlama geliyor?',
+    'Açıklar mısın?',
+  ];
+
+  for (const followUp of followUps) {
+    const { turn1, turn2 } = await runTwoTurn(followUp);
+    record(`continuity turn1 handled: "${followUp}"`, turn1.engine === 'quran-verse-lookup');
+    record(
+      `continuity turn2 not generic clarify: "${followUp}"`,
+      !looksLikeGenericClarify(turn2.reply),
+      `engine=${turn2.engine} reply="${String(turn2.reply || '').slice(0, 80)}"`,
+    );
+    record(
+      `continuity turn2 stays grounded in 12:87: "${followUp}"`,
+      turn2.engine === 'quran-verse-lookup' &&
+        turn2.data?.quranVerseLookup?.surah_number === 12 &&
+        turn2.data?.quranVerseLookup?.ayah_number === 87,
+      `engine=${turn2.engine}`,
+    );
+  }
+
+  // Negative control: an unrelated short message right after a verse turn
+  // must NOT get force-anchored to the Quran domain.
+  {
+    const { turn2 } = await runTwoTurn('Bugün hava nasıl?');
+    record(
+      'continuity negative control: unrelated topic not hijacked',
+      turn2.engine !== 'quran-verse-lookup',
+      `engine=${turn2.engine}`,
+    );
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
