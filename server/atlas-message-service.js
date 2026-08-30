@@ -1316,7 +1316,11 @@ export async function processAtlasMessage(input, options = {}) {
   {
     const contextualQuranReference = resolveContextualQuranReference(message, history);
     const quranVerse = await tryDeterministicQuranVerseReply({
-      message: contextualQuranReference ? `${contextualQuranReference} açıkla` : message,
+      // "açıkla" alone has no Qur'an-domain word, so a bare "12:87 açıkla" fails
+      // detectQuranVerseLookupIntent's clock-like-number guard (by design — see
+      // quran-verse-lookup/intent.js). "ayetini" supplies that domain word so the
+      // resolved contextual reference actually reaches the deterministic engine.
+      message: contextualQuranReference ? `${contextualQuranReference} ayetini açıkla` : message,
       verseStore: options.verseStore ?? createVerseStore(),
       retrieveOpts: options.quranRetrieveOpts ?? undefined,
       explainVerse: async ({ prompt }) => {
@@ -1332,6 +1336,12 @@ export async function processAtlasMessage(input, options = {}) {
       },
     });
     if (quranVerse.handled) {
+      noteAssistantTurn(conversationIdEarly, {
+        reply: quranVerse.reply,
+        intent: quranVerse.intent ?? 'quran_verse_lookup',
+        responseMode: 'quran_verse_lookup',
+        symbolicDomain: 'quran',
+      });
       return applyPrivacyGuardToResult(
         {
           status: quranVerse.status,

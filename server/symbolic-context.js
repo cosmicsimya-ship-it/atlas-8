@@ -16,10 +16,11 @@ import {
   isRepeatingNumberPattern,
 } from './semantic-layers.js';
 import { getConversationState } from './conversation-context-engine.js';
+import { wantsQuranExplanation } from './quran-verse-lookup/explanation.js';
 
 export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v1';
 
-/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|null} SymbolicDomainId */
+/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|'quran'|null} SymbolicDomainId */
 
 const SHORT_FOLLOWUP_RE =
   /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz|mesela|mesel[aâ]|[oö]rnek(\s+ver)?|nas[ıi]l\s+yani|bunu\s+a[cç]|birinci(si)?|ikinci(si)?|üçüncü(sü)?|hangisi)[.!?…]*$/iu;
@@ -180,6 +181,13 @@ export function resolveSymbolicContext(input) {
 
   const explicitSwitch = EXPLICIT_DOMAIN_SWITCH.test(message) && !shortFollowUp;
 
+  // Quran has no live-session store and its own short-follow-up phrasing
+  // ("açıkla", "yorumla", "anlamı ne") doesn't always match the generic
+  // SHORT_FOLLOWUP_RE below — recognize it explicitly, scoped to only when
+  // the stored domain is already 'quran' so this never affects other domains.
+  const quranContinuation =
+    storedDomain === 'quran' && !explicitSwitch && wantsQuranExplanation(message);
+
   // History / live session affinity
   const tarotHist = hasTarotContext(history) || Boolean(freshest?.domain === 'tarot');
   const dreamHist =
@@ -223,7 +231,7 @@ export function resolveSymbolicContext(input) {
   }
 
   // Short follow-up + strong active domain → preserve
-  if (shortFollowUp && !explicitSwitch) {
+  if ((shortFollowUp || quranContinuation) && !explicitSwitch) {
     if (freshest?.domain) {
       primary = freshest.domain;
       evidence.push('freshest_session');
@@ -311,7 +319,7 @@ export function resolveSymbolicContext(input) {
     liveSessions: live.map((l) => l.domain),
     semanticLayers: semantic.layers,
     evidence,
-    preserveActiveDomain: Boolean(shortFollowUp && primary && !explicitSwitch),
+    preserveActiveDomain: Boolean((shortFollowUp || quranContinuation) && primary && !explicitSwitch),
   };
 }
 
