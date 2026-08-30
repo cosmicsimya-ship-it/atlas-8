@@ -160,8 +160,12 @@ export async function tryDeterministicQuranVerseReply(input) {
         prompt: buildGroundedQuranExplanationPrompt(retrieved),
       });
       explanation = sanitizeGroundedQuranExplanation(generated, retrieved);
-    } catch {
-      // The verified verse remains useful even when explanation generation fails.
+    } catch (err) {
+      // The verified verse remains useful even when explanation generation fails —
+      // log so a hung/failed provider call is visible instead of silent.
+      console.warn(
+        `[Quran] explanation generation failed for ${parsed?.verse_key ?? 'unknown'}: ${err?.message ?? err}`,
+      );
     }
   }
 

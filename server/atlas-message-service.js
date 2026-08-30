@@ -1313,6 +1313,7 @@ export async function processAtlasMessage(input, options = {}) {
   // Gating this deterministic check on !skipResolvers let a verse request sent
   // mid-conversation (the common case once a DM/group session is active) fall
   // straight through to callOpenAI with no verified-source check at all.
+  const QURAN_EXPLANATION_TIMEOUT_MS = 8_000;
   {
     const contextualQuranReference = resolveContextualQuranReference(message, history);
     const quranVerse = await tryDeterministicQuranVerseReply({
@@ -1325,12 +1326,16 @@ export async function processAtlasMessage(input, options = {}) {
       retrieveOpts: options.quranRetrieveOpts ?? undefined,
       explainVerse: async ({ prompt }) => {
         const explain = options.callOpenAI ?? callOpenAI;
+        // Optional enrichment on top of an already-verified verse reply — bound
+        // well below callOpenAI's 120s default so a slow/hanging provider call
+        // can never stall the whole turn (see reply.js's catch for the fallback).
         const result = await explain({
           ...prompt,
           temperature: 0.2,
           maxTokens: 260,
           userId,
           source: 'quran_explain',
+          timeoutMs: QURAN_EXPLANATION_TIMEOUT_MS,
         });
         return result?.content ?? null;
       },
