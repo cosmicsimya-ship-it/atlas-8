@@ -12,7 +12,8 @@ const RETRIEVAL_LABELS = Object.freeze([
 export const ATLAS_WEB_RETRIEVAL_PROVIDER = 'openai-web-search';
 export const ATLAS_WEB_RETRIEVAL_VERSION = '1.0.0';
 
-const EXCLUDED_QURAN_RE = /\b(kur['’]?an|qur['’]?an|quran|ayet|âyet|sure|sûre|surah|ayah|diyanet|meal|tefsir)\b/i;
+const EXCLUDED_QURAN_RE = /(kur['’]?an|qur['’]?an|quran|ayet|âyet|sure|sûre|surah|ayah|diyanet|meal|tefsir)/i;
+const EXPLICIT_QURAN_REF_RE = /\b(?:[1-9]\d?|10[0-9]|11[0-4])\s*:\s*[1-9]\d{0,2}\b/;
 const CURRENT_RE = /\b(güncel|bugün|şu\s*an|son\s+durum|en\s+son|latest|current|today|recent|recently|this\s+(?:week|month|year)|202[5-9])\b/i;
 const MODERN_PRACTICE_RE = /\b(günümüzde|modern\s+uygulama|modern\s+practice|topluluk|community|forum|reddit|çağdaş|contemporary)\b/i;
 
@@ -44,10 +45,11 @@ function isGeneralFactualQuestion(message) {
 export function resolveWebRetrievalPlan(message, env = process.env) {
   const text = String(message || '').trim();
   const enabled = String(env.ATLAS_WEB_RETRIEVAL_ENABLED ?? 'true').toLowerCase() !== 'false';
-  if (!enabled || !text || EXCLUDED_QURAN_RE.test(text)) {
+  const quranStrictPath = EXCLUDED_QURAN_RE.test(text) || EXPLICIT_QURAN_REF_RE.test(text);
+  if (!enabled || !text || quranStrictPath) {
     return {
       active: false,
-      reason: !enabled ? 'disabled' : EXCLUDED_QURAN_RE.test(text) ? 'quran_strict_path' : 'empty',
+      reason: !enabled ? 'disabled' : quranStrictPath ? 'quran_strict_path' : 'empty',
       domain: null,
       freshness: 'standard',
       modernPractice: false,
