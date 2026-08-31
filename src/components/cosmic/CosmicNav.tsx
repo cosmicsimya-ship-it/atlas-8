@@ -63,24 +63,32 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
         quiet
           ? 'border-b border-transparent bg-transparent'
           : solid
-            ? 'border-b border-white/[0.06] bg-[#050608]/88 backdrop-blur-xl'
+            ? 'border-b border-white/[0.06] bg-[#030304]/90 backdrop-blur-xl'
             : 'bg-transparent',
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="atlas-focus group flex shrink-0 flex-col gap-0.5 rounded-sm"
+          className="atlas-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
-            ATLAS
-          </span>
-          {!chatMode && (
-            <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
-              Cosmicsimya
+          <img
+            src="/atlas-north-star.png"
+            alt=""
+            aria-hidden="true"
+            className="h-8 w-8 shrink-0 rounded-full object-cover opacity-95 transition-opacity group-hover:opacity-100"
+          />
+          <span className="block">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
+              ATLAS
             </span>
-          )}
+            {!chatMode && (
+              <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
+                Cosmic Simya
+              </span>
+            )}
+          </span>
         </Link>
 
         <nav
@@ -99,8 +107,8 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                   className={cn(
                     'atlas-focus rounded-full px-3.5 py-2 text-[13px] transition duration-200',
                     active
-                      ? 'bg-white/[0.06] text-[#e8ecf2]'
-                      : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
+                      ? 'bg-white/[0.06] text-[#eef1f5]'
+                      : 'text-[#8f96a1] hover:bg-white/[0.04] hover:text-[#d9dde4]',
                   )}
                 >
                   {item.label}
@@ -129,7 +137,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
       {open && (
         <nav
           id="mobile-nav"
-          className="border-t border-white/[0.08] bg-[#050608]/96 px-4 py-4 md:hidden"
+          className="border-t border-white/[0.08] bg-[#030304]/96 px-4 py-4 md:hidden"
           aria-label="Mobil menü"
         >
           <ul className="space-y-1">
@@ -143,7 +151,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                     className={cn(
                       'atlas-focus flex min-h-12 items-center rounded-xl px-4 text-base transition duration-200',
                       active
-                        ? 'bg-white/[0.06] text-[#e8ecf2]'
+                        ? 'bg-white/[0.06] text-[#eef1f5]'
                         : 'text-[#e8ecf2]/80 hover:bg-white/[0.04]',
                     )}
                   >
