@@ -45,12 +45,20 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="site-focus group shrink-0 rounded-sm"
+          className="site-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
-          <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
-            Cosmicsimya
+          <img
+            src="/atlas-north-star.png"
+            alt=""
+            aria-hidden="true"
+            className="h-9 w-9 shrink-0 rounded-full object-cover opacity-95 transition-opacity group-hover:opacity-100"
+          />
+          <span className="block">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
+            <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
+              Cosmic Simya
+            </span>
           </span>
         </Link>
 
