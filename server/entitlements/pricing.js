@@ -1,37 +1,41 @@
 /**
- * Display-only Premium pricing config.
- * Not a payment source of truth — provider will own billing when connected.
+ * Canonical Premium pricing config.
+ *
+ * This is the single server-side price source used by both the public billing
+ * config and checkout/verification. The environment may override the product
+ * price, but the application never accepts an amount from the client.
  */
+
+const DEFAULT_PREMIUM_MONTHLY_PRICE_TRY = 299;
 
 /**
  * @returns {{
  *   productId: string,
  *   productName: string,
- *   monthlyPrice: number|null,
+ *   monthlyPrice: number,
  *   currency: string,
  *   interval: 'month',
- *   displayPrice: string|null,
+ *   displayPrice: string,
  * }}
  */
 export function getPremiumPricingConfig() {
   const currency = String(process.env.PREMIUM_CURRENCY || 'TRY').trim().toUpperCase() || 'TRY';
   const raw = process.env.PREMIUM_MONTHLY_PRICE_TRY ?? process.env.PREMIUM_MONTHLY_PRICE;
-  const monthlyPrice =
+  const configuredPrice =
     raw != null && String(raw).trim() !== '' && Number.isFinite(Number(raw))
       ? Number(raw)
       : null;
+  const monthlyPrice = configuredPrice ?? DEFAULT_PREMIUM_MONTHLY_PRICE_TRY;
 
-  let displayPrice = null;
-  if (monthlyPrice != null) {
-    try {
-      displayPrice = new Intl.NumberFormat('tr-TR', {
-        style: 'currency',
-        currency,
-        maximumFractionDigits: 0,
-      }).format(monthlyPrice);
-    } catch {
-      displayPrice = `${monthlyPrice} ${currency}`;
-    }
+  let displayPrice;
+  try {
+    displayPrice = new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(monthlyPrice);
+  } catch {
+    displayPrice = `${monthlyPrice} ${currency}`;
   }
 
   return {
@@ -43,3 +47,5 @@ export function getPremiumPricingConfig() {
     displayPrice,
   };
 }
+
+export { DEFAULT_PREMIUM_MONTHLY_PRICE_TRY };
