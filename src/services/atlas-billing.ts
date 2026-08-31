@@ -45,6 +45,9 @@ export type AtlasCheckoutResult = {
   error?: { code?: string; message?: string } | null;
 };
 
+const CHECKOUT_UNAVAILABLE_MESSAGE =
+  'Ödeme şu anda başlatılamıyor. Lütfen kısa süre sonra tekrar deneyin.';
+
 /** Allow only https provider payment URLs (plus http localhost for sandbox tooling). */
 export function isSafePaymentPageUrl(url: string | null | undefined): boolean {
   const raw = String(url || '').trim();
@@ -79,8 +82,30 @@ export async function fetchBillingSubscription(): Promise<AtlasBillingSubscripti
   return res.data;
 }
 
+function safeCheckoutFailure(input?: {
+  code?: string;
+  dryRun?: boolean;
+  liveCheckoutEnabled?: boolean;
+  product?: AtlasBillingConfig['product'];
+  features?: string[];
+}): AtlasCheckoutResult {
+  return {
+    ok: false,
+    dryRun: input?.dryRun,
+    liveCheckoutEnabled: input?.liveCheckoutEnabled,
+    paymentPageUrl: null,
+    product: input?.product,
+    features: input?.features,
+    error: {
+      code: input?.code,
+      message: CHECKOUT_UNAVAILABLE_MESSAGE,
+    },
+  };
+}
+
 /**
  * Starts Premium checkout. Body is always empty — server owns price/currency/plan.
+ * Provider/debug messages are never returned to the UI.
  */
 export async function startPremiumCheckout(): Promise<AtlasCheckoutResult> {
   try {
@@ -98,8 +123,23 @@ export async function startPremiumCheckout(): Promise<AtlasCheckoutResult> {
       };
       error?: { code?: string; message?: string } | null;
     }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({}) });
+
+    if (!res.ok) {
+      console.error('[billing] checkout rejected', {
+        code: res.error?.code,
+        message: res.error?.message,
+      });
+      return safeCheckoutFailure({
+        code: res.error?.code,
+        dryRun: res.data?.dryRun,
+        liveCheckoutEnabled: res.data?.liveCheckoutEnabled,
+        product: res.data?.product,
+        features: res.data?.features,
+      });
+    }
+
     return {
-      ok: res.ok,
+      ok: true,
       dryRun: res.data?.dryRun,
       liveCheckoutEnabled: res.data?.liveCheckoutEnabled,
       paymentPageUrl: res.data?.paymentPageUrl ?? null,
@@ -108,7 +148,7 @@ export async function startPremiumCheckout(): Promise<AtlasCheckoutResult> {
       message: res.data?.message ?? null,
       product: res.data?.product,
       features: res.data?.features,
-      error: res.error ?? null,
+      error: null,
     };
   } catch (e) {
     if (e instanceof ApiError) {
@@ -122,16 +162,21 @@ export async function startPremiumCheckout(): Promise<AtlasCheckoutResult> {
         };
         error?: { code?: string; message?: string };
       } | null;
-      return {
-        ok: false,
+      console.error('[billing] checkout API error', {
+        status: e.status,
+        code: body?.error?.code,
+        message: body?.error?.message || e.message,
+      });
+      return safeCheckoutFailure({
+        code: body?.error?.code,
         dryRun: body?.data?.dryRun,
         liveCheckoutEnabled: body?.data?.liveCheckoutEnabled,
-        paymentPageUrl: body?.data?.paymentPageUrl ?? null,
         product: body?.data?.product,
         features: body?.data?.features,
-        error: body?.error || { message: e.message },
-      };
+      });
     }
-    throw e;
+
+    console.error('[billing] checkout unexpected error', e);
+    return safeCheckoutFailure();
   }
 }
