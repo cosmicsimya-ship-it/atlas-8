@@ -36,6 +36,19 @@ export {
 } from './source-registry.js';
 
 export {
+  ATLAS_WEB_RETRIEVAL_PROVIDER,
+  ATLAS_WEB_RETRIEVAL_VERSION,
+  createAtlasWebRetrievalProvider,
+  resolveWebRetrievalPlan,
+  buildWebRetrievalDirective,
+  buildOpenAIWebSearchConfig,
+  extractRankedWebSources,
+  appendWebSourceAttribution,
+  buildRetrievalUnavailableReply,
+  getRetrievalLabels,
+} from './web-retrieval.js';
+
+export {
   NUMEROLOGY_ADAPTER_VERSION,
   adaptNumerologyRequest,
   calculateNumerologyViaAdapter,
