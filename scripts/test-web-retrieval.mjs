@@ -50,6 +50,13 @@ await test('current factual question requires fresh retrieval', () => {
 await test('Qur’an request stays outside web retrieval', () => {
   const plan = resolveWebRetrievalPlan('Bakara 2:255 ayetini açıkla');
   assert.equal(plan.active, false);
+  assert.equal(plan.reason, 'quran_strict_path');
+});
+
+await test('mixed Qur’an + alchemy request stays on strict path', () => {
+  const plan = resolveWebRetrievalPlan('Fâtır 35:6 ile simya arasında ilişki var mı?');
+  assert.equal(plan.active, false);
+  assert.equal(plan.reason, 'quran_strict_path');
 });
 
 await test('provider abstraction is channel-independent', () => {
