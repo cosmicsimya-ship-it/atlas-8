@@ -3,6 +3,15 @@
 // Text + optional image (multimodal) via Responses API; Whisper STT.
 // ═══════════════════════════════════════════════════════════════════════
 
+import {
+  appendWebSourceAttribution,
+  buildOpenAIWebSearchConfig,
+  buildRetrievalUnavailableReply,
+  buildWebRetrievalDirective,
+  extractRankedWebSources,
+  resolveWebRetrievalPlan,
+} from './domain-core/web-retrieval.js';
+
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 
 export const COST_PER_1K = {
@@ -32,8 +41,40 @@ function extractResponsesText(data) {
   return content;
 }
 
+function buildRetrievalUnavailableResult({
+  plan,
+  selectedModel,
+  startedAt,
+  requestId,
+  httpStatus = null,
+}) {
+  return {
+    content: buildRetrievalUnavailableReply(plan),
+    model: selectedModel,
+    provider: 'openai-web-search-unavailable',
+    tokensUsed: 0,
+    costUsd: 0,
+    latencyMs: Math.round(performance.now() - startedAt),
+    incomplete: false,
+    incompleteReason: null,
+    status: 'retrieval_unavailable',
+    requestId: requestId ?? null,
+    sources: [],
+    webRetrieval: {
+      active: true,
+      domain: plan.domain,
+      freshness: plan.freshness,
+      failed: true,
+      ...(httpStatus != null ? { httpStatus } : {}),
+    },
+  };
+}
+
 /**
  * Call OpenAI Responses API (text, or text+image when imageBase64 is set).
+ * Eligible Atlas Core factual domains use OpenAI hosted web_search through the
+ * channel-independent retrieval policy. Qur'an references stay excluded and
+ * continue through the deterministic Qur'an path in atlas-message-service.
  * @param {{
  *   systemPrompt?: string,
  *   userPrompt: string,
@@ -57,6 +98,8 @@ function extractResponsesText(data) {
  *   incompleteReason: string|null,
  *   status: string|null,
  *   requestId: string|null,
+ *   sources?: Array<object>,
+ *   webRetrieval?: object,
  * }>}
  */
 export async function callOpenAI(options) {
@@ -90,27 +133,58 @@ export async function callOpenAI(options) {
     input = options.userPrompt;
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      instructions: options.systemPrompt || undefined,
-      input,
-      temperature: options.temperature ?? 0.7,
-      max_output_tokens: options.maxTokens ?? 700,
-    }),
-    signal: AbortSignal.timeout(
-      Number(options.timeoutMs ?? process.env.OPENAI_TIMEOUT_MS) || 120_000,
-    ),
-  });
+  const webPlan = options.imageBase64
+    ? { active: false }
+    : resolveWebRetrievalPlan(options.userPrompt);
+  const webConfig = buildOpenAIWebSearchConfig(webPlan);
+  const retrievalDirective = buildWebRetrievalDirective(webPlan);
+  const instructions = `${options.systemPrompt || ''}${retrievalDirective}` || undefined;
+
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        instructions,
+        input,
+        temperature: options.temperature ?? 0.7,
+        max_output_tokens: options.maxTokens ?? 700,
+        ...(webConfig ?? {}),
+      }),
+      signal: AbortSignal.timeout(
+        Number(options.timeoutMs ?? process.env.OPENAI_TIMEOUT_MS) || 120_000,
+      ),
+    });
+  } catch (error) {
+    if (webPlan.active) {
+      return buildRetrievalUnavailableResult({
+        plan: webPlan,
+        selectedModel,
+        startedAt: start,
+        requestId: options.requestId,
+      });
+    }
+    throw error;
+  }
 
   const latencyMs = performance.now() - start;
 
   if (!response.ok) {
+    if (webPlan.active) {
+      return buildRetrievalUnavailableResult({
+        plan: webPlan,
+        selectedModel,
+        startedAt: start,
+        requestId: options.requestId,
+        httpStatus: response.status,
+      });
+    }
+
     const errText = await response.text();
     let msg = `OpenAI error (${response.status})`;
     try {
@@ -124,7 +198,18 @@ export async function callOpenAI(options) {
   }
 
   const data = await response.json();
-  const content = extractResponsesText(data);
+  let content = extractResponsesText(data);
+  const sources = webPlan.active ? extractRankedWebSources(data, webPlan) : [];
+
+  // Web-retrieval answers are only trusted when the hosted search actually
+  // returned attributable sources. Otherwise fail closed instead of falling
+  // back to unsupported model memory for these domains.
+  if (webPlan.active && sources.length === 0) {
+    content = buildRetrievalUnavailableReply(webPlan);
+  } else if (webPlan.active) {
+    content = appendWebSourceAttribution(content, sources);
+  }
+
   const apiStatus = typeof data?.status === 'string' ? data.status : null;
   const incompleteReason =
     data?.incomplete_details?.reason != null
@@ -148,7 +233,8 @@ export async function callOpenAI(options) {
     throw empty;
   }
 
-  const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
+  const totalTokens =
+    (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
   const costRate = COST_PER_1K[selectedModel] ?? 0.001;
   const tokensUsed = totalTokens || Math.ceil(content.length / 4);
 
@@ -162,14 +248,28 @@ export async function callOpenAI(options) {
   return {
     content,
     model: data.model || selectedModel,
-    provider: 'openai',
+    provider: webPlan.active ? 'openai-web-search' : 'openai',
     tokensUsed,
     costUsd: (tokensUsed / 1000) * costRate,
     latencyMs: Math.round(latencyMs),
     incomplete,
     incompleteReason,
-    status: apiStatus,
+    status:
+      webPlan.active && sources.length === 0
+        ? 'retrieval_unavailable'
+        : apiStatus,
     requestId: options.requestId ?? null,
+    ...(webPlan.active
+      ? {
+          sources,
+          webRetrieval: {
+            active: true,
+            domain: webPlan.domain,
+            freshness: webPlan.freshness,
+            failed: sources.length === 0,
+          },
+        }
+      : {}),
   };
 }
 
@@ -208,7 +308,8 @@ export async function transcribeAudioFile(options) {
   const { readFileSync } = await import('fs');
   const { basename } = await import('path');
 
-  const selectedModel = options.model || process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
+  const selectedModel =
+    options.model || process.env.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
   const mimeType = (options.mimeType || 'audio/ogg').split(';')[0].trim();
   const fileName = options.fileName || basename(options.filePath) || 'audio.ogg';
   const bytes = readFileSync(options.filePath);
@@ -216,7 +317,11 @@ export async function transcribeAudioFile(options) {
 
   const form = new FormData();
   form.append('model', selectedModel);
-  form.append('file', new Blob([new Uint8Array(bytes)], { type: mimeType }), fileName);
+  form.append(
+    'file',
+    new Blob([new Uint8Array(bytes)], { type: mimeType }),
+    fileName,
+  );
   if (options.language) {
     form.append('language', options.language);
   }
