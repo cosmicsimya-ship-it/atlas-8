@@ -163,6 +163,13 @@ if (!acquirePollLock()) {
   process.exit(1);
 }
 
+console.log(`[Telegram/process] ${JSON.stringify({
+  event: 'startup',
+  pid: process.pid,
+  startedAt: TELEGRAM_STARTED_AT,
+  identity: 'not_ready',
+})}`);
+
 ensureDir(TELEGRAM_MEDIA_DIR);
 
 /** @type {TelegramBot | null} */
@@ -180,7 +187,7 @@ try {
     },
   });
 } catch (err) {
-  console.error('[Telegram] Failed to start polling:', err.message);
+  console.error('[Telegram] Failed to start polling:', safeTelegramError(err));
   releasePollLock();
   process.exit(1);
 }
@@ -192,7 +199,7 @@ const pollingSupervisor = createPollingSupervisor({
   heartbeatPath: HEARTBEAT_FILE,
   staleMs: Number(process.env.TELEGRAM_POLL_STALE_MS) || 120_000,
   checkIntervalMs: Number(process.env.TELEGRAM_POLL_WATCHDOG_MS) || 30_000,
-  onLog: (msg) => console.warn(msg),
+  onLog: (msg) => console.warn(safeTelegramError(msg)),
   isConflict: (error) => {
     const message = error?.message ?? String(error);
     return message.includes('409') || message.toLowerCase().includes('conflict');
@@ -439,7 +446,7 @@ async function sendReplySafe(msg, reply, trace = {}) {
     });
     return sent;
   } catch (err) {
-    console.error('[Telegram] sendReply failed after retries:', err?.message ?? err);
+    console.error('[Telegram] sendReply failed after retries:', safeTelegramError(err));
     logTelegramMessageTrace({
       ...trace,
       sendResult: 'failed',
@@ -892,7 +899,7 @@ async function processOneMessage(msg) {
       errorCode = error.code;
       reply = normalizeErrorReply(error.code);
     } else if (isBackendUnreachable(error)) {
-      console.error('[Telegram] Backend unreachable:', error.message);
+      console.error('[Telegram] Backend unreachable:', safeTelegramError(error));
       errorCode = 'BACKEND_UNAVAILABLE';
       reply = BACKEND_UNAVAILABLE;
     } else if (axios.isAxiosError(error) && error.response?.data) {
@@ -957,7 +964,7 @@ async function handleMessage(msg) {
               : {}),
           });
         } catch (err) {
-          console.warn('[Telegram] queue notice failed:', err?.message ?? err);
+          console.warn('[Telegram] queue notice failed:', safeTelegramError(err));
         }
       },
     },
@@ -965,7 +972,7 @@ async function handleMessage(msg) {
 }
 
 bot.on('polling_error', (error) => {
-  const message = error?.message ?? String(error);
+  const message = safeTelegramError(error);
   console.error('[Telegram] polling_error:', message);
   const decision = pollingSupervisor.notePollingError(error);
   if (decision.action === 'conflict') {
@@ -977,7 +984,7 @@ bot.on('polling_error', (error) => {
 
 bot.on('message', (msg) => {
   handleMessage(msg).catch(async (error) => {
-    console.error('[Telegram] Unhandled message error:', error.message ?? error);
+    console.error('[Telegram] Unhandled message error:', safeTelegramError(error));
     try {
       const fallback = buildUserVisibleFallback(msg?.text || msg?.caption || '');
       await bot.sendMessage(msg.chat.id, fallback.reply);
@@ -991,13 +998,18 @@ bot.on('message', (msg) => {
         sendResult: 'ok',
       });
     } catch (sendErr) {
-      console.error('[Telegram] Fallback send also failed:', sendErr?.message ?? sendErr);
+      console.error('[Telegram] Fallback send also failed:', safeTelegramError(sendErr));
     }
   });
 });
 
 function shutdown(signal) {
-  console.log(`[Telegram] ${signal} received — shutting down.`);
+  console.log(`[Telegram/process] ${JSON.stringify({
+    event: 'shutdown',
+    pid: process.pid,
+    startedAt: TELEGRAM_STARTED_AT,
+    signal,
+  })}`);
   pollingSupervisor.stop();
   releasePollLock();
   try {
@@ -1007,6 +1019,15 @@ function shutdown(signal) {
   }
   process.exit(0);
 }
+
+process.on('exit', (code) => {
+  console.log(`[Telegram/process] ${JSON.stringify({
+    event: 'exit',
+    pid: process.pid,
+    startedAt: TELEGRAM_STARTED_AT,
+    code,
+  })}`);
+});
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
