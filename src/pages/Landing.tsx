@@ -12,6 +12,7 @@ import FinalCTA from '../components/landing/FinalCTA';
 import HeroSection from '../components/landing/HeroSection';
 import ManifestoTeaser from '../components/landing/ManifestoTeaser';
 import MemoryContext from '../components/landing/MemoryContext';
+import PricingSection from '../components/landing/PricingSection';
 import SiteAtmosphere from '../components/landing/SiteAtmosphere';
 import SiteFooter from '../components/landing/SiteFooter';
 
@@ -36,6 +37,7 @@ export default function Landing() {
         <DailyAnalysisPreview />
         <ManifestoTeaser />
         <AtlasIntelligenceStrip />
+        <PricingSection />
         <FinalCTA />
       </main>
       <div className="relative z-10">

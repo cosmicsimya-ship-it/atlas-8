@@ -52,7 +52,7 @@ export default function CapabilityDiscovery({ completedExchanges, userTexts }: P
 
   return (
     <div className="mt-6 border-t border-white/[0.05] pt-5" aria-live="polite">
-      <p className="mb-3 text-[13px] text-[#6e7888]">
+      <p className="mb-3 text-[13px] text-[#9a9488]">
         Konuşurken açılan yollar
       </p>
 
@@ -69,8 +69,8 @@ export default function CapabilityDiscovery({ completedExchanges, userTexts }: P
               className={cn(
                 'site-focus rounded-full px-4 py-2.5 text-left transition duration-200',
                 active
-                  ? 'bg-[rgba(126,182,255,0.08)] text-[#e8ecf2]'
-                  : 'text-[#9aa3b0] hover:bg-white/[0.04] hover:text-[#d2d8e0]',
+                  ? 'bg-[rgba(201,179,122,0.10)] text-[#f5f0e6]'
+                  : 'text-[#b0a99c] hover:bg-white/[0.04] hover:text-[#e8d9a8]',
               )}
               initial={reduced ? false : { opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -95,7 +95,7 @@ export default function CapabilityDiscovery({ completedExchanges, userTexts }: P
             className="mt-5 space-y-3"
           >
             {openModule.purpose?.trim() ? (
-              <p className="text-[14px] leading-[1.7] text-[#8b93a3]">{openModule.purpose}</p>
+              <p className="text-[14px] leading-[1.7] text-[#9a9488]">{openModule.purpose}</p>
             ) : null}
             <ul className="space-y-3">
               {openModule.capabilities
@@ -109,21 +109,21 @@ export default function CapabilityDiscovery({ completedExchanges, userTexts }: P
                       className="flex items-start justify-between gap-4 border-t border-white/[0.04] pt-3 first:border-t-0 first:pt-0"
                     >
                       <div className="min-w-0">
-                        <p className="text-[14px] font-medium text-[#d2d8e0]">{cap.name}</p>
+                        <p className="text-[14px] font-medium text-[#f0ebe3]">{cap.name}</p>
                         {cap.micro?.trim() ? (
-                          <p className="mt-0.5 text-[13px] leading-[1.6] text-[#6e7888]">{cap.micro}</p>
+                          <p className="mt-0.5 text-[13px] leading-[1.6] text-[#9a9488]">{cap.micro}</p>
                         ) : null}
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1.5">
                         {cap.status !== 'live' && (
-                          <span className="text-[11px] text-[#5c6573]">
+                          <span className="text-[11px] text-[#8b7a4a]">
                             {capabilityStatusLabel[cap.status]}
                           </span>
                         )}
                         {href ? (
                           <Link
                             to={href}
-                            className="site-focus text-[13px] text-[#7eb6ff] underline-offset-2 transition duration-200 hover:text-[#9ccaff] hover:underline"
+                            className="site-focus text-[13px] text-[#c9b37a] underline-offset-2 transition duration-200 hover:text-[#e8d9a8] hover:underline"
                           >
                             Devam et
                           </Link>

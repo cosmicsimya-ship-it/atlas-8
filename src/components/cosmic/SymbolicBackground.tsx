@@ -10,8 +10,8 @@ export default function SymbolicBackground({ className }: SymbolicBackgroundProp
       className={cn('pointer-events-none absolute inset-0 overflow-hidden', className)}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[#050608]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(15,23,42,0.55),transparent_55%)]" />
+      <div className="absolute inset-0 bg-[#050505]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(16,16,14,0.55),transparent_55%)]" />
       <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.65))]" />
 
       <svg
@@ -51,7 +51,7 @@ export default function SymbolicBackground({ className }: SymbolicBackgroundProp
         <circle cx="620" cy="360" r="260" fill="none" stroke="#c9b37a" strokeOpacity="0.05" />
       </svg>
 
-      <div className="absolute left-1/2 top-[18%] h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[#0f172a]/40 blur-[120px]" />
+      <div className="absolute left-1/2 top-[18%] h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[rgba(201,179,122,0.06)] blur-[120px]" />
     </div>
   );
 }

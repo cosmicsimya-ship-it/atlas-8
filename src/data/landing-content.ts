@@ -227,11 +227,39 @@ export const socialLinks = {
 
 export const landingNav = [
   { label: 'Atlas', to: '/atlas' as const },
-  { label: 'Katmanlar', sectionId: 'nereye-bakar' as const },
   { label: 'Nasıl çalışır?', sectionId: 'nasil-calisir' as const },
+  { label: 'Özellikler', sectionId: 'nereye-bakar' as const },
   { label: 'Lara Prime', to: '/lara-prime' as const },
-  { label: 'Manifesto', to: '/about' as const },
+  { label: 'Fiyatlar', sectionId: 'fiyatlar' as const },
 ];
+
+/**
+ * Pricing section — landing teaser only. No price is hardcoded here.
+ * The real number is fetched at render time from the same canonical
+ * source as PremiumPlanPanel / LaraPrimePage (`/api/billing/config`
+ * → server/entitlements/pricing.js), so landing and app never disagree.
+ */
+export const landingPricing = {
+  id: 'fiyatlar',
+  eyebrow: 'Fiyatlar',
+  title: 'Atlas Free ile başla. İstersen Lara Prime’a geç.',
+  body: 'Sohbet, sembolik analiz ve ses/müzik yükleme her iki planda da aynı şekilde çalışır. Fiyat ve para birimi sunucu tarafından belirlenir; burada uydurma bir rakam yok.',
+  free: {
+    label: 'Atlas Free',
+    price: 'Ücretsiz',
+    features: [
+      'Atlas ile sınırsız sohbet',
+      'Astroloji, numeroloji, sembolik analiz',
+      'Ses / müzik dosyası yükleme',
+    ],
+    cta: { label: 'Atlas’a Gir', to: '/atlas' as const },
+  },
+  prime: {
+    label: 'Lara Prime',
+    features: ['Lara Voice (TR/EN sesli yanıt)', 'Genişletilmiş günlük kullanım', 'Görsel ile analiz', 'Daha derin kişisel bağlam'],
+    cta: { label: 'Lara Prime’a Bak', to: '/lara-prime' as const },
+  },
+} as const;
 
 /** Full manifesto — About page + product identity spine. */
 export const atlasManifesto = {

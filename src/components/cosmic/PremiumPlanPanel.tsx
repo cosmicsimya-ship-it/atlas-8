@@ -120,10 +120,10 @@ export default function PremiumPlanPanel({
     <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-left">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="font-display text-sm tracking-[0.12em] text-[#e8ecf2]/90">
+          <p className="font-display text-sm tracking-[0.12em] text-[#f5f0e6]/90">
             LARA PRIME
           </p>
-          <p className="mt-1 text-[11px] leading-relaxed text-[#9aa3b2]">
+          <p className="mt-1 text-[11px] leading-relaxed text-[#9a9488]">
             {isPrime
               ? 'Aktif üyelik · Lara Voice dahil'
               : 'Atlas’ın ayrıcalıklı deneyimi · Lara Voice'}
@@ -133,14 +133,14 @@ export default function PremiumPlanPanel({
           <button
             type="button"
             onClick={onClose}
-            className="text-[11px] text-[#9aa3b2] hover:text-[#e8ecf2]"
+            className="text-[11px] text-[#9a9488] hover:text-[#f5f0e6]"
           >
             Kapat
           </button>
         ) : null}
       </div>
 
-      <ul className="mt-3 space-y-1 text-[11px] text-[#c5ccd8]">
+      <ul className="mt-3 space-y-1 text-[11px] text-[#e8e2d6]/85">
         {(config?.features || ['Lara Voice', 'Türkçe sesli yanıt', 'İngilizce sesli yanıt']).map(
           (f) => (
             <li key={f}>· {f}</li>
@@ -149,13 +149,13 @@ export default function PremiumPlanPanel({
       </ul>
 
       {priceLabel ? (
-        <p className="mt-3 text-xs text-[#e8ecf2]/85">{priceLabel}</p>
+        <p className="mt-3 text-xs text-[#f5f0e6]/85">{priceLabel}</p>
       ) : (
-        <p className="mt-3 text-[11px] text-[#9aa3b2]">Fiyat sunucu yapılandırmasından gelir.</p>
+        <p className="mt-3 text-[11px] text-[#9a9488]">Prime fiyatlandırması yakında burada.</p>
       )}
 
       {isPrime ? (
-        <p className="mt-3 text-[11px] text-[#9aa3b2]">
+        <p className="mt-3 text-[11px] text-[#9a9488]">
           Lara Prime aktif
           {hasLara ? ' · Lara Voice' : ''}
           {' · '}
@@ -166,7 +166,7 @@ export default function PremiumPlanPanel({
           type="button"
           disabled={busy}
           onClick={onCheckout}
-          className="mt-3 w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-xs text-[#e8ecf2] transition hover:bg-white/10 disabled:opacity-50"
+          className="mt-3 w-full rounded-md border border-[#c9b37a]/25 bg-[#c9b37a]/08 px-3 py-2 text-xs text-[#f5f0e6] transition hover:bg-[#c9b37a]/14 disabled:opacity-50"
         >
           {buttonLabel}
         </button>
@@ -174,13 +174,13 @@ export default function PremiumPlanPanel({
 
       <Link
         to="/lara-prime"
-        className="mt-2 inline-block text-[11px] text-[#9aa3b2] underline-offset-2 hover:text-[#e8ecf2] hover:underline"
+        className="mt-2 inline-block text-[11px] text-[#9a9488] underline-offset-2 hover:text-[#e8d9a8] hover:underline"
         onClick={onClose}
       >
         Lara Prime sayfası
       </Link>
 
-      {message ? <p className="mt-2 text-[11px] text-[#9aa3b2]">{message}</p> : null}
+      {message ? <p className="mt-2 text-[11px] text-[#9a9488]">{message}</p> : null}
       {error ? <p className="mt-2 text-[11px] text-rose-300/90">{error}</p> : null}
     </div>
   );

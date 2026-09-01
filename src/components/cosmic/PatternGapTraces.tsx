@@ -123,8 +123,8 @@ function QuestionLink({
       onClick={() => onSelect?.(question, text)}
       className={cn(
         'site-focus text-[12px] leading-[1.35] tracking-[-0.012em]',
-        'text-[#7a8494]/92 transition-colors duration-200',
-        'hover:text-[#c5ccd6] active:text-[#e8ecf2]',
+        'text-[#9a9488]/92 transition-colors duration-200',
+        'hover:text-[#e8d9a8] active:text-[#f5f0e6]',
         'sm:text-[13.5px] sm:leading-[1.4]',
         className,
       )}

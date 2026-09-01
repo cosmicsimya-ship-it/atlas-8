@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { landingHero } from '../../data/landing-content';
 import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
+import ObservatoryField from './ObservatoryField';
 
 /**
  * Cinematic hero — production hierarchy + spatial observation engine.
@@ -17,6 +18,13 @@ export default function HeroSection() {
       className="relative min-h-[100dvh] overflow-hidden pt-[5.5rem]"
       aria-labelledby="landing-hero-title"
     >
+      {/*
+        Every other landing section renders ObservatoryField for grid/geometry
+        depth; the hero previously omitted it entirely. Rendered before
+        HeroAtmosphere so its own text-side darkening gradient (below) still
+        governs foreground readability — this only adds background layers.
+      */}
+      <ObservatoryField density="hero" className="opacity-80 max-md:opacity-45" />
       <HeroAtmosphere />
 
       {/* Mobile midground — extreme close-crop fills the scene behind type */}

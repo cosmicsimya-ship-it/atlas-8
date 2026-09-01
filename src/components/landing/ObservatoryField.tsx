@@ -14,14 +14,20 @@ export default function ObservatoryField({
   density = 'section',
   showGeometry = true,
 }: ObservatoryFieldProps) {
+  const isHero = density === 'hero';
   return (
     <div className={cn('obs-field', className)} aria-hidden="true">
-      <div className="obs-field-haze" />
-      {density !== 'subtle' ? <div className="obs-field-grid" /> : null}
+      <div className={cn('obs-field-haze', isHero && 'obs-field-haze-hero')} />
+      {density !== 'subtle' ? (
+        <div className={cn('obs-field-grid', isHero && 'obs-field-grid-hero')} />
+      ) : null}
 
       {showGeometry && density !== 'subtle' ? (
         <svg
-          className="absolute inset-0 h-full w-full opacity-40 max-md:opacity-20"
+          className={cn(
+            'absolute inset-0 h-full w-full opacity-40 max-md:opacity-20',
+            isHero && 'opacity-60 max-md:opacity-35',
+          )}
           viewBox="0 0 1200 800"
           fill="none"
           preserveAspectRatio="xMidYMid slice"
@@ -36,6 +42,27 @@ export default function ObservatoryField({
           <line x1="160" y1="200" x2="300" y2="290" stroke="rgba(201,179,122,0.07)" strokeWidth="0.55" />
           <circle cx="160" cy="200" r="1.3" fill="rgba(245,240,230,0.3)" />
           <circle cx="300" cy="290" r="1.1" fill="rgba(201,179,122,0.35)" />
+          {isHero ? (
+            <>
+              <path
+                d="M 900 60 A 300 300 0 0 1 1140 420"
+                stroke="rgba(245,240,230,0.06)"
+                strokeWidth="0.6"
+                className="obs-orbit-ultra-rev max-md:hidden"
+                style={{ transformOrigin: '960px 360px' }}
+              />
+              <line
+                x1="820"
+                y1="520"
+                x2="1010"
+                y2="600"
+                stroke="rgba(201,179,122,0.06)"
+                strokeWidth="0.5"
+                className="max-md:hidden"
+              />
+              <circle cx="1010" cy="600" r="1" fill="rgba(245,240,230,0.24)" className="max-md:hidden" />
+            </>
+          ) : null}
         </svg>
       ) : null}
 
