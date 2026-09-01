@@ -39,8 +39,16 @@ const CONTINUE_RE =
 const WHICH_RE =
   /^(hangisi|bunlardan\s+hangisi|hangi\s+biri|hangisini)[.!?…]*$/iu;
 
+// Anchored to the WHOLE message (optionally + a light "open/expand this one"
+// tail) — deliberately does not allow the ordinal word to be followed by an
+// unrelated noun/clause. "ilk" is an ordinary Turkish word for "first" used
+// in countless unrelated sentences ("ilk dünya savaşı", "ilk şeytan hangi
+// dinde belirdi", "ilk kez"...); without this anchor, ANY short message that
+// merely contains an ordinal word anywhere gets misread as "select option N"
+// whenever a prior assistant turn offered options — see
+// scripts/test-ordinal-followup-precision.mjs for the regression this fixes.
 const ORDINAL_RE =
-  /^(birinci(si)?|ikinci(si)?|üçüncü(sü)?|ucuncu(su)?|d[oö]rd[uü]nc[uü](sü)?|be[sş]inci(si)?|1\.?(si)?|2\.?(si)?|3\.?(si)?|4\.?(si)?|5\.?(si)?|ilk(i)?|son(uncu)?(su)?)[.!?…]*$/iu;
+  /^(birinci(si)?(ni)?|ikinci(si)?(ni)?|üçüncü(sü)?(n[uü])?|ucuncu(su)?(nu)?|d[oö]rd[uü]nc[uü](sü)?(n[uü])?|be[sş]inci(si)?(ni)?|1\.?(si)?(ni)?|2\.?(si)?(ni)?|3\.?(si)?(ni)?|4\.?(si)?(ni)?|5\.?(si)?(ni)?|ilk(i)?(ni)?|son(uncu)?(su)?(nu)?)\s*(?:m[ıi]|olan[ıi]?|se[cç]ene[gğ]i(?:ni)?)?\s*(?:a[cç](?:ar\s+m[ıi]s[ıi]n)?|anlat(?:[ıi]r\s+m[ıi]s[ıi]n)?|g[oö]ster(?:ir\s+m[ıi]sin)?|geni[sş]let|detayland[ıi]r|a[cç][ıi]kla)?\s*[.!?…]*$/iu;
 
 /**
  * @param {string} label
@@ -146,10 +154,16 @@ export function detectAssistantAnchoredFollowUp(message) {
   else if (/\b(d[oö]rd[uü]nc[uü](sü)?(n[uü])?|4\.?(si)?)\b/.test(t)) n = 4;
   else if (/\b([uü]ç[uü]nc[uü](sü)?(n[uü])?|ucuncu(su)?(nu)?|3\.?(si)?)\b/.test(t)) n = 3;
   else if (/\b(ikinci(si)?(ni)?|2\.?(si)?)\b/.test(t)) n = 2;
-  else if (/\b(birinci(si)?(ni)?|ilk(i)?|1\.?(si)?)\b/.test(t)) n = 1;
+  else if (/\b(birinci(si)?(ni)?|ilk(i)?(ni)?|1\.?(si)?)\b/.test(t)) n = 1;
   else if (/\b(son(uncu)?(su)?(nu)?)\b/.test(t) && text.length <= 40) n = -1;
 
-  if (n != null && (ORDINAL_RE.test(text) || text.length <= 40)) {
+  // ORDINAL_RE alone (no length-based fallback): a bare short message must
+  // actually BE an ordinal-selection utterance, not merely contain an
+  // ordinal word inside an unrelated sentence — see the comment on
+  // ORDINAL_RE above. Tested against `t` (already tr-TR-lowercased), not
+  // the raw `text` — JS's /i flag folds Turkish "İ" to "i̇" (i + combining
+  // dot), not plain "i", so raw-text matching silently rejects "İkincisi".
+  if (n != null && ORDINAL_RE.test(t)) {
     return { kind: 'ordinal', ordinal: n };
   }
 

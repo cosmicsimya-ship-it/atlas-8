@@ -10,6 +10,7 @@ export {
 
 export {
   STRUCTURED_ANALYSIS_SCHEMA_VERSION,
+  CERTAINTY_LEVELS,
   validateStructuredAnalysisOutput,
   createNormalizedDomainRequest,
   createEmptyStructuredOutput,

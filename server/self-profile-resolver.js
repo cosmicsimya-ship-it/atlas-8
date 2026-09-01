@@ -52,9 +52,15 @@ function escapeRe(s) {
 
 /**
  * @param {string} message
+ * @param {string[]} [otherParticipantNames] Display names of other known
+ *   people in this conversation (already-seen senders, subjects the user
+ *   has referred to, etc). Used to reject a third-party name mention
+ *   ("Ahmet'in burcu") as a self-profile query. Generalizes what used to be
+ *   a hardcoded name list — pass whatever names the caller already knows
+ *   about instead of relying on names baked into this function.
  * @returns {{ field: string }|null}
  */
-export function detectSelfProfileQuery(message) {
+export function detectSelfProfileQuery(message, otherParticipantNames = []) {
   const text = String(message ?? '').trim();
   if (!text || text.length > 120) return null;
   const folded = foldTr(text).replace(/[?.!…]+$/g, '').trim();
@@ -70,7 +76,18 @@ export function detectSelfProfileQuery(message) {
 
   if (!hasFirstPersonPoss) return null;
   if (/\batlas\b/u.test(folded) && !hasBenim) return null;
-  if (/\b(lara|furkan|onun|senin)\b/u.test(folded) && !hasBenim) return null;
+  // "Lara" is Atlas's own author-profile identity (server/author-profile.js),
+  // not a user — treated the same as "atlas" above, not a per-user patch.
+  if (/\b(lara|onun|senin)\b/u.test(folded) && !hasBenim) return null;
+  if (
+    !hasBenim &&
+    otherParticipantNames.some((name) => {
+      const n = foldTr(String(name || ''));
+      return n && n.length > 1 && new RegExp(`\\b${escapeRe(n)}\\b`, 'u').test(folded);
+    })
+  ) {
+    return null;
+  }
 
   const askTail = '(?:nedir|ne|kac|neydi|neresi)?';
 

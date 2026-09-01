@@ -6,6 +6,22 @@
 export const STRUCTURED_ANALYSIS_SCHEMA_VERSION = '1.0';
 
 /**
+ * Runtime mirror of the `EvidenceItem.certainty` JSDoc type below — kept as
+ * a real export (not just a type comment) so other modules can validate
+ * against it instead of re-typing the four values. See
+ * knowledge-domains/certainty-taxonomy.js for how this reconciles with
+ * knowledge-domains/source-policy.js's FACT_LAYER_LABELS (a separate,
+ * finer-grained taxonomy for citation/retrieval domains — see
+ * docs/atlas-domain-platform/SECURITY_AND_EPISTEMIC_POLICY.md §7).
+ */
+export const CERTAINTY_LEVELS = Object.freeze([
+  'factual',
+  'methodological',
+  'interpretive',
+  'speculative',
+]);
+
+/**
  * @typedef {'web'|'telegram'|'api'|'voice'|'internal'} AtlasChannel
  * @typedef {'consumer'|'professional'|'api'} AtlasAudience
  * @typedef {'L0'|'L1'|'L2'|'L3'|'L4'|'auto'} DepthHint

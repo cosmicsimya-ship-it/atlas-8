@@ -16,6 +16,8 @@ import {
   withProviderRetry,
   classifyProviderError,
   categoryToErrorCode,
+  createProviderBudget,
+  MIN_RETRY_BUDGET_MS,
 } from './provider-errors.js';
 import {
   assessResponseCompleteness,
@@ -157,12 +159,17 @@ import {
 } from './devotional-recommendation.js';
 import {
   tryDeterministicQuranVerseReply,
+  tryQuranTopicReply,
   QURAN_VERSE_LOOKUP_VERSION,
   createVerseStore,
   isQuranContextActive,
-  buildNoSpontaneousQuranDirective,
-  buildQuranFailClosedDirective,
+  selectScriptureCitationDirective,
+  verifyQuranCitationsInReply,
+  verifyQuranCitationSemantics,
 } from './quran-verse-lookup/index.js';
+import { routeKnowledgeDomainQuery } from './knowledge-domains/registry.js';
+import { detectKnowledgeDomain } from './knowledge-domains/domain-detector.js';
+import { selectReasoningGuardDirectives } from './knowledge-domains/reasoning-guards.js';
 import {
   tryResolveConversationContext,
   applyRepetitionGuard,
@@ -189,6 +196,11 @@ import {
   tryDreamFlowReply,
   DREAM_FLOW_VERSION,
 } from './dream-flow.js';
+import {
+  tryCasualDeterministicFastPath,
+  shouldUseLightLlmFastPath,
+  CASUAL_FAST_PATH_VERSION,
+} from './casual-fast-path.js';
 import {
   tryAudioStudioFlowReply,
   AUDIO_STUDIO_FLOW_VERSION,
@@ -253,9 +265,9 @@ function normalizeErrorReply(errorCode, fallback = 'Beklenmeyen bir hata oluştu
  *   evaluation?: ReturnType<typeof evaluatePrivacyRequest>|null,
  *   channel?: string,
  * }} ctx
- * @returns {AtlasMessageResult}
+ * @returns {Promise<AtlasMessageResult>}
  */
-function applyPrivacyGuardToResult(result, ctx) {
+async function applyPrivacyGuardToResult(result, ctx) {
   const timing = ctx?.timing ?? null;
   if (!result || typeof result.reply !== 'string') {
     return finalizeMessageResult(result ?? {
@@ -453,9 +465,9 @@ function resolveIntentLabel(message, tarotIntent, memoryIntent) {
  * @param {AtlasMessageResult} result
  * @param {string} [originalMessage]
  * @param {ReturnType<typeof createRequestTiming>|null} [timing]
- * @returns {AtlasMessageResult}
+ * @returns {Promise<AtlasMessageResult>}
  */
-function finalizeMessageResult(result, originalMessage = '', timing = null) {
+async function finalizeMessageResult(result, originalMessage = '', timing = null) {
   if (
     result?.data?.noResponse === true ||
     result?.intent === 'activation:no_response'
@@ -496,6 +508,48 @@ function finalizeMessageResult(result, originalMessage = '', timing = null) {
         healthSafetyGuarded: true,
         healthBlockedClaims: guarded.blockedClaims,
       };
+    }
+  }
+
+  // Output-side Qur'an citation gate — model never decides this itself.
+  // Runs on every LLM-backed path (general conversation, tarot/dream/
+  // numerology/symbolic sub-narratives, cross-layer synthesis) since any of
+  // them could in principle surface a citation.
+  //
+  // Deliberately EXCLUDES the dedicated 'quran-verse-lookup' engine: that
+  // engine's citation is never LLM-authored — it only ever reaches the user
+  // after retrieveVerifiedVerse() already confirmed it against the verified
+  // store, using that same request's store/options. Re-checking it here
+  // with a fresh, unconfigured default store has no access to that same
+  // verified data and would falsely block an already-correct reply (which
+  // also breaks any follow-up turn that depends on referencing it) — this
+  // gate exists for paths that have no such built-in guarantee.
+  //
+  // Two stages, both fail-closed on the whole reply:
+  //  1. Structural — does the cited surah:ayah exist at all (sync, local).
+  //  2. Semantic — is the cited verse materially relevant to the sentence it
+  //     was attached to (async, deterministic verse-text lookup + a fixed
+  //     keyword-overlap comparison — never the generative model itself).
+  if (withReply.engine !== 'quran-verse-lookup') {
+    const citationCheck = verifyQuranCitationsInReply(withReply.reply);
+    if (!citationCheck.ok) {
+      withReply.reply = citationCheck.reply;
+      withReply.data = {
+        ...(withReply.data ?? {}),
+        quranCitationBlocked: true,
+        quranCitationInvalid: citationCheck.invalid.map((c) => c.raw),
+      };
+    } else if (citationCheck.citations.length) {
+      const validCitations = citationCheck.citations.filter((c) => c.ok);
+      const semanticCheck = await verifyQuranCitationSemantics(withReply.reply, validCitations);
+      if (!semanticCheck.ok) {
+        withReply.reply = semanticCheck.reply;
+        withReply.data = {
+          ...(withReply.data ?? {}),
+          quranCitationSemanticBlocked: true,
+          quranCitationUnsupported: semanticCheck.unsupported.map((u) => u.citation.raw),
+        };
+      }
     }
   }
 
@@ -1366,6 +1420,106 @@ export async function processAtlasMessage(input, options = {}) {
         },
         privacyGuardCtx,
       );
+    }
+
+    // Topic-based lookup — a SEPARATE path from the explicit-reference check
+    // above, only reached when that one did NOT handle the turn. This is
+    // what preserves "2:255 nedir?" using direct lookup unchanged: an
+    // explicit, parseable reference is always caught by quranVerse first.
+    const quranTopic = await tryQuranTopicReply({
+      message: contextualQuranReference ? `${contextualQuranReference} ayetini açıkla` : message,
+      verseStore: options.verseStore ?? createVerseStore(),
+      retrieveOpts: options.quranRetrieveOpts ?? undefined,
+      explainVerse: async ({ prompt }) => {
+        const explain = options.callOpenAI ?? callOpenAI;
+        const result = await explain({
+          ...prompt,
+          temperature: 0.2,
+          maxTokens: 220,
+          userId,
+          source: 'quran_topic_explain',
+          timeoutMs: QURAN_EXPLANATION_TIMEOUT_MS,
+        });
+        return result?.content ?? null;
+      },
+    });
+    if (quranTopic.handled) {
+      noteAssistantTurn(conversationIdEarly, {
+        reply: quranTopic.reply,
+        intent: quranTopic.intent ?? 'quran_topic_lookup',
+        responseMode: 'quran_topic_lookup',
+        symbolicDomain: 'quran',
+      });
+      return applyPrivacyGuardToResult(
+        {
+          status: quranTopic.status,
+          reply: quranTopic.reply,
+          intent: quranTopic.intent ?? 'quran_topic_lookup',
+          engine: quranTopic.engine,
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            resultStatus: quranTopic.resultStatus,
+            ...quranTopic.data,
+            quranVerseLookupVersion: QURAN_VERSE_LOOKUP_VERSION,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
+  }
+
+  // ── General knowledge-domain retrieval (comparative religion, mythology,
+  // esotericism, Hermeticism/alchemy, numerology-as-topic, ancient
+  // traditions, current/general web knowledge) ──
+  // Runs AFTER the dedicated Qur'an checks above, which always win for any
+  // Qur'an-domain message (explicit reference first, then Qur'an topic
+  // retrieval, both already attempted with their own verified-source
+  // config) — 'quran' is deliberately excluded here rather than re-routed
+  // through routeKnowledgeDomainQuery with a differently-shaped input.
+  // Runs BEFORE symbolic-context / numerology / tarot / dream below, so a
+  // factual/history/religion question is never swept into symbolic
+  // interpretation just because it shares vocabulary with those domains.
+  {
+    const knowledgeDomain = detectKnowledgeDomain(message);
+    if (knowledgeDomain && knowledgeDomain !== 'quran') {
+      const domainResult = await routeKnowledgeDomainQuery(message, {
+        message,
+        apiKey: options.webRetrievalApiKey,
+        fetchImpl: options.webRetrievalFetchImpl,
+        timeoutMs: options.webRetrievalTimeoutMs,
+        model: options.webRetrievalModel,
+      });
+      if (domainResult.handled) {
+        const domainIntent = `knowledge_domain:${domainResult.domain}`;
+        noteAssistantTurn(conversationIdEarly, {
+          reply: domainResult.reply,
+          intent: domainIntent,
+          responseMode: 'knowledge_domain_retrieval',
+        });
+        return applyPrivacyGuardToResult(
+          {
+            status: domainResult.status,
+            reply: domainResult.reply,
+            intent: domainIntent,
+            engine: 'knowledge-domain-web',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              resultStatus: domainResult.resultStatus,
+              knowledgeDomain: domainResult.domain,
+              knowledgeDomainSourcePolicy: domainResult.sourcePolicy,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
     }
   }
 
@@ -2852,11 +3006,35 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
       semanticLayers.layers.includes('numerology') ||
       semanticLayers.layers.includes('dream') ||
       semanticLayers.layers.includes('date_time'));
-  if (needsQuranContentGuard) {
-    systemPrompt = `${systemPrompt}\n\n${buildNoSpontaneousQuranDirective()}`;
-  } else if (quranContextActive) {
-    // Belt-and-suspenders: multi-domain LLM paths must never invent verse/meal.
-    systemPrompt = `${systemPrompt}\n\n${buildQuranFailClosedDirective()}`;
+  {
+    // Every LLM path gets a scripture-citation directive — never left
+    // unguarded. Plain conversational/historical/comparative-religion
+    // questions previously fell through both branches above with no
+    // guard at all, leaving room to invent a verse citation.
+    const directive = selectScriptureCitationDirective({
+      needsQuranContentGuard,
+      quranContextActive,
+    });
+    systemPrompt = `${systemPrompt}\n\n${directive}`;
+  }
+
+  // Theology-vs-history / agreement-bias / generalization guards — general,
+  // not tied to one conversation's failure. Always applied for the
+  // religion/history domain family; agreement-bias and generalization
+  // guards also fire independently of domain (see reasoning-guards.js).
+  if (!casualReflexBypass) {
+    const reasoningGuardDomain = detectKnowledgeDomain(message);
+    const reasoningGuardDirectives = selectReasoningGuardDirectives({
+      message,
+      domain: reasoningGuardDomain,
+    });
+    pipelineDebug.reasoningGuards = {
+      domain: reasoningGuardDomain,
+      directiveCount: reasoningGuardDirectives.length,
+    };
+    if (reasoningGuardDirectives.length) {
+      systemPrompt = `${systemPrompt}\n\n${reasoningGuardDirectives.join('\n\n')}`;
+    }
   }
 
   // Stance hints only when not casual and clearly matched — never invent "analysis".
@@ -3030,6 +3208,18 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
 
   const invokeLlm = options.callOpenAI ?? callOpenAI;
 
+  // Single total backend provider request/time budget for this user request:
+  // the initial attempt, its retry (inside withProviderRetry), and the
+  // completeness retry below all share this ONE clock instead of each
+  // getting an independent fresh timeout. Kept below the frontend's own
+  // REQUEST_TIMEOUT_MS (src/config.ts, 120000ms) so the backend can always
+  // finish — with a real reply or its own controlled fallback — before the
+  // frontend gives up first. See provider-errors.js for the exact value and
+  // rationale.
+  const configuredProviderTimeoutMs =
+    Number(options.providerTimeoutMs ?? process.env.OPENAI_TIMEOUT_MS) || 120_000;
+  const budget = createProviderBudget();
+
   try {
     requestTiming.start('llm');
     const llmInvoke = (tokenBudget) => {
@@ -3041,6 +3231,14 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
         temperature: options.temperature ?? 0.4,
         maxTokens: tokenBudget,
         requestId: requestTiming.requestId,
+        userId,
+        source: input.channel ? `chat:${input.channel}` : 'chat',
+        // Bounded to whatever remains of the shared total budget — never
+        // more than the configured provider timeout, never more than what's
+        // left of the request's total allowance. This is what makes retries
+        // (below) and the completeness retry share ONE clock instead of each
+        // starting a fresh full timeout.
+        timeoutMs: budget.attemptTimeoutMs(configuredProviderTimeoutMs),
         ...(hasImage
           ? {
               imageBase64: input.image.base64,
@@ -3061,6 +3259,8 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
         maxAttempts: 2,
         backoffMs: 450,
         onRetry: () => requestTiming.noteRetryOrFallback(),
+        budget,
+        providerTimeoutMs: configuredProviderTimeoutMs,
       },
     );
 
@@ -3079,14 +3279,20 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
       firstText,
     );
 
-    // At most one completeness retry with a larger token budget.
-    if (completeness.incomplete) {
+    // At most one completeness retry with a larger token budget — but only
+    // if enough of the SAME shared total budget remains to make a new
+    // provider call worthwhile. If the budget is (near-)exhausted, do NOT
+    // start another provider call (that would just delay the user's
+    // controlled fallback past the shared deadline); fall through to the
+    // existing incomplete/fallback handling below unchanged.
+    if (completeness.incomplete && budget.remainingMs() > MIN_RETRY_BUDGET_MS) {
       completenessRetryCount = 1;
       requestTiming.noteRetryOrFallback();
       maxTokens = nextRetryTokenBudget(maxTokens);
       console.warn(
         `[Atlas] incomplete reply retry requestId=${requestTiming.requestId}` +
-          ` reason=${completeness.reason} nextMaxTokens=${maxTokens}`,
+          ` reason=${completeness.reason} nextMaxTokens=${maxTokens}` +
+          ` remainingBudgetMs=${Math.round(budget.remainingMs())}`,
       );
       try {
         result = await llmInvoke(maxTokens);
@@ -3102,6 +3308,12 @@ instruction=Katmanları birlikte oku; korelasyonu kesin nedensellik yapma. Gözl
           incomplete_details: result?.incomplete ? { reason: result.incompleteReason } : null,
         },
         retryText,
+      );
+    } else if (completeness.incomplete) {
+      console.warn(
+        `[Atlas] incomplete reply retry skipped (budget exhausted) requestId=${requestTiming.requestId}` +
+          ` reason=${completeness.reason}` +
+          ` remainingBudgetMs=${Math.round(budget.remainingMs())}`,
       );
     }
 

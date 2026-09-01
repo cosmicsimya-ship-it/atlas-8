@@ -170,6 +170,35 @@ export function foldTr(text) {
 }
 
 /**
+ * Display names of people other than the current speaker already known to
+ * this conversation (prior subjects, other participants) — used so a
+ * third-party name mention is never misread as a first-person profile
+ * query. Pulled from live conversation state instead of any hardcoded name.
+ * @param {ConversationState} [state]
+ * @param {{ knownParticipants?: Array<{ displayName?: string|null }>, excludeDisplayName?: string|null }} [opts]
+ * @returns {string[]}
+ */
+export function collectOtherParticipantNames(state, opts = {}) {
+  const names = new Set();
+  const excludeFolded = opts.excludeDisplayName ? foldTr(opts.excludeDisplayName) : null;
+  const add = (name) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return;
+    if (excludeFolded && foldTr(trimmed) === excludeFolded) return;
+    names.add(trimmed);
+  };
+
+  for (const key of Object.keys(state?.participantFactsByTelegramId || {})) {
+    if (key.startsWith('name:')) add(key.slice('name:'.length));
+  }
+  add(state?.lastExplicitSubject?.displayName);
+  add(state?.expectedSubject?.displayName);
+  for (const p of opts.knownParticipants || []) add(p?.displayName);
+
+  return [...names];
+}
+
+/**
  * @returns {ConversationState}
  */
 export function createEmptyConversationState() {
@@ -341,7 +370,7 @@ export function detectProfilePropertyQuery(message, state = null) {
   }
 
   // First-person profile queries handled by detectSelfProfileQuery.
-  const selfQ = detectSelfProfileQuery(text);
+  const selfQ = detectSelfProfileQuery(text, collectOtherParticipantNames(state));
   if (selfQ) {
     return {
       field: selfQ.field,
@@ -841,7 +870,7 @@ export function buildRepairReply(input) {
     state.lastExplicitSubject?.displayName ||
     state.expectedSubject?.displayName ||
     'Lara';
-  const askerHint = null;
+  const askerHint = input.sender?.displayName || null;
   const zodiac =
     input.knownZodiac ||
     lookupParticipantFact({
@@ -853,7 +882,9 @@ export function buildRepairReply(input) {
 
   if (target === 'property_zodiac' || target === 'subject_lara_zodiac' || /burc/.test(foldTr(state.currentQuestion || ''))) {
     if (zodiac) {
-      return `Anladım 😅 Furkan, ${subject}'nın burcunu soruyordu. ${subject} ${zodiac}.`;
+      return askerHint
+        ? `Anladım 😅 ${askerHint}, ${subject}'nın burcunu soruyordun. ${subject} ${zodiac}.`
+        : `Anladım 😅 ${subject}'nın burcu soruluyordu. ${subject} ${zodiac}.`;
     }
     return `Anladım 😅 ${subject}'nın burcu soruluyordu; kayıtlı bir burç bulamadım.`;
   }
@@ -1103,7 +1134,13 @@ export function tryResolveConversationContext(input) {
   const presence = isPresenceUtterance(message);
   const selfProfile = input.skipProfileResolvers
     ? null
-    : detectSelfProfileQuery(message);
+    : detectSelfProfileQuery(
+        message,
+        collectOtherParticipantNames(state, {
+          knownParticipants: input.knownParticipants,
+          excludeDisplayName: sender.displayName,
+        }),
+      );
   const propertyQuery = input.skipProfileResolvers
     ? null
     : detectProfilePropertyQuery(message, state);
