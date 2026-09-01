@@ -3,6 +3,8 @@
 // Text + optional image (multimodal) via Responses API; Whisper STT.
 // ═══════════════════════════════════════════════════════════════════════
 
+import { recordCostLedgerEntry } from './usage/cost-ledger.js';
+
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
 
 export const COST_PER_1K = {
@@ -45,6 +47,8 @@ function extractResponsesText(data) {
  *   timeoutMs?: number,
  *   apiKey?: string,
  *   requestId?: string|null,
+ *   userId?: string|null,
+ *   source?: string,
  * }} options
  * @returns {Promise<{
  *   content: string,
@@ -71,6 +75,9 @@ export async function callOpenAI(options) {
       ? process.env.OPENAI_VISION_MODEL || DEFAULT_MODEL
       : DEFAULT_MODEL);
   const start = performance.now();
+  // Cost-ledger fields — optional, non-authoritative to the model call itself.
+  const ledgerUserId = options.userId ?? null;
+  const ledgerSource = options.source || 'unknown';
 
   /** @type {string | Array<object>} */
   let input;
@@ -90,87 +97,149 @@ export async function callOpenAI(options) {
     input = options.userPrompt;
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      instructions: options.systemPrompt || undefined,
-      input,
-      temperature: options.temperature ?? 0.7,
-      max_output_tokens: options.maxTokens ?? 700,
-    }),
-    signal: AbortSignal.timeout(
-      Number(options.timeoutMs ?? process.env.OPENAI_TIMEOUT_MS) || 120_000,
-    ),
-  });
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: selectedModel,
+        instructions: options.systemPrompt || undefined,
+        input,
+        temperature: options.temperature ?? 0.7,
+        max_output_tokens: options.maxTokens ?? 700,
+      }),
+      signal: AbortSignal.timeout(
+        Number(options.timeoutMs ?? process.env.OPENAI_TIMEOUT_MS) || 120_000,
+      ),
+    });
 
-  const latencyMs = performance.now() - start;
+    const latencyMs = performance.now() - start;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    let msg = `OpenAI error (${response.status})`;
-    try {
-      msg = JSON.parse(errText).error?.message || msg;
-    } catch {
-      // keep default msg
+    if (!response.ok) {
+      const errText = await response.text();
+      let msg = `OpenAI error (${response.status})`;
+      try {
+        msg = JSON.parse(errText).error?.message || msg;
+      } catch {
+        // keep default msg
+      }
+      const error = new Error(msg);
+      error.status = response.status;
+      error._ledgerRecorded = true;
+      recordCostLedgerEntry({
+        provider: 'openai',
+        model: selectedModel,
+        userId: ledgerUserId,
+        source: ledgerSource,
+        success: false,
+        errorCode: `HTTP_${response.status}`,
+        latencyMs: Math.round(latencyMs),
+      });
+      throw error;
     }
-    const error = new Error(msg);
-    error.status = response.status;
-    throw error;
+
+    const data = await response.json();
+    const content = extractResponsesText(data);
+    const apiStatus = typeof data?.status === 'string' ? data.status : null;
+    const incompleteReason =
+      data?.incomplete_details?.reason != null
+        ? String(data.incomplete_details.reason)
+        : apiStatus === 'incomplete'
+          ? 'incomplete_status'
+          : null;
+    const incomplete = Boolean(incompleteReason) || apiStatus === 'incomplete';
+
+    if (!content) {
+      const empty = new Error(
+        incomplete
+          ? `OpenAI incomplete empty output (${incompleteReason || 'incomplete'})`
+          : 'OpenAI returned empty output',
+      );
+      empty.status = 502;
+      empty.code = incomplete ? 'INCOMPLETE_RESPONSE' : 'EMPTY_RESPONSE';
+      empty.incomplete = incomplete;
+      empty.incompleteReason = incompleteReason;
+      empty.requestId = options.requestId ?? null;
+      empty._ledgerRecorded = true;
+      recordCostLedgerEntry({
+        provider: 'openai',
+        model: data.model || selectedModel,
+        userId: ledgerUserId,
+        source: ledgerSource,
+        inputTokens: data.usage?.input_tokens ?? null,
+        outputTokens: data.usage?.output_tokens ?? null,
+        totalTokens:
+          (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0) || null,
+        success: false,
+        errorCode: empty.code,
+        latencyMs: Math.round(latencyMs),
+      });
+      throw empty;
+    }
+
+    const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
+    // Never fabricate a rate for an unpriced model: the ledger only records
+    // costUsd when COST_PER_1K has a real entry for this model. The 0.001
+    // fallback below is pre-existing display behavior for the per-request
+    // API response only — it is deliberately NOT propagated into the ledger.
+    const hasKnownRate = Object.prototype.hasOwnProperty.call(COST_PER_1K, selectedModel);
+    const costRate = COST_PER_1K[selectedModel] ?? 0.001;
+    const tokensUsed = totalTokens || Math.ceil(content.length / 4);
+    const costUsd = (tokensUsed / 1000) * costRate;
+
+    if (incomplete) {
+      console.warn(
+        `[OpenAI] incomplete response requestId=${options.requestId || 'n/a'}` +
+          ` reason=${incompleteReason} tokens=${tokensUsed} max_output_tokens=${options.maxTokens ?? 700}`,
+      );
+    }
+
+    recordCostLedgerEntry({
+      provider: 'openai',
+      model: data.model || selectedModel,
+      userId: ledgerUserId,
+      source: ledgerSource,
+      inputTokens: data.usage?.input_tokens ?? null,
+      outputTokens: data.usage?.output_tokens ?? null,
+      totalTokens: totalTokens || tokensUsed,
+      costUsd: hasKnownRate ? costUsd : null,
+      success: true,
+      errorCode: incomplete ? incompleteReason || 'incomplete' : null,
+      latencyMs: Math.round(latencyMs),
+    });
+
+    return {
+      content,
+      model: data.model || selectedModel,
+      provider: 'openai',
+      tokensUsed,
+      costUsd,
+      latencyMs: Math.round(latencyMs),
+      incomplete,
+      incompleteReason,
+      status: apiStatus,
+      requestId: options.requestId ?? null,
+    };
+  } catch (err) {
+    // Network errors / timeouts land here (HTTP-status and empty-output
+    // failures above already recorded their own ledger entry and rethrow
+    // before this catch, so guard against double-recording via the flag).
+    if (!err?._ledgerRecorded) {
+      recordCostLedgerEntry({
+        provider: 'openai',
+        model: selectedModel,
+        userId: ledgerUserId,
+        source: ledgerSource,
+        success: false,
+        errorCode: err?.name || 'NETWORK_ERROR',
+        latencyMs: Math.round(performance.now() - start),
+      });
+    }
+    throw err;
   }
-
-  const data = await response.json();
-  const content = extractResponsesText(data);
-  const apiStatus = typeof data?.status === 'string' ? data.status : null;
-  const incompleteReason =
-    data?.incomplete_details?.reason != null
-      ? String(data.incomplete_details.reason)
-      : apiStatus === 'incomplete'
-        ? 'incomplete_status'
-        : null;
-  const incomplete = Boolean(incompleteReason) || apiStatus === 'incomplete';
-
-  if (!content) {
-    const empty = new Error(
-      incomplete
-        ? `OpenAI incomplete empty output (${incompleteReason || 'incomplete'})`
-        : 'OpenAI returned empty output',
-    );
-    empty.status = 502;
-    empty.code = incomplete ? 'INCOMPLETE_RESPONSE' : 'EMPTY_RESPONSE';
-    empty.incomplete = incomplete;
-    empty.incompleteReason = incompleteReason;
-    empty.requestId = options.requestId ?? null;
-    throw empty;
-  }
-
-  const totalTokens = (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0);
-  const costRate = COST_PER_1K[selectedModel] ?? 0.001;
-  const tokensUsed = totalTokens || Math.ceil(content.length / 4);
-
-  if (incomplete) {
-    console.warn(
-      `[OpenAI] incomplete response requestId=${options.requestId || 'n/a'}` +
-        ` reason=${incompleteReason} tokens=${tokensUsed} max_output_tokens=${options.maxTokens ?? 700}`,
-    );
-  }
-
-  return {
-    content,
-    model: data.model || selectedModel,
-    provider: 'openai',
-    tokensUsed,
-    costUsd: (tokensUsed / 1000) * costRate,
-    latencyMs: Math.round(latencyMs),
-    incomplete,
-    incompleteReason,
-    status: apiStatus,
-    requestId: options.requestId ?? null,
-  };
 }
 
 /**

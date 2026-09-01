@@ -34,7 +34,26 @@ const FIXTURE_VERSES = Object.freeze({
     translation:
       'Hakkı gerçekleştirmek ve batılı ortadan kaldırmak için (böyle yaptı); suçlular istemese de.',
   },
+  '2:153': {
+    arabic: 'يَا أَيُّهَا الَّذِينَ آمَنُوا اسْتَعِينُوا بِالصَّبْرِ وَالصَّلَاةِ إِنَّ اللَّهَ مَعَ الصَّابِرِينَ',
+    translation:
+      'Ey iman edenler! Sabrederek ve namaz kılarak Allah’tan yardım isteyin. Şüphesiz Allah sabredenlerle beraberdir.',
+  },
+  '3:200': {
+    arabic: 'يَا أَيُّهَا الَّذِينَ آمَنُوا اصْبِرُوا وَصَابِرُوا وَرَابِطُوا وَاتَّقُوا اللَّهَ لَعَلَّكُمْ تُفْلِحُونَ',
+    translation:
+      'Ey iman edenler! Sabredin, sabır yarışında düşmanlarınızı geride bırakın, hazırlıklı ve uyanık olun ve Allah’a karşı gelmekten sakının ki kurtuluşa eresiniz.',
+  },
+  '35:6': {
+    arabic: 'إِنَّ الشَّيْطَانَ لَكُمْ عَدُوٌّ فَاتَّخِذُوهُ عَدُوًّا',
+    translation: 'Şüphesiz şeytan sizin için bir düşmandır; öyleyse siz de onu düşman tutun.',
+  },
   '36:1': { arabic: 'يس', translation: 'Yâsîn.' },
+  '36:60': {
+    arabic: 'أَلَمْ أَعْهَدْ إِلَيْكُمْ يَا بَنِي آدَمَ أَن لَّا تَعْبُدُوا الشَّيْطَانَ إِنَّهُ لَكُمْ عَدُوٌّ مُّبِينٌ',
+    translation:
+      'Ey Âdemoğulları! Şeytana tapmayın diye size bildirmedim mi? Çünkü o, sizin için apaçık bir düşmandır.',
+  },
   '112:1': { arabic: 'قُلْ هُوَ اللَّهُ أَحَدٌ', translation: 'De ki: O Allah birdir.' },
   '114:6': { arabic: 'مِنَ الْجِنَّةِ وَالنَّاسِ', translation: 'cinlerden ve insanlardan.' },
 });
