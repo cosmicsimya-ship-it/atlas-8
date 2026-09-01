@@ -314,6 +314,24 @@ export const DREAM_SYMBOL_CORPUS = Object.freeze([
     classical: 'Kovalanma çoğu zaman sıkıntıdan kaçış motifi taşır.',
     jungHint: 'Shadow',
   },
+  {
+    id: 'devil',
+    name: 'şeytan',
+    aliases: ['şeytan', 'iblis', 'karanlık figür', 'kötü ruh'],
+    themes: ['ayartma', 'sınav', 'karanlık güç'],
+    psychological: 'Bastırılmış korku veya içsel ayartmanın dışsallaşmış hali; yüzleşme ve sınır koyma çağrısı olabilir.',
+    classical: 'Klasik yorumlarda şeytan/iblis figürü çoğu zaman sınav, vesvese veya üstesinden gelinen bir tehdit motifi taşır; figürün akıbeti (uzaklaşması, defedilmesi) yorumda belirleyicidir.',
+    jungHint: 'Shadow',
+  },
+  {
+    id: 'road',
+    name: 'yol',
+    aliases: ['yol', 'yolda', 'patika', 'cadde'],
+    themes: ['yön', 'hayat rotası', 'seçim'],
+    psychological: 'Hayattaki mevcut rota, ilerleyiş hissi veya bir seçim noktası.',
+    classical: 'Yol klasik olarak çoğu zaman yolculuk, kader çizgisi veya sınav süreci motifi taşır.',
+    jungHint: null,
+  },
 ]);
 
 const BY_ID = new Map(DREAM_SYMBOL_CORPUS.map((s) => [s.id, s]));

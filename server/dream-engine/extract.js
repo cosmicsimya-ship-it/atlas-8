@@ -60,7 +60,20 @@ const NARRATIVE_PATTERNS = Object.freeze([
   {
     id: 'loss',
     label: 'bir şey kaybediyor',
-    patterns: [/kaybett[ıi]m|kaybol|bulam[ıi]yor|yitir/i],
+    // First-person loss only ("kaybettim", "bulamıyorum", "yitirdim"). Deliberately
+    // excludes the "kaybol-" stem (something/someone disappearing/vanishing) — that
+    // is a distinct, valence-neutral event (see 'vanish' below) and was previously
+    // collapsing "the threat disappeared" into the same alarmist "losing something"
+    // label as "I lost my own belongings/way".
+    patterns: [/kaybett[ıi]m|bulam[ıi]yor|yitir/i],
+  },
+  {
+    id: 'vanish',
+    label: 'biri/bir şey kayboluyor',
+    // Third-person disappearance — e.g. a threatening figure withdrawing/vanishing.
+    // Kept separate from 'loss' so the narrative label doesn't presume the dreamer
+    // is the one losing something when the subject is someone/something else.
+    patterns: [/kaybol|gözden\s+kayboldu|uzaklaş[ıi]p\s+kayboldu/i],
   },
   {
     id: 'finding',
@@ -130,11 +143,27 @@ function aliasMatches(haystack, alias) {
  * @param {string} text
  * @returns {ExtractedSymbol[]}
  */
+/**
+ * Index of the first character of the matched alias inside the (lowercased)
+ * text, or Infinity if it can't be located (should not happen given
+ * aliasMatches already confirmed a hit).
+ * @param {string} haystack lowercased text
+ * @param {string} alias lowercased alias
+ */
+function firstMatchIndex(haystack, alias) {
+  const exact = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(alias)}([^\\p{L}\\p{N}]|$)`, 'iu');
+  const exactMatch = exact.exec(haystack);
+  if (exactMatch) return exactMatch.index + exactMatch[1].length;
+  const stem = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(alias)}[\\p{L}\\p{N}]{0,12}([^\\p{L}\\p{N}]|$)`, 'iu');
+  const stemMatch = stem.exec(haystack);
+  return stemMatch ? stemMatch.index + stemMatch[1].length : Infinity;
+}
+
 export function extractSymbols(text) {
   const lower = String(text || '').toLocaleLowerCase('tr-TR');
   if (!lower.trim()) return [];
 
-  /** @type {ExtractedSymbol[]} */
+  /** @type {(ExtractedSymbol & { _matchIndex: number })[]} */
   const found = [];
   const seen = new Set();
 
@@ -157,13 +186,22 @@ export function extractSymbols(text) {
           psychological: sym.psychological,
           classical: sym.classical,
           jungHint: sym.jungHint,
+          _matchIndex: firstMatchIndex(lower, a),
         });
         break;
       }
     }
   }
 
-  return found;
+  // Rank by where each symbol actually first appears in the dreamer's own
+  // text, not by the corpus's internal array order. Without this, two
+  // equally-incidental matches (e.g. a stray color word) can arbitrarily
+  // outrank the narrative's real, load-bearing symbols in any downstream
+  // "top theme" tie-break purely because of where they happen to sit in
+  // DREAM_SYMBOL_CORPUS — i.e. the ranking becomes untraceable to the
+  // source text, which is exactly what grounding requires.
+  found.sort((x, y) => x._matchIndex - y._matchIndex);
+  return found.map(({ _matchIndex, ...rest }) => rest);
 }
 
 /**
