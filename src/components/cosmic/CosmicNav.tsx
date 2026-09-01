@@ -66,8 +66,6 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
   const quiet = chatMode && !scrolled && !open;
 
   const primaryItems = resolveNavItems(PRIMARY_NAV_PATHS);
-  // Desktop: chatMode uses primary IA; full NAV_ITEMS otherwise (Lara Prime stays).
-  // Mobile: always primary IA (no Sembolik Analiz exposure).
   const desktopItems = chatMode ? primaryItems : NAV_ITEMS;
   const mobileItems = primaryItems;
 
@@ -83,24 +81,31 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
         quiet
           ? 'border-b border-transparent bg-transparent'
           : solid
-            ? 'border-b border-white/[0.06] bg-[#050608]/88 backdrop-blur-xl'
+            ? 'border-b border-white/[0.07] bg-[#030304]/90 backdrop-blur-xl'
             : 'bg-transparent',
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="atlas-focus group flex shrink-0 flex-col gap-0.5 rounded-sm"
+          className="atlas-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
-            ATLAS
-          </span>
-          {!chatMode && (
-            <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
-              Cosmic Simya
+          <img
+            src="/atlas-north-star.png"
+            alt=""
+            className="h-8 w-8 shrink-0 object-contain opacity-90 drop-shadow-[0_0_16px_rgba(226,230,236,0.08)]"
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
+              ATLAS
             </span>
-          )}
+            {!chatMode && (
+              <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
+                Cosmic Simya
+              </span>
+            )}
+          </span>
         </Link>
 
         <nav
@@ -119,10 +124,10 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                   'atlas-focus rounded-full px-3.5 py-2 text-[13px] transition duration-200',
                   active
                     ? accent
-                      ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
+                      ? 'bg-white/[0.07] text-[#f0f2f5]'
                       : 'bg-white/[0.06] text-[#e8ecf2]'
                     : accent
-                      ? 'text-[#c9b37a]/85 hover:bg-[#c9b37a]/08 hover:text-[#e8ecf2]'
+                      ? 'text-[#c7cbd2] hover:bg-white/[0.05] hover:text-white'
                       : 'text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#d4dae2]',
                 )}
               >
@@ -159,7 +164,7 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
       {open && (
         <nav
           id="mobile-nav"
-          className="border-t border-white/[0.08] bg-[#050608]/96 px-4 py-4 md:hidden"
+          className="border-t border-white/[0.08] bg-[#030304]/97 px-4 py-4 md:hidden"
           aria-label="Mobil menü"
         >
           <ul className="space-y-1">
@@ -174,11 +179,9 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
                     className={cn(
                       'atlas-focus flex min-h-12 items-center rounded-xl px-4 text-base transition duration-200',
                       active
-                        ? accent
-                          ? 'bg-[#c9b37a]/12 text-[#e8ecf2]'
-                          : 'bg-white/[0.06] text-[#e8ecf2]'
+                        ? 'bg-white/[0.06] text-[#e8ecf2]'
                         : accent
-                          ? 'text-[#c9b37a]/90 hover:bg-[#c9b37a]/08'
+                          ? 'text-[#c7cbd2] hover:bg-white/[0.04]'
                           : 'text-[#e8ecf2]/80 hover:bg-white/[0.04]',
                     )}
                   >

@@ -38,18 +38,25 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
       className={cn(
         'fixed inset-x-0 top-0 z-50 transition-[background,border-color,backdrop-filter] duration-300',
         scrolled || open ? 'obs-nav-glass obs-nav-glass-scrolled' : 'obs-nav-glass',
-        !(scrolled || open) && 'bg-[#050505]/45',
+        !(scrolled || open) && 'bg-[#030304]/48',
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="site-focus group shrink-0 rounded-sm"
+          className="site-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
-          <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9a9488]">
-            Cosmic Simya
+          <img
+            src="/atlas-north-star.png"
+            alt=""
+            className="h-8 w-8 shrink-0 object-contain opacity-90 drop-shadow-[0_0_16px_rgba(226,230,236,0.08)]"
+          />
+          <span className="flex flex-col">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
+            <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9aa3ae]">
+              Cosmic Simya
+            </span>
           </span>
         </Link>
 
@@ -90,7 +97,7 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
       {open ? (
         <nav
           id="landing-mobile-nav"
-          className="border-t border-white/[0.08] bg-[#050608]/96 px-4 py-4 md:hidden"
+          className="border-t border-white/[0.08] bg-[#030304]/97 px-4 py-4 md:hidden"
           aria-label="Mobil menü"
         >
           <ul className="space-y-1">
