@@ -8,7 +8,7 @@ import { cn } from '../../utils/cn';
 import { scrollToSection } from '../../utils/scroll-section';
 
 const navLinkClass =
-  'site-focus landing-nav-link rounded-sm px-3.5 py-2 text-[13px] transition';
+  'site-focus landing-nav-link rounded-full px-3.5 py-2 text-[13px] transition';
 
 export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: boolean }) {
   const location = useLocation();
@@ -37,23 +37,32 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
     <header
       className={cn(
         'fixed inset-x-0 top-0 z-50 transition-[background,border-color,backdrop-filter] duration-300',
-        scrolled || open ? 'obs-nav-glass obs-nav-glass-scrolled' : 'obs-nav-glass',
-        !(scrolled || open) && 'bg-[#050505]/45',
+        scrolled || open
+          ? 'border-b border-white/[0.08] bg-[#050608]/90 backdrop-blur-xl'
+          : 'border-b border-white/[0.04] bg-[#050608]/55 backdrop-blur-md',
       )}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="site-focus group shrink-0 rounded-sm"
+          className="site-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
-          <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9a9488]">
-            Cosmic Simya
+          <img
+            src="/atlas-north-star.png"
+            alt=""
+            aria-hidden="true"
+            className="h-9 w-9 shrink-0 rounded-full object-cover opacity-95 transition-opacity group-hover:opacity-100"
+          />
+          <span className="block">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
+            <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
+              Cosmic Simya
+            </span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Ana menü">
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Ana menü">
           {landingNav.map((item) =>
             'to' in item && item.to ? (
               <Link key={item.label} to={item.to} className={navLinkClass}>
@@ -72,11 +81,13 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
           )}
         </nav>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
-          <AuthSessionControl appearance="landing" autoOpen={autoOpenLogin} />
+        <div className="flex items-center gap-2">
+          <div className="hidden md:block">
+            <AuthSessionControl appearance="landing" autoOpen={autoOpenLogin} />
+          </div>
           <button
             type="button"
-            className="site-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-white/14 text-[#d4dae2] md:hidden"
+            className="site-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/16 text-[#d4dae2] md:hidden"
             aria-expanded={open}
             aria-controls="landing-mobile-nav"
             aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
@@ -99,7 +110,7 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
                 {'to' in item && item.to ? (
                   <Link
                     to={item.to}
-                    className="site-focus flex min-h-12 items-center rounded-sm px-4 text-base text-[#e8ecf2] hover:bg-white/[0.04]"
+                    className="site-focus flex min-h-12 items-center rounded-xl px-4 text-base text-[#e8ecf2] hover:bg-white/[0.04]"
                   >
                     {item.label}
                   </Link>
@@ -110,7 +121,7 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
                       if ('sectionId' in item && item.sectionId) scrollToSection(item.sectionId);
                       setOpen(false);
                     }}
-                    className="site-focus flex min-h-12 w-full items-center rounded-sm px-4 text-left text-base text-[#e8ecf2] hover:bg-white/[0.04]"
+                    className="site-focus flex min-h-12 w-full items-center rounded-xl px-4 text-left text-base text-[#e8ecf2] hover:bg-white/[0.04]"
                   >
                     {item.label}
                   </button>
@@ -118,6 +129,9 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
               </li>
             ))}
           </ul>
+          <div className="mt-3 border-t border-white/[0.08] pt-3">
+            <AuthSessionControl appearance="landing" />
+          </div>
         </nav>
       ) : null}
     </header>
