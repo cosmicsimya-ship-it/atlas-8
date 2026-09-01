@@ -11,6 +11,12 @@ import {
   updateUserMemory,
 } from './user-memory.js';
 import { resolveFounderSession, formatFounderAwareMemoryRecall } from './founder-identity.js';
+import {
+  buildMemoryContextV2,
+  forgetFromEntity,
+  isMemoryV2Enabled,
+  writeFromValidatedEntity,
+} from './memory/index.js';
 
 /** @typedef {'save' | 'recall' | 'forget' | 'profile-update' | null} MemoryIntentType */
 
@@ -788,6 +794,38 @@ export async function processMemoryIntent(userId, message, intent, options = {})
   }
 
   if (intent.type === 'forget') {
+    if (isMemoryV2Enabled()) {
+      const forgetEntity = entity ||
+        (FORGET_NAME_PATTERNS.some((pattern) => pattern.test(message))
+          ? { kind: 'forget-name', field: 'name', value: null }
+          : { kind: 'forget-fact', value: extractFactToSave(message) || message });
+      const result = await forgetFromEntity(userId, forgetEntity, message);
+      if (!result.ok) {
+        return {
+          handled: true,
+          reply: `Silme işlemi başarısız: ${result.error || 'unknown'}`,
+          memoryUpdated: false,
+          error: result.error,
+        };
+      }
+      if (result.deleted > 0) {
+        return {
+          handled: true,
+          reply:
+            forgetEntity.kind === 'forget-name'
+              ? 'Ad bilgini hafızamdan sildim. Bundan sonra isminle hitap etmeyeceğim.'
+              : 'İlgili kaydı hafızamdan sildim.',
+          memoryUpdated: true,
+        };
+      }
+      return {
+        handled: true,
+        reply:
+          'Silinecek kayıt bulunamadı. Daha spesifik olabilir misin? Örneğin: "Adımı unut" veya "Kahve tercihimle ilgili bilgiyi unut."',
+        memoryUpdated: false,
+      };
+    }
+
     if (entity?.kind === 'forget-name') {
       const result = await updateUserMemory(userId, {
         profile: { name: null },
@@ -850,6 +888,62 @@ export async function processMemoryIntent(userId, message, intent, options = {})
       reply:
         'Ne kaydetmemi veya güncellememi istediğini net anlayamadım. Lütfen alanı ve değeri açıkça yaz (ör. "Adım Lara, kaydet.").',
       memoryUpdated: false,
+    };
+  }
+
+  if (
+    isMemoryV2Enabled() &&
+    (entity.kind === 'fact' || entity.kind === 'preference' || entity.kind === 'profile')
+  ) {
+    const writeResult = await writeFromValidatedEntity(userId, entity, message, {
+      source: 'explicit_user',
+    });
+    if (writeResult.skipped) {
+      return {
+        handled: true,
+        reply:
+          'Bu ifade geçmişe ait görünüyor; güncel tercih olarak kaydetmedim. Güncel tercihini “Bunu hatırla: …” ile yazabilirsin.',
+        memoryUpdated: false,
+      };
+    }
+    if (!writeResult.ok) {
+      return {
+        handled: true,
+        reply: `Kaydetme başarısız: ${writeResult.error || 'unknown'}`,
+        memoryUpdated: false,
+        error: writeResult.error,
+      };
+    }
+    if (writeResult.duplicate) {
+      return {
+        handled: true,
+        reply: `Bu bilgi zaten hafızamda kayıtlı: "${writeResult.memory?.text || entity.value}"`,
+        memoryUpdated: false,
+      };
+    }
+
+    const display = writeResult.memory?.text || entity.value;
+    if (entity.kind === 'profile' && entity.field === 'name') {
+      return {
+        handled: true,
+        reply: `Tamam ${entity.value} — adını hatırlıyorum. Her mesajda isimle hitap etmeyeceğim; gerektiğinde kullanırım.`,
+        memoryUpdated: true,
+      };
+    }
+    if (entity.kind === 'preference') {
+      return { handled: true, reply: `Tercihini kaydettim: ${display}`, memoryUpdated: true };
+    }
+    if (entity.kind === 'profile') {
+      return {
+        handled: true,
+        reply: `${PROFILE_LABELS[entity.field] ?? entity.field} bilgini kaydettim: ${entity.value}`,
+        memoryUpdated: true,
+      };
+    }
+    return {
+      handled: true,
+      reply: `Tamam, bunu hafızama kaydettim: "${display}"`,
+      memoryUpdated: Boolean(writeResult.written || writeResult.action === 'supersede'),
     };
   }
 
@@ -979,6 +1073,11 @@ export function getMemoryFactDepthConfig() {
  * @returns {string|null}
  */
 export function buildRelevantMemoryContext(userId, message, mode = 'conversational', opts = {}) {
+  if (isMemoryV2Enabled()) {
+    const { context } = buildMemoryContextV2(userId, message, mode, opts);
+    return context;
+  }
+
   const memory = getUserMemory(userId);
   if (memory.preferences?.memoryEnabled === false) {
     return null;
