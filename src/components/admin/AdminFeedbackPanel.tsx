@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react';
 import { ApiError } from '../../services/api-client';
 import {
   fetchAdminFeedbackList,
+  fetchAdminThumbsSummary,
   updateAdminFeedbackNote,
   updateAdminFeedbackPriority,
   updateAdminFeedbackStatus,
   type FeedbackEntry,
+  type ThumbsSummary,
 } from '../../services/atlas-admin-feedback';
 
 const STATUS_OPTIONS: FeedbackEntry['status'][] = ['new', 'reviewing', 'resolved', 'dismissed'];
@@ -191,6 +193,36 @@ function FeedbackDetailDrawer({ entry, onClose, onUpdated }: { entry: FeedbackEn
   );
 }
 
+function ThumbsSummaryBar() {
+  const [thumbs, setThumbs] = useState<ThumbsSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAdminThumbsSummary()
+      .then((res) => {
+        if (!cancelled) setThumbs(res.thumbs);
+      })
+      .catch(() => {
+        if (!cancelled) setThumbs(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!thumbs) return null;
+
+  return (
+    <div className="mb-4 flex flex-wrap gap-4 rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-3 text-sm">
+      <span className="text-[#8b93a3]">
+        Yanıt değerlendirmeleri (👍/👎): <span className="text-[#e8ecf2]">{thumbs.total}</span>
+      </span>
+      <span className="text-[#7fd88f]">👍 {thumbs.up}</span>
+      <span className="text-red-300/85">👎 {thumbs.down}</span>
+    </div>
+  );
+}
+
 export default function AdminFeedbackPanel() {
   const [status, setStatus] = useState('');
   const [priority, setPriority] = useState('');
@@ -225,6 +257,7 @@ export default function AdminFeedbackPanel() {
 
   return (
     <div>
+      <ThumbsSummaryBar />
       <div className="mb-4 flex flex-wrap gap-2">
         <select
           value={status}
@@ -276,9 +309,23 @@ export default function AdminFeedbackPanel() {
         </select>
       </div>
 
-      {state.status === 'loading' ? <p className="text-sm text-[#8b93a3]">Yükleniyor…</p> : null}
-      {state.status === 'error' ? <p className="text-sm text-red-300/80">{state.message}</p> : null}
-      {state.status === 'ok' && state.entries.length === 0 ? <p className="text-sm text-[#8b93a3]">Geri bildirim yok.</p> : null}
+      {state.status === 'loading' ? (
+        <div className="space-y-2.5" aria-busy="true" aria-live="polite">
+          <div className="animate-pulse-subtle h-4 w-1/3 rounded-full bg-white/[0.06]" />
+          <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" />
+          <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" style={{ animationDelay: '150ms' }} />
+        </div>
+      ) : null}
+      {state.status === 'error' ? (
+        <div className="rounded-xl border border-red-400/25 bg-red-500/[0.05] px-4 py-3">
+          <p className="text-sm text-red-300/85">{state.message}</p>
+        </div>
+      ) : null}
+      {state.status === 'ok' && state.entries.length === 0 ? (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-8 text-center">
+          <p className="text-sm text-[#8b93a3]">Geri bildirim yok.</p>
+        </div>
+      ) : null}
 
       {state.status === 'ok' && state.entries.length > 0 ? (
         <div className="overflow-x-auto">

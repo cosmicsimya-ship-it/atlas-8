@@ -20,6 +20,9 @@ import { isVoiceConfigured, getVoice, getLaraMasterPath } from '../voice/registr
 import { getBillingConfig } from '../billing/config.js';
 import { listFeedback, countFeedbackByStatus } from '../feedback/store.js';
 import { listErrors, countErrorsByStatus } from './error-log.js';
+import { getCostLedgerAggregate } from '../usage/cost-ledger.js';
+import { getAnalyticsAggregate } from '../analytics/store.js';
+import { getChatFeedbackSummary } from '../chat-feedback.js';
 
 /** Deterministic, code-defined threshold — not an arbitrary anomaly model. */
 export const NEAR_LIMIT_THRESHOLD_RATIO = 0.8;
@@ -202,6 +205,20 @@ export function getAdminOverview() {
     recentErrors = [];
   }
 
+  let estimatedAiCost = null;
+  try {
+    estimatedAiCost = getCostLedgerAggregate().todayEstimatedCost;
+  } catch {
+    estimatedAiCost = null;
+  }
+
+  let thumbsSummary = null;
+  try {
+    thumbsSummary = getChatFeedbackSummary();
+  } catch {
+    thumbsSummary = null;
+  }
+
   return {
     totalUsers,
     primeUsers,
@@ -210,7 +227,7 @@ export function getAdminOverview() {
     chatUsageToday: usageOverview.totalRequestsToday,
     usersActiveInChatToday: usageOverview.usersActiveToday,
     quotaConfig,
-    estimatedAiCost: null, // see getAdminCosts() — not yet authoritative
+    estimatedAiCost, // see getAdminCosts() for the full cost-ledger breakdown
     primeProfilesCompleted,
     checkInsToday,
     outlookGenerationCount: getOutlookBuildCount(),
@@ -219,6 +236,7 @@ export function getAdminOverview() {
     recentFeedback,
     openErrorCount,
     recentErrors,
+    thumbsSummary,
   };
 }
 
@@ -249,24 +267,46 @@ export function getAdminUsage() {
 }
 
 /**
- * Honest by design: per-request costUsd is computed in openai-client.js but
- * only ever console.log'd today — there is no persisted/aggregated cost
- * store anywhere in this codebase. Rather than fabricate a number, this
- * reports the real state of that gap.
+ * Reads from server/usage/cost-ledger.js — every callOpenAI() invocation
+ * (success or failure) writes one entry there. Unpriced models record
+ * costUsd: null and are excluded from totals rather than estimated.
  */
 export function getAdminCosts() {
-  return {
-    authoritative: false,
-    reason: 'USAGE_AVAILABLE_COST_NOT_AGGREGATED',
-    message:
-      'Token/cost hesaplaması her istek için üretiliyor ama hiçbir yerde toplanmıyor (yalnızca sunucu logunda). Bu nedenle maliyet burada gösterilmiyor.',
-    todayEstimatedCost: null,
-    sevenDayEstimatedCost: null,
-    thirtyDayEstimatedCost: null,
-    costByCapability: null,
-    costByProvider: null,
-    costByUser: null,
-  };
+  try {
+    return getCostLedgerAggregate();
+  } catch (err) {
+    // Fail soft, honestly — never fabricate a cost number on a read error.
+    return {
+      authoritative: false,
+      reason: 'COST_LEDGER_READ_FAILED',
+      message: `Cost ledger okunamadı: ${err?.message ?? 'unknown error'}`,
+      todayEstimatedCost: null,
+      sevenDayEstimatedCost: null,
+      thirtyDayEstimatedCost: null,
+      costByCapability: null,
+      costByProvider: null,
+      costByUser: null,
+    };
+  }
+}
+
+/**
+ * Real, server-persisted analytics aggregate (server/analytics/store.js).
+ * The old mock pages/Analytics.tsx UI data is never read from here.
+ */
+export function getAdminAnalytics() {
+  try {
+    return { ok: true, ...getAnalyticsAggregate() };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err?.message ?? 'analytics read failed',
+      totalEvents: null,
+      eventsLast24h: null,
+      eventsLast7d: null,
+      countsByName: null,
+    };
+  }
 }
 
 function checkStoreReadable(fn, label) {

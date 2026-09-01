@@ -5,7 +5,7 @@ import AdminUserActions from './AdminUserActions';
 import AdminFeedbackPanel from './AdminFeedbackPanel';
 import AdminErrorsPanel from './AdminErrorsPanel';
 
-type Tab = 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
+type Tab = 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'analytics' | 'health' | 'audit';
 
 type AdminUserRow = {
   userId: string;
@@ -38,6 +38,7 @@ type Overview = {
   recentFeedback?: OverviewFeedbackRow[];
   openErrorCount?: number | null;
   recentErrors?: OverviewErrorRow[];
+  thumbsSummary?: { total: number; up: number; down: number } | null;
 };
 
 type UsageResponse = {
@@ -50,7 +51,23 @@ type UsageResponse = {
 type CostsResponse = {
   authoritative: boolean;
   message: string;
+  totalEntries?: number;
+  failedCallCount?: number;
+  unknownPriceCount?: number;
   todayEstimatedCost: number | null;
+  sevenDayEstimatedCost?: number | null;
+  thirtyDayEstimatedCost?: number | null;
+  costByProvider?: Record<string, number> | null;
+  costByUser?: Record<string, number> | null;
+  costByCapability?: Record<string, number> | null;
+};
+
+type AnalyticsResponse = {
+  schemaVersion?: number;
+  totalEvents: number | null;
+  eventsLast24h: number | null;
+  eventsLast7d: number | null;
+  countsByName: Record<string, number> | null;
 };
 
 type HealthResponse = {
@@ -70,17 +87,24 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'health', label: 'System Health' },
   { id: 'usage', label: 'Usage' },
   { id: 'costs', label: 'Costs' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'audit', label: 'Audit' },
 ];
 
 function Metric({ label, value }: { label: string; value: string | number | null }) {
   return (
-    <div className="rounded-lg border border-white/[0.08] p-4">
-      <p className="text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">{label}</p>
-      <p className="mt-1.5 text-2xl text-[#e8ecf2]">{value === null ? '—' : value}</p>
-      {value === null ? <p className="mt-1 text-[11px] text-[#8b93a3]">Not yet tracked</p> : null}
+    <div className="atlas-glass-card flex flex-col gap-1.5 p-4">
+      <p className="text-[10.5px] uppercase tracking-[0.1em] text-[#8b93a3]">{label}</p>
+      <p className="font-display text-[26px] leading-none text-[#eef1f5] sm:text-[28px]">
+        {value === null ? '—' : value}
+      </p>
+      {value === null ? <p className="text-[11px] text-[#8b93a3]">Not yet tracked</p> : null}
     </div>
   );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mb-2 text-[11px] uppercase tracking-[0.1em] text-[#8b93a3]">{children}</p>;
 }
 
 function useAdminFetch<T>(path: string, deps: unknown[] = []) {
@@ -108,9 +132,29 @@ function useAdminFetch<T>(path: string, deps: unknown[] = []) {
 }
 
 function StateWrapper({ state, empty, children }: { state: { status: string; message?: string }; empty?: boolean; children: React.ReactNode }) {
-  if (state.status === 'loading') return <p className="text-sm text-[#8b93a3]">Yükleniyor…</p>;
-  if (state.status === 'error') return <p className="text-sm text-red-300/80">{state.message}</p>;
-  if (empty) return <p className="text-sm text-[#8b93a3]">Veri yok.</p>;
+  if (state.status === 'loading') {
+    return (
+      <div className="space-y-2.5" aria-busy="true" aria-live="polite">
+        <div className="animate-pulse-subtle h-4 w-1/3 rounded-full bg-white/[0.06]" />
+        <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" />
+        <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" style={{ animationDelay: '150ms' }} />
+      </div>
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <div className="rounded-xl border border-red-400/25 bg-red-500/[0.05] px-4 py-3">
+        <p className="text-sm text-red-300/85">{state.message}</p>
+      </div>
+    );
+  }
+  if (empty) {
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-8 text-center">
+        <p className="text-sm text-[#8b93a3]">Veri yok.</p>
+      </div>
+    );
+  }
   return <>{children}</>;
 }
 
@@ -120,20 +164,42 @@ function OverviewTab() {
     <StateWrapper state={state}>
       {state.status === 'ok' ? (
         <div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Metric label="Backend Health" value={state.data.overview.backendStatus ?? 'unknown'} />
-            <Metric label="Total Users" value={state.data.overview.totalUsers} />
-            <Metric label="Prime Users" value={state.data.overview.primeUsers} />
-            <Metric label="Free Users" value={state.data.overview.freeUsers} />
-            <Metric label="Open Feedback" value={state.data.overview.openFeedbackCount ?? null} />
-            <Metric label="Open Errors / Incidents" value={state.data.overview.openErrorCount ?? null} />
-            <Metric label="Active Today" value={state.data.overview.activeToday} />
-            <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
-            <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
-            <Metric label="Prime Profiles Completed" value={state.data.overview.primeProfilesCompleted ?? 0} />
-            <Metric label="Check-ins Today" value={state.data.overview.checkInsToday ?? 0} />
-            <Metric label="Outlook Generations" value={state.data.overview.outlookGenerationCount ?? 0} />
-            <Metric label="Estimated AI Cost" value={state.data.overview.estimatedAiCost} />
+          <div className="space-y-5">
+            <div>
+              <SectionLabel>Kullanıcılar</SectionLabel>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Backend Health" value={state.data.overview.backendStatus ?? 'unknown'} />
+                <Metric label="Total Users" value={state.data.overview.totalUsers} />
+                <Metric label="Prime Users" value={state.data.overview.primeUsers} />
+                <Metric label="Free Users" value={state.data.overview.freeUsers} />
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Etkileşim</SectionLabel>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Active Today" value={state.data.overview.activeToday} />
+                <Metric label="Chat Usage Today" value={state.data.overview.chatUsageToday} />
+                <Metric label="Prime Chat Users Today" value={state.data.overview.usersActiveInChatToday} />
+                <Metric label="Prime Profiles Completed" value={state.data.overview.primeProfilesCompleted ?? 0} />
+                <Metric label="Check-ins Today" value={state.data.overview.checkInsToday ?? 0} />
+                <Metric label="Outlook Generations" value={state.data.overview.outlookGenerationCount ?? 0} />
+              </div>
+            </div>
+            <div>
+              <SectionLabel>Destek & Maliyet</SectionLabel>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <Metric label="Open Feedback" value={state.data.overview.openFeedbackCount ?? null} />
+                <Metric label="Open Errors / Incidents" value={state.data.overview.openErrorCount ?? null} />
+                <Metric
+                  label="Estimated AI Cost (Today)"
+                  value={state.data.overview.estimatedAiCost === null || state.data.overview.estimatedAiCost === undefined ? null : `$${state.data.overview.estimatedAiCost.toFixed(4)}`}
+                />
+                <Metric
+                  label="Response Ratings (👍/👎)"
+                  value={state.data.overview.thumbsSummary ? `${state.data.overview.thumbsSummary.up} / ${state.data.overview.thumbsSummary.down}` : null}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -376,6 +442,27 @@ function UsageTab() {
   );
 }
 
+function GroupedCostList({ title, data }: { title: string; data?: Record<string, number> | null }) {
+  const entries = data ? Object.entries(data).sort((a, b) => b[1] - a[1]) : [];
+  return (
+    <div>
+      <p className="mb-2 text-[12px] uppercase tracking-[0.1em] text-[#8b93a3]">{title}</p>
+      {entries.length === 0 ? (
+        <p className="text-sm text-[#8b93a3]">Veri yok.</p>
+      ) : (
+        <ul className="space-y-1.5 text-sm">
+          {entries.map(([key, value]) => (
+            <li key={key} className="flex justify-between border-b border-white/[0.06] py-1.5">
+              <span className="truncate text-[#9aa3b2]">{key}</span>
+              <span className="text-[#e8ecf2]">${value.toFixed(4)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function CostsTab() {
   const state = useAdminFetch<{ ok: boolean; costs: CostsResponse }>('/api/admin/costs');
   return (
@@ -383,9 +470,59 @@ function CostsTab() {
       {state.status === 'ok' ? (
         <div>
           <p className="text-sm text-[#e8ecf2]">
-            {state.data.costs.authoritative ? 'Maliyet verisi mevcut.' : 'USAGE AVAILABLE — COST ESTIMATION NOT YET AUTHORITATIVE'}
+            {state.data.costs.authoritative ? 'Maliyet verisi cost-ledger üzerinden gerçek kayıtlardan hesaplanıyor.' : 'USAGE AVAILABLE — COST ESTIMATION NOT YET AUTHORITATIVE'}
           </p>
           <p className="mt-2 text-[13px] text-[#8b93a3]">{state.data.costs.message}</p>
+
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Metric label="Today" value={state.data.costs.todayEstimatedCost === null ? null : `$${state.data.costs.todayEstimatedCost.toFixed(4)}`} />
+            <Metric label="7 Days" value={state.data.costs.sevenDayEstimatedCost == null ? null : `$${state.data.costs.sevenDayEstimatedCost.toFixed(4)}`} />
+            <Metric label="30 Days" value={state.data.costs.thirtyDayEstimatedCost == null ? null : `$${state.data.costs.thirtyDayEstimatedCost.toFixed(4)}`} />
+            <Metric label="Unpriced Calls" value={state.data.costs.unknownPriceCount ?? null} />
+          </div>
+
+          <div className="mt-6 grid gap-6 sm:grid-cols-3">
+            <GroupedCostList title="Cost by Provider (30d)" data={state.data.costs.costByProvider} />
+            <GroupedCostList title="Cost by Source (30d)" data={state.data.costs.costByCapability} />
+            <GroupedCostList title="Cost by User (30d)" data={state.data.costs.costByUser} />
+          </div>
+        </div>
+      ) : null}
+    </StateWrapper>
+  );
+}
+
+function AnalyticsTab() {
+  const state = useAdminFetch<{ ok: boolean; analytics: AnalyticsResponse }>('/api/admin/analytics');
+  return (
+    <StateWrapper state={state}>
+      {state.status === 'ok' ? (
+        <div>
+          <p className="text-[11px] text-[#8b93a3]">
+            Gerçek, sunucuda tutulan olay kayıtları (server/analytics/store.js). Eski mock pages/Analytics.tsx verisi burada kullanılmaz.
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <Metric label="Total Events" value={state.data.analytics.totalEvents} />
+            <Metric label="Last 24h" value={state.data.analytics.eventsLast24h} />
+            <Metric label="Last 7d" value={state.data.analytics.eventsLast7d} />
+          </div>
+          <div className="mt-6">
+            <SectionLabel>Event Counts</SectionLabel>
+            {!state.data.analytics.countsByName || Object.keys(state.data.analytics.countsByName).length === 0 ? (
+              <p className="text-sm text-[#8b93a3]">Henüz olay kaydı yok.</p>
+            ) : (
+              <ul className="space-y-1.5 text-sm">
+                {Object.entries(state.data.analytics.countsByName)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([name, count]) => (
+                    <li key={name} className="flex justify-between border-b border-white/[0.06] py-1.5">
+                      <span className="font-mono text-[12px] text-[#9aa3b2]">{name}</span>
+                      <span className="text-[#e8ecf2]">{count}</span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </div>
         </div>
       ) : null}
     </StateWrapper>
@@ -459,20 +596,27 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
   return (
     <div className="mt-10 border-t border-white/10 pt-8">
       <p className="font-brand text-[11px] uppercase tracking-[0.28em] text-[#8b93a3]">Control Center</p>
-      <nav aria-label="Admin bölümleri" className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-b border-white/[0.08] pb-3 text-[13px]">
+      <nav
+        aria-label="Admin bölümleri"
+        className="mt-4 flex gap-1.5 overflow-x-auto border-b border-white/[0.08] pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
             aria-current={tab === t.id ? 'page' : undefined}
-            className={tab === t.id ? 'text-[#e8ecf2]' : 'text-[#8b93a3] hover:text-[#e8ecf2]'}
+            className={`atlas-focus shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[13px] transition ${
+              tab === t.id
+                ? 'border-[#c9b37a]/30 bg-[#c9b37a]/[0.1] text-[#eef1f5]'
+                : 'border-transparent text-[#8b93a3] hover:bg-white/[0.04] hover:text-[#e8ecf2]'
+            }`}
           >
             {t.label}
           </button>
         ))}
       </nav>
-      <div className="mt-5">
+      <div className="mt-5 rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.025] to-white/[0.008] p-4 sm:p-6">
         {tab === 'overview' ? <OverviewTab /> : null}
         {tab === 'feedback' ? <AdminFeedbackPanel /> : null}
         {tab === 'errors' ? <AdminErrorsPanel /> : null}
@@ -480,6 +624,7 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
         {tab === 'prime' ? <PrimeTab actorUserId={actorUserId} /> : null}
         {tab === 'usage' ? <UsageTab /> : null}
         {tab === 'costs' ? <CostsTab /> : null}
+        {tab === 'analytics' ? <AnalyticsTab /> : null}
         {tab === 'health' ? <HealthTab /> : null}
         {tab === 'audit' ? <AuditTab /> : null}
       </div>

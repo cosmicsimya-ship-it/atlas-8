@@ -1,4 +1,4 @@
-import { ImagePlus, Loader2, PlusCircle, RotateCcw, Send, X } from 'lucide-react';
+import { History, ImagePlus, Loader2, PlusCircle, RotateCcw, Send, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
@@ -7,8 +7,10 @@ import CapabilityDiscovery, {
   isCapabilityDiscoveryEnabled,
 } from '../components/cosmic/CapabilityDiscovery';
 import ChatAtmosphere from '../components/cosmic/ChatAtmosphere';
+import ConversationHistoryPanel from '../components/cosmic/ConversationHistoryPanel';
 import PatternGapTraces from '../components/cosmic/PatternGapTraces';
 import CosmicShell from '../components/cosmic/CosmicShell';
+import ResponseThumbs from '../components/cosmic/ResponseThumbs';
 import { discoveryCopy } from '../data/capability-discovery';
 import { PATTERN_GAP_PLACEHOLDER } from '../data/pattern-traces';
 import { atlasChat, isRetryableChatResponse } from '../services/atlas-chat';
@@ -20,7 +22,14 @@ import {
 } from '../utils/atlas-session';
 import { trackDiscoverability } from '../utils/discoverability-events';
 import { prefersReducedMotion } from '../utils/scroll-section';
-import type { AtlasChatMessage, AtlasImageAttachment } from '../types/atlas-chat';
+import type {
+  AtlasChatMessage,
+  AtlasConversationSummary,
+  AtlasImageAttachment,
+} from '../types/atlas-chat';
+
+/** Marks an intentional empty "new chat" so a refresh doesn't silently restore the old thread. */
+const NEW_CHAT_INTENT_KEY = 'atlas_new_chat_pending';
 
 /** Mirrors server/entitlements/image-guard.js — client-side pre-check only, server is authoritative. */
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -56,6 +65,10 @@ export default function Chat() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [restoringHistory, setRestoringHistory] = useState(false);
+  const [historyEligible, setHistoryEligible] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [conversations, setConversations] = useState<AtlasConversationSummary[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +94,35 @@ export default function Chat() {
     }
   }, []);
 
+  const clearPendingImage = useCallback(() => {
+    setPendingImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+    setImageError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const applyConversation = useCallback((conversation: {
+    id: string;
+    messages: { id: string; role: 'user' | 'assistant'; content: string }[];
+  }) => {
+    abortRef.current?.abort();
+    inFlightRef.current = false;
+    activeTurnRef.current = null;
+    clearStallTimer();
+    setLoading(false);
+    setPendingStatus('thinking');
+    setMessages(conversation.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })));
+    setActiveConversationId(conversation.id);
+    setInput('');
+    clearPendingImage();
+    emptyStateSeenRef.current = false;
+    firstMessageTrackedRef.current = false;
+    discoveryUsedRef.current = false;
+    if (typeof window !== 'undefined') sessionStorage.removeItem(NEW_CHAT_INTENT_KEY);
+  }, [clearStallTimer, clearPendingImage]);
+
   const restoreLatestConversation = useCallback(async () => {
     setRestoringHistory(true);
     try {
@@ -89,23 +131,55 @@ export default function Chat() {
       if (!latest) return;
       const conversation = await atlasChat.getConversation(latest.id);
       if (!conversation) return;
-      setMessages(conversation.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })));
-      setActiveConversationId(conversation.id);
+      applyConversation(conversation);
     } catch {
       /* restore is best-effort UX — a fresh chat is a safe fallback */
     } finally {
       setRestoringHistory(false);
     }
+  }, [applyConversation]);
+
+  const openHistory = useCallback(async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const list = await atlasChat.listConversations();
+      setConversations(list);
+    } catch {
+      /* history list is best-effort UX */
+    } finally {
+      setHistoryLoading(false);
+    }
   }, []);
+
+  const selectConversation = useCallback(
+    async (id: string) => {
+      setHistoryOpen(false);
+      if (id === activeConversationId) return;
+      try {
+        const conversation = await atlasChat.getConversation(id);
+        if (!conversation) return;
+        applyConversation(conversation);
+      } catch {
+        /* selection is best-effort UX — stays on current conversation */
+      }
+    },
+    [activeConversationId, applyConversation],
+  );
 
   useEffect(() => {
     atlasChat.checkBackend().then(setBackendReady);
     ensureAtlasSession()
       .then((session) => {
         sessionUserIdRef.current = session.userId;
+        const eligible = session.authenticated && !session.isAnonymous;
+        setHistoryEligible(eligible);
         // Conversation restore — authenticated accounts only, and only when
-        // there's no analysis-flow context prompt already seeding the chat.
-        if (session.authenticated && !session.isAnonymous && !contextPrompt) {
+        // there's no analysis-flow context prompt already seeding the chat,
+        // and the user didn't just explicitly start a new chat (refresh-safe).
+        const hasNewChatIntent =
+          typeof window !== 'undefined' && sessionStorage.getItem(NEW_CHAT_INTENT_KEY) === '1';
+        if (eligible && !contextPrompt && !hasNewChatIntent) {
           void restoreLatestConversation();
         }
       })
@@ -149,6 +223,9 @@ export default function Chat() {
           return null;
         });
         setImageError(null);
+        setHistoryOpen(false);
+        setConversations([]);
+        if (typeof window !== 'undefined') sessionStorage.removeItem(NEW_CHAT_INTENT_KEY);
         fetchEntitlements()
           .then((ent) => setCanImageAnalysis(hasEntitlement(ent, 'image.analysis')))
           .catch(() => setCanImageAnalysis(false));
@@ -157,7 +234,9 @@ export default function Chat() {
         // now load the NEW account's own latest conversation, if any.
         ensureAtlasSession()
           .then((session) => {
-            if (session.authenticated && !session.isAnonymous) {
+            const eligible = session.authenticated && !session.isAnonymous;
+            setHistoryEligible(eligible);
+            if (eligible) {
               void restoreLatestConversation();
             }
           })
@@ -250,15 +329,6 @@ export default function Chat() {
     },
     [],
   );
-
-  const clearPendingImage = useCallback(() => {
-    setPendingImage((prev) => {
-      if (prev) URL.revokeObjectURL(prev.previewUrl);
-      return null;
-    });
-    setImageError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  }, []);
 
   const onImageSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -373,6 +443,7 @@ export default function Chat() {
 
         if (response.conversationId && response.conversationId !== activeConversationId) {
           setActiveConversationId(response.conversationId);
+          if (typeof window !== 'undefined') sessionStorage.removeItem(NEW_CHAT_INTENT_KEY);
         }
 
         if (isRetryableChatResponse(response)) {
@@ -557,6 +628,10 @@ export default function Chat() {
     emptyStateSeenRef.current = false;
     firstMessageTrackedRef.current = false;
     discoveryUsedRef.current = false;
+    setHistoryOpen(false);
+    // No conversation id yet — flag this so a refresh before the first
+    // message doesn't silently restore the previous thread out from under it.
+    if (typeof window !== 'undefined') sessionStorage.setItem(NEW_CHAT_INTENT_KEY, '1');
     textareaRef.current?.focus();
   }, [clearStallTimer, clearPendingImage]);
 
@@ -589,6 +664,30 @@ export default function Chat() {
                 ? 'Atlas hazır.'
                 : 'Atlas bağlantısı kontrol ediliyor.'}
         </p>
+
+        {historyEligible && (
+          <div className="flex items-center px-4 pt-1 md:px-8">
+            <button
+              type="button"
+              onClick={() => (historyOpen ? setHistoryOpen(false) : void openHistory())}
+              aria-expanded={historyOpen}
+              aria-controls="atlas-history-panel"
+              className="site-focus inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1.5 text-[12px] text-[#9aa3b2] transition hover:border-white/20 hover:text-[#e8ecf2]"
+            >
+              <History size={13} aria-hidden /> Sohbetler
+            </button>
+          </div>
+        )}
+
+        <ConversationHistoryPanel
+          open={historyOpen}
+          loading={historyLoading}
+          conversations={conversations}
+          activeConversationId={activeConversationId}
+          onClose={() => setHistoryOpen(false)}
+          onNewChat={startNewConversation}
+          onSelect={(id) => void selectConversation(id)}
+        />
 
         <section
           className={`flex min-h-0 flex-1 flex-col px-4 md:px-8 ${isEmpty ? 'justify-end pb-3' : 'overflow-y-auto py-4 md:py-5'}`}
@@ -644,14 +743,14 @@ export default function Chat() {
                   aria-label={msg.role === 'user' ? 'Sen' : 'Atlas'}
                 >
                   {msg.role === 'user' ? (
-                    <div className="max-w-[88%] rounded-[18px] rounded-br-md bg-[#e8ecf2]/94 px-5 py-3.5 text-[15px] leading-[1.65] text-[#050608] sm:max-w-[75%]">
+                    <div className="atlas-user-bubble max-w-[min(88%,22.5rem)] px-4 py-3 text-[14.5px] leading-[1.65] sm:max-w-[min(75%,34rem)] sm:px-5 sm:py-3.5 sm:text-[15px]">
                       {msg.content}
                     </div>
                   ) : (
-                    <div className="max-w-[92%] sm:max-w-[85%]">
+                    <div className="max-w-[min(92%,40rem)] sm:max-w-[min(85%,42rem)]">
                       {msg.pending ? (
                         <div
-                          className="flex items-center gap-3 py-1 text-[#8b93a3]"
+                          className="flex items-center gap-3 py-1 text-[#9a9488]"
                           aria-live="polite"
                         >
                           <AtlasCorePresence
@@ -664,7 +763,7 @@ export default function Chat() {
                               <button
                                 type="button"
                                 onClick={retryLast}
-                                className="site-focus inline-flex items-center gap-1.5 text-[13px] text-[#c5ccd6] underline-offset-2 hover:underline"
+                                className="site-focus inline-flex items-center gap-1.5 text-[13px] text-[#e8d9a8]/85 underline-offset-2 hover:underline"
                               >
                                 <RotateCcw size={13} aria-hidden /> Yeniden oluştur
                               </button>
@@ -672,7 +771,7 @@ export default function Chat() {
                           </div>
                         </div>
                       ) : msg.error || msg.retryable ? (
-                        <div className="rounded-[18px] border border-red-400/20 bg-red-950/20 px-5 py-3.5 text-[15px] leading-[1.65] text-red-100/90">
+                        <div className="rounded-[18px] border border-red-400/20 bg-red-950/20 px-4 py-3 text-[14.5px] leading-[1.65] text-red-100/90 sm:px-5 sm:py-3.5 sm:text-[15px]">
                           {msg.content}
                           <button
                             type="button"
@@ -684,9 +783,15 @@ export default function Chat() {
                           </button>
                         </div>
                       ) : (
-                        <p className="text-[15px] leading-[1.75] tracking-[-0.005em] text-[#e8ecf2]/90 whitespace-pre-wrap sm:text-[16px] sm:leading-[1.8]">
-                          {msg.content}
-                        </p>
+                        <div>
+                          <p className="atlas-assistant-copy text-[15px] leading-[1.75] tracking-[-0.005em] whitespace-pre-wrap sm:text-[16px] sm:leading-[1.8]">
+                            {msg.content}
+                          </p>
+                          <ResponseThumbs
+                            requestId={msg.requestId}
+                            conversationId={activeConversationId}
+                          />
+                        </div>
                       )}
                     </div>
                   )}
@@ -806,6 +911,10 @@ export default function Chat() {
                 )}
               </button>
             </div>
+
+            <p className="atlas-chat-disclaimer mt-2.5 px-1 text-center sm:mt-3">
+              Atlas yanılabilir. Önemli bilgileri bağımsız olarak doğrula.
+            </p>
           </div>
         </footer>
       </main>

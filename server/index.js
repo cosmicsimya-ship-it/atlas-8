@@ -32,6 +32,7 @@ import {
   getAdminOverview,
   getAdminUsage,
   getAdminCosts,
+  getAdminAnalytics,
   getAdminHealth,
   getAdminAuditLog,
 } from './admin/control-center.js';
@@ -52,6 +53,8 @@ import {
   updateFeedbackPriority,
   setFeedbackAdminNote,
 } from './feedback/store.js';
+import { recordChatFeedback, getChatFeedbackSummary } from './chat-feedback.js';
+import { trackEvent } from './analytics/events.js';
 import {
   recordError,
   listErrors,
@@ -507,6 +510,7 @@ app.post(
       setSessionCookie(res, result.rawToken);
       const csrf = ensureCsrfCookie(res, req);
       const profile = toSessionProfile(result.account);
+      trackEvent('signup', { userId: result.account?.userId ?? null, source: 'web' });
       return res.status(201).json({
         ok: true,
         roles: result.identity.roles,
@@ -551,6 +555,7 @@ app.post(
       setSessionCookie(res, result.rawToken);
       const csrf = ensureCsrfCookie(res, req);
       const profile = toSessionProfile(result.account);
+      trackEvent('login', { userId: result.account?.userId ?? null, source: 'web' });
       return res.json({
         ok: true,
         roles: result.identity.roles,
@@ -874,7 +879,77 @@ app.post(
       messageId: req.body?.messageId,
     });
     if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    trackEvent('feedback_submitted', {
+      userId: req.auth.userId,
+      source: 'web',
+      props: { kind: 'structured', type: result.feedback?.type ?? null },
+    });
     return res.json({ ok: true, feedback: result.feedback });
+  },
+);
+
+// ── Response thumbs up/down — links to a chat response's requestId only,
+// never the prompt/response body. Real, authenticated users only (never
+// anonymous/guest) so ratings can be deduplicated per user.
+const thumbsFeedbackRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 40,
+  message: 'Çok fazla değerlendirme gönderildi. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `thumbs:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/feedback/thumbs',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireCsrfProtection,
+  thumbsFeedbackRateLimit,
+  async (req, res) => {
+    const result = await recordChatFeedback({
+      userId: req.auth.userId,
+      requestId: req.body?.requestId,
+      rating: req.body?.rating,
+      conversationId: req.body?.conversationId,
+    });
+    if (!result.ok) return res.status(result.status || 400).json({ ok: false, error: result.error });
+    trackEvent(result.feedback.rating === 'up' ? 'thumbs_up' : 'thumbs_down', {
+      userId: req.auth.userId,
+      source: 'web',
+    });
+    trackEvent('feedback_submitted', {
+      userId: req.auth.userId,
+      source: 'web',
+      props: { kind: 'thumbs' },
+    });
+    return res.json({ ok: true, feedback: result.feedback });
+  },
+);
+
+// ── Analytics — client-observable events the server cannot see on its own
+// (page views, discrete UI interactions). Guests may send a narrow allow-
+// listed set (e.g. pricing_viewed); identity, when present, is always
+// server-resolved from the session — never trusted from the request body.
+const analyticsEventRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  message: 'Çok fazla istek. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `analytics-event:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/analytics/event',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireAuthenticated,
+  requireCsrfProtection,
+  analyticsEventRateLimit,
+  (req, res) => {
+    const result = trackEvent(req.body?.name, {
+      userId: req.auth?.authenticated && !req.auth?.isAnonymous ? req.auth.userId : null,
+      source: 'web',
+      props: req.body?.props,
+    });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    return res.json({ ok: true });
   },
 );
 
@@ -993,6 +1068,30 @@ app.get(
   adminRateLimit,
   (req, res) => {
     return res.json({ ok: true, costs: getAdminCosts() });
+  },
+);
+
+app.get(
+  '/api/admin/analytics',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    return res.json({ ok: true, analytics: getAdminAnalytics() });
+  },
+);
+
+// Separate path (not /api/admin/feedback/:id) to avoid any collision with
+// the existing structured-feedback detail route's :id param.
+app.get(
+  '/api/admin/feedback-thumbs',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    return res.json({ ok: true, thumbs: getChatFeedbackSummary() });
   },
 );
 
@@ -1541,6 +1640,8 @@ app.post(
         temperature,
         maxTokens,
         apiKey: OPENAI_API_KEY,
+        userId: req.auth?.userId ?? null,
+        source: 'ai_complete',
       });
 
       const text = typeof result?.content === 'string' ? result.content : '';
@@ -1683,6 +1784,28 @@ app.post(
       });
 
       const response = toWebChatResponse(result);
+
+      // Centralized analytics — single point of truth for all chat-derived
+      // events, rather than touching every intent branch inside
+      // atlas-message-service.js. No message/response content is included.
+      const trackUserId = canPersist ? req.auth.userId : null;
+      trackEvent('message_sent', { userId: trackUserId, source: 'web' });
+      if (result.status !== 'error') {
+        trackEvent('response_generated', {
+          userId: trackUserId,
+          source: 'web',
+          props: { profile: response.profile ?? null, mode: response.mode ?? null },
+        });
+      }
+      const intentStr = String(result.intent || '').toLowerCase();
+      const engineStr = String(result.engine || '').toLowerCase();
+      if (intentStr.includes('quran')) {
+        trackEvent('quran_lookup', { userId: trackUserId, source: 'web' });
+      }
+      if (intentStr.includes('dream') || engineStr.includes('dream')) {
+        trackEvent('dream_interpretation', { userId: trackUserId, source: 'web' });
+      }
+
       if (req.atlasUsage) {
         response.usage = {
           plan: req.atlasUsage.plan,

@@ -21,6 +21,7 @@ import {
   ensureCsrfCookie,
 } from './auth-middleware.js';
 import { loginWithGoogleIdentity } from './session-service.js';
+import { trackEvent } from '../analytics/events.js';
 
 /**
  * @param {import('express').Express} app
@@ -122,6 +123,7 @@ export function mountGoogleOAuthRoutes(app, opts = {}) {
 
       setSessionCookie(res, result.rawToken);
       ensureCsrfCookie(res, req);
+      trackEvent('google_login', { userId: result.account?.userId ?? null, source: 'web' });
       return res.redirect(302, buildOAuthReturnUrl(completed.returnOrigin, { ok: true }));
     } catch (err) {
       console.error('[ATLAS] oauth callback error:', err?.stack || err?.message || err);

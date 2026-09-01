@@ -3,9 +3,10 @@
  * /api/admin/feedback/* endpoints — no authority field is ever sent from
  * here (the server derives the actor from the session).
  *
- * Note: this branch has no server/chat-feedback.js (👍/👎 message ratings)
- * yet, so there is no chat-ratings summary here — only the structured
- * feedback workflow below.
+ * Also includes fetchAdminThumbsSummary(), a thin wrapper over
+ * GET /api/admin/feedback-thumbs — the aggregate 👍/👎 counts from
+ * server/chat-feedback.js (per-message response ratings). That store is
+ * separate from the structured bug/suggestion/question workflow below.
  */
 
 import { apiRequest } from './api-client';
@@ -62,5 +63,13 @@ export function updateAdminFeedbackNote(id: string, note: string) {
   return apiRequest<{ ok: boolean; feedback: FeedbackEntry }>(`/api/admin/feedback/${encodeURIComponent(id)}/note`, {
     method: 'PATCH',
     body: JSON.stringify({ note }),
+  });
+}
+
+export type ThumbsSummary = { total: number; up: number; down: number };
+
+export async function fetchAdminThumbsSummary(): Promise<{ ok: boolean; thumbs: ThumbsSummary }> {
+  return apiRequest<{ ok: boolean; thumbs: ThumbsSummary }>('/api/admin/feedback-thumbs', {
+    method: 'GET',
   });
 }

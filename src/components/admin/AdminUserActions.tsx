@@ -507,8 +507,21 @@ export default function AdminUserActions({ userId, actorUserId }: { userId: stri
     refresh(); // authoritative refresh, never optimistic local state
   }
 
-  if (loading) return <p className="text-sm text-[#8b93a3]">Yükleniyor…</p>;
-  if (loadError || !detail) return <p className="text-sm text-red-300/80">{loadError ?? 'User not found.'}</p>;
+  if (loading) {
+    return (
+      <div className="mt-6 space-y-2.5" aria-busy="true" aria-live="polite">
+        <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" />
+        <div className="animate-pulse-subtle h-14 rounded-xl bg-white/[0.04]" style={{ animationDelay: '150ms' }} />
+      </div>
+    );
+  }
+  if (loadError || !detail) {
+    return (
+      <div className="mt-6 rounded-xl border border-red-400/25 bg-red-500/[0.05] px-4 py-3">
+        <p className="text-sm text-red-300/85">{loadError ?? 'User not found.'}</p>
+      </div>
+    );
+  }
 
   const isActivePrime = detail.plan === 'premium' && detail.subscriptionStatus === 'active';
   const isExpired = detail.subscriptionStatus === 'expired' || detail.subscriptionStatus === 'canceled';

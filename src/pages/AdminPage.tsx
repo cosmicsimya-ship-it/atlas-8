@@ -10,7 +10,7 @@ function AdminVerifiedPanel({ profile }: { profile: AdminMeResponse }) {
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(26,21,48,0.55),transparent_55%),radial-gradient(ellipse_at_80%_20%,rgba(11,18,32,0.7),transparent_50%)]"
       />
-      <div className="relative mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-16">
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-10 sm:px-6 sm:py-16 lg:px-8">
         <p className="font-brand text-[11px] uppercase tracking-[0.28em] text-[#8b93a3]">ATLAS Admin</p>
         <h1 className="mt-4 font-display text-4xl font-medium tracking-tight text-[#eef1f5] sm:text-5xl">
           Admin erişimi doğrulandı
@@ -20,7 +20,7 @@ function AdminVerifiedPanel({ profile }: { profile: AdminMeResponse }) {
           aşağıda; ham kişisel içerik (hafıza, görsel, ses) veya gizli anahtarlar gösterilmez.
         </p>
 
-        <dl className="mt-10 space-y-4 border-t border-white/10 pt-8 text-sm">
+        <dl className="mt-10 grid gap-x-8 gap-y-4 border-t border-white/10 pt-8 text-sm sm:grid-cols-2">
           <div className="flex flex-col gap-1 sm:flex-row sm:justify-between">
             <dt className="text-[#8b93a3]">Kullanıcı</dt>
             <dd className="font-medium text-[#e8ecf2]">{profile.username ?? '—'}</dd>
