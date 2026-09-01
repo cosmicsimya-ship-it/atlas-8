@@ -158,19 +158,34 @@ export function deleteSubscription(userId) {
 
 /**
  * Whether subscription currently grants Premium plan.
+ *
+ * A user who cancels renewal at period end keeps Premium until the paid
+ * currentPeriodEnd. This intentionally tolerates legacy cancellation records
+ * that were written as plan=free/status=canceled while retaining the paid
+ * period end; once that timestamp passes, Premium is revoked automatically.
+ *
  * @param {object|null} sub
  */
 export function subscriptionGrantsPremium(sub) {
   if (!sub) return false;
+
+  const end = sub.currentPeriodEnd ? Date.parse(sub.currentPeriodEnd) : NaN;
+  const hasFinitePeriodEnd = Number.isFinite(end);
+  const paidPeriodStillOpen = hasFinitePeriodEnd && end >= Date.now();
+  const scheduledCancellationStillPaid =
+    sub.status === 'canceled' &&
+    Boolean(sub.cancelAtPeriodEnd) &&
+    paidPeriodStillOpen;
+
+  if (scheduledCancellationStillPaid) return true;
+
   if (sub.plan !== ATLAS_PLANS.PREMIUM) return false;
   if (!PREMIUM_ACTIVE_STATUSES.includes(sub.status)) return false;
-  if (sub.currentPeriodEnd) {
-    const end = Date.parse(sub.currentPeriodEnd);
-    if (Number.isFinite(end) && end < Date.now() && sub.status !== 'trialing') {
-      // Explicit end in the past → treat as expired unless still trialing window
-      if (sub.status === 'active' || sub.status === 'past_due') return false;
-    }
+
+  if (hasFinitePeriodEnd && end < Date.now() && sub.status !== 'trialing') {
+    return false;
   }
+
   return true;
 }
 
