@@ -25,6 +25,71 @@ const RETRYABLE = new Set([
 ]);
 
 /**
+ * Single source of truth for the backend's total per-request provider time
+ * budget (initial attempt + retry + completeness retry all share this — see
+ * withProviderRetry's `budget` option and atlas-message-service.js's LLM
+ * call site). Deliberately kept below the frontend's own request timeout
+ * (src/config.ts REQUEST_TIMEOUT_MS = 120_000) so the backend can always
+ * finish — with a genuine success OR its own controlled fallback reply —
+ * before the frontend's AbortController gives up and the response is
+ * discarded client-side. ~20s of margin is left for everything outside the
+ * provider call itself (pipeline overhead, JSON serialization, network).
+ *
+ * This bounds RETRIES; it does not raise the per-attempt provider timeout
+ * and does not mask genuine provider slowness — a call that would have
+ * failed anyway still fails, just without silently costing the user
+ * 2-3x the advertised timeout on top.
+ */
+export const TOTAL_PROVIDER_BUDGET_MS = 100_000;
+
+/**
+ * Do not start a new provider attempt (a fresh retry, or the completeness
+ * retry) if less than this much of the total budget remains — there would
+ * not be a realistic chance of the provider answering in time anyway, and
+ * starting one would just delay the user's fallback for no benefit.
+ */
+export const MIN_RETRY_BUDGET_MS = 3_000;
+
+/**
+ * Create a deadline tracker for one user request's provider work. Pass the
+ * SAME instance into every callOpenAI-style call and into withProviderRetry
+ * for that request so the initial attempt, its retry, and any completeness
+ * retry all draw down one shared clock instead of each getting a fresh
+ * full timeout.
+ * @param {number} [totalMs]
+ */
+export function createProviderBudget(totalMs = TOTAL_PROVIDER_BUDGET_MS) {
+  const startedAt = performance.now();
+  const totalBudgetMs = Math.max(0, totalMs);
+  const deadline = startedAt + totalBudgetMs;
+  return {
+    totalBudgetMs,
+    startedAt,
+    /** Milliseconds left before the shared deadline, floored at 0. */
+    remainingMs() {
+      return Math.max(0, deadline - performance.now());
+    },
+    /** Milliseconds already spent since this budget was created. */
+    elapsedMs() {
+      return Math.max(0, performance.now() - startedAt);
+    },
+    /** True once the shared deadline has passed. */
+    expired() {
+      return performance.now() >= deadline;
+    },
+    /**
+     * Timeout to hand a single provider call: never more than
+     * `preferredMs` (e.g. OPENAI_TIMEOUT_MS), never more than what's left
+     * of the total budget.
+     * @param {number} preferredMs
+     */
+    attemptTimeoutMs(preferredMs) {
+      return Math.max(0, Math.min(preferredMs, this.remainingMs()));
+    },
+  };
+}
+
+/**
  * @param {unknown} err
  * @returns {{
  *   category: string,
@@ -43,6 +108,25 @@ export function classifyProviderError(err) {
         : null;
   const name = String(err?.name || '');
   const lower = message.toLowerCase();
+
+  // openai-client.js tags empty/incomplete-output failures with a synthetic
+  // `status: 502` purely so generic HTTP-status consumers treat them as a
+  // server-side problem — it does NOT mean OpenAI actually returned a 502.
+  // Those errors also carry an unambiguous `err.code`
+  // (EMPTY_RESPONSE / INCOMPLETE_RESPONSE). That code must be checked BEFORE
+  // the httpStatus-based branches below, otherwise the synthetic 502 makes
+  // every empty/incomplete-output failure fall into the 502/503/504 branch
+  // and get misclassified as PROVIDER_UNAVAILABLE (a real network/server
+  // outage) instead of INVALID_PROVIDER_RESPONSE (a content-shape problem) —
+  // silently making the "empty output" message match below dead code.
+  if (err?.code === 'EMPTY_RESPONSE' || err?.code === 'INCOMPLETE_RESPONSE') {
+    return {
+      category: ERROR_CATEGORIES.INVALID_PROVIDER_RESPONSE,
+      httpStatus,
+      retryEligible: false,
+      message,
+    };
+  }
 
   if (
     name === 'AbortError' ||
@@ -203,6 +287,9 @@ export function sleep(ms) {
  *   model?: string|null,
  *   retryEligible?: boolean,
  *   outcome: 'success'|'retry'|'failure',
+ *   totalBudgetMs?: number|null,
+ *   remainingBudgetMs?: number|null,
+ *   attemptTimeoutMs?: number|null,
  * }} info
  */
 export function logProviderAttempt(info) {
@@ -218,13 +305,30 @@ export function logProviderAttempt(info) {
       ` provider=${info.provider || 'n/a'}` +
       ` model=${info.model || 'n/a'}` +
       ` retryEligible=${Boolean(info.retryEligible)}` +
-      ` outcome=${info.outcome}`,
+      ` outcome=${info.outcome}` +
+      ` totalBudgetMs=${info.totalBudgetMs ?? 'n/a'}` +
+      ` remainingBudgetMs=${info.remainingBudgetMs ?? 'n/a'}` +
+      ` attemptTimeoutMs=${info.attemptTimeoutMs ?? 'n/a'}`,
   );
 }
 
 /**
  * Invoke a provider fn with at most 2 total attempts for transient failures.
  * Does not touch memory/persistence — caller must invoke only around I/O.
+ *
+ * When `opts.budget` is supplied (a createProviderBudget() instance), the
+ * initial attempt, the retry, and — via the SAME budget instance passed to a
+ * later completeness-retry call site — any completeness retry all draw down
+ * ONE shared total-request clock instead of each getting an independent
+ * fresh per-attempt timeout:
+ *   - No new attempt is started once the budget has expired.
+ *   - A retry is only taken if enough budget remains (opts.minRetryBudgetMs,
+ *     default MIN_RETRY_BUDGET_MS) to make it worth trying.
+ *   - The backoff sleep between attempts is capped so it can't itself run
+ *     the budget out.
+ * This bounds retries; it does not change per-attempt timeout enforcement,
+ * which the caller performs itself (e.g. by passing budget.attemptTimeoutMs(...)
+ * as `timeoutMs` into the underlying provider call inside `invoke`).
  *
  * @template T
  * @param {() => Promise<T>} invoke
@@ -237,17 +341,61 @@ export function logProviderAttempt(info) {
  *   maxAttempts?: number,
  *   backoffMs?: number,
  *   onRetry?: (info: object) => void,
+ *   budget?: ReturnType<typeof createProviderBudget>|null,
+ *   minRetryBudgetMs?: number,
+ *   providerTimeoutMs?: number,
  * }} opts
  * @returns {Promise<{ result: T, attempts: number, lastClassification: object|null }>}
  */
 export async function withProviderRetry(invoke, opts) {
   const maxAttempts = Math.max(1, Math.min(2, opts.maxAttempts ?? 2));
   const backoffMs = Math.max(0, opts.backoffMs ?? 400);
+  const budget = opts.budget ?? null;
+  const minRetryBudgetMs = Math.max(0, opts.minRetryBudgetMs ?? MIN_RETRY_BUDGET_MS);
   let lastClassification = null;
   let attempt = 0;
 
   while (attempt < maxAttempts) {
     attempt += 1;
+
+    if (budget && budget.expired()) {
+      // The shared total-request budget ran out before this attempt could
+      // even start (e.g. fully consumed by a prior attempt + backoff). Do
+      // NOT start a new provider call — there is no realistic chance of a
+      // useful response, and starting one would just delay the user's
+      // fallback. Surface this through the existing TIMEOUT classification
+      // path (name: 'TimeoutError') rather than inventing a new outcome, so
+      // downstream error handling / fallback text is completely unchanged.
+      const totalBudgetMs = budget.totalBudgetMs;
+      const remainingBudgetMs = budget.remainingMs();
+      logProviderAttempt({
+        requestId: opts.requestId,
+        channel: opts.channel,
+        route: opts.route,
+        attempt,
+        maxAttempts,
+        category: ERROR_CATEGORIES.PROVIDER_TIMEOUT,
+        httpStatus: 408,
+        elapsedMs: 0,
+        provider: opts.provider || null,
+        model: opts.model || null,
+        retryEligible: false,
+        outcome: 'failure',
+        totalBudgetMs,
+        remainingBudgetMs,
+        attemptTimeoutMs: 0,
+      });
+      const budgetErr = new Error('Provider request budget exhausted before this attempt could start');
+      budgetErr.name = 'TimeoutError';
+      budgetErr.status = 408;
+      budgetErr.errorCategory = ERROR_CATEGORIES.PROVIDER_TIMEOUT;
+      budgetErr.retryEligible = false;
+      throw budgetErr;
+    }
+
+    const attemptTimeoutMs = budget
+      ? budget.attemptTimeoutMs(opts.providerTimeoutMs ?? Number.POSITIVE_INFINITY)
+      : (opts.providerTimeoutMs ?? null);
     const t0 = performance.now();
     try {
       const result = await invoke();
@@ -265,14 +413,22 @@ export async function withProviderRetry(invoke, opts) {
         model: opts.model || result?.model || null,
         retryEligible: false,
         outcome: 'success',
+        totalBudgetMs: budget ? budget.totalBudgetMs : null,
+        remainingBudgetMs: budget ? budget.remainingMs() : null,
+        attemptTimeoutMs,
       });
       return { result, attempts: attempt, lastClassification: null };
     } catch (err) {
       const classification = classifyProviderError(err);
       lastClassification = classification;
       const elapsedMs = Math.round(performance.now() - t0);
+      const remainingBudgetMs = budget ? budget.remainingMs() : null;
+      const hasBudgetForRetry = !budget || remainingBudgetMs > minRetryBudgetMs;
       const canRetry =
-        attempt < maxAttempts && classification.retryEligible && isRetryEligibleCategory(classification.category);
+        attempt < maxAttempts &&
+        classification.retryEligible &&
+        isRetryEligibleCategory(classification.category) &&
+        hasBudgetForRetry;
 
       logProviderAttempt({
         requestId: opts.requestId,
@@ -287,6 +443,9 @@ export async function withProviderRetry(invoke, opts) {
         model: opts.model || null,
         retryEligible: canRetry,
         outcome: canRetry ? 'retry' : 'failure',
+        totalBudgetMs: budget ? budget.totalBudgetMs : null,
+        remainingBudgetMs,
+        attemptTimeoutMs,
       });
 
       if (!canRetry) {
@@ -302,7 +461,11 @@ export async function withProviderRetry(invoke, opts) {
         classification,
         requestId: opts.requestId,
       });
-      await sleep(backoffMs * attempt);
+      const desiredBackoffMs = backoffMs * attempt;
+      const cappedBackoffMs = budget
+        ? Math.max(0, Math.min(desiredBackoffMs, budget.remainingMs()))
+        : desiredBackoffMs;
+      await sleep(cappedBackoffMs);
     }
   }
 

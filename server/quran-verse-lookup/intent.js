@@ -139,3 +139,35 @@ Doğrulanmış ayet payload’ı (Arapça / meal / sure:âyet metni) yoksa YASAK
 Kaynak yoksa kullanıcıya kontrollü “doğrulayamadım / aktaramıyorum” çerçevesinde kal;
 tahmin ederek ayet yazma.`;
 }
+
+/**
+ * Baseline guard for every other LLM path (plain conversation, history,
+ * comparative religion) where the user never opened explicit Qur’an context
+ * and none of the narrower guards above already fired. Unlike
+ * buildNoSpontaneousQuranDirective(), this does NOT forbid mentioning
+ * Qur’an/Islam/tafsir/hadith as topics — a factual or comparative-religion
+ * answer legitimately needs to. It only forbids fabricating a specific
+ * citation (surah:ayah number, quoted Arabic/meal text) without verified data.
+ */
+export function buildGeneralScriptureCitationGuard() {
+  return `[SCRIPTURE CITATION GUARD — NO VERIFIED PAYLOAD THIS TURN]
+Bu turda doğrulanmış ayet/sure numarası verisi yok.
+Bu yanıtta YASAK:
+- Belirli bir sure:âyet numarası uydurmak (ör. “Bakara 2:255” gibi kesin bir referans vermek)
+- Ayet metnini veya mealini tırnak içinde alıntı gibi yazmak
+- Tefsiri, hadisi veya sonradan gelişmiş anlatıyı doğrudan Kur’an metniymiş gibi sunmak
+İzin verilen: din, kavram veya tarihsel bağlam hakkında genel bilgi vermek. Kesin ayet numarası
+veya alıntı gerekiyorsa, doğrulayamadığını aç sözle belirt; kesin referans uydurma.`;
+}
+
+/**
+ * Single place that decides which scripture-citation directive (if any)
+ * applies this turn — extracted so routing/prompt-injection logic can be
+ * unit-tested without running the full pipeline.
+ * @param {{ needsQuranContentGuard: boolean, quranContextActive: boolean }} flags
+ */
+export function selectScriptureCitationDirective({ needsQuranContentGuard, quranContextActive }) {
+  if (needsQuranContentGuard) return buildNoSpontaneousQuranDirective();
+  if (quranContextActive) return buildQuranFailClosedDirective();
+  return buildGeneralScriptureCitationGuard();
+}

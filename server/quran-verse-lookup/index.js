@@ -8,6 +8,8 @@ export {
   isQuranContextActive,
   buildNoSpontaneousQuranDirective,
   buildQuranFailClosedDirective,
+  buildGeneralScriptureCitationGuard,
+  selectScriptureCitationDirective,
 } from './intent.js';
 export {
   parseQuranVerseLookup,
@@ -28,6 +30,7 @@ export {
 } from './retrieve.js';
 export {
   tryDeterministicQuranVerseReply,
+  tryQuranTopicReply,
   shouldShortCircuitQuranVerseLookup,
   buildQuranVerseLookupReply,
   MSG_SOURCE_UNAVAILABLE,
@@ -36,6 +39,8 @@ export {
   MSG_UNPARSEABLE,
   MSG_TIMEOUT,
   MSG_MALFORMED,
+  MSG_TOPIC_SOURCE_UNAVAILABLE,
+  MSG_TOPIC_UNSUPPORTED,
 } from './reply.js';
 export {
   createVerseStore,
@@ -51,3 +56,24 @@ export {
   sanitizeGroundedQuranExplanation,
   resolveContextualQuranReference,
 } from './explanation.js';
+
+export {
+  detectQuranTopicIntent,
+  TOPIC_VERSE_INDEX,
+  TOPIC_DISPLAY_LABEL,
+} from './topic-index.js';
+
+export {
+  extractExplicitQuranCitations,
+  verifyQuranCitationsInReply,
+  CITATION_UNVERIFIED_FALLBACK,
+} from './citation-verify.js';
+
+export {
+  verifyQuranCitationSemantics,
+  verifySemanticRelevance,
+  findClaimSentenceForCitation,
+  extractContentKeywords,
+  computeKeywordOverlap,
+  SEMANTIC_SUPPORT_UNVERIFIED_FALLBACK,
+} from './semantic-verify.js';

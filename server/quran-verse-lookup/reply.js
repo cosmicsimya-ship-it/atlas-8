@@ -16,6 +16,12 @@ import {
   sanitizeGroundedQuranExplanation,
   wantsQuranExplanation,
 } from './explanation.js';
+import {
+  detectQuranTopicIntent,
+  TOPIC_VERSE_INDEX,
+  TOPIC_DISPLAY_LABEL,
+} from './topic-index.js';
+import { runTopicRetrieval } from '../knowledge-domains/topic-retrieval.js';
 
 export const MSG_SOURCE_UNAVAILABLE =
   'Ayet metnini güvenilir kaynaktan doğrulayamadığım için aktarmıyorum. Kur’an ayetlerini model hafızasından üretmem; yanlış ayet vermemek için bu isteği şu anda güvenilir biçimde karşılayamıyorum.';
@@ -34,6 +40,15 @@ export const MSG_TIMEOUT =
 
 export const MSG_MALFORMED =
   'Ayet kaynağından gelen yanıt doğrulanamadığı için metni aktarmıyorum.';
+
+export const MSG_TOPIC_SOURCE_UNAVAILABLE =
+  'Bu konuyla ilgili ayetleri güvenilir kaynaktan doğrulayamadığım için paylaşmıyorum. ' +
+  'Kur’an ayetlerini model hafızasından üretmem; yanlış ayet vermemek için bu isteği şu anda ' +
+  'güvenilir biçimde karşılayamıyorum.';
+
+export const MSG_TOPIC_UNSUPPORTED =
+  'Bu konu için doğrulanmış, güvenilir bir ayet seti henüz oluşturamadım. Belirli bir sure ve ' +
+  'ayet numarası biliyorsan onu doğrudan sorabilirsin (ör. “2:255” veya “Fâtır 35:6”).';
 /**
  * @param {import('./retrieve.js').VerseRetrievalResult} retrieved
  * @param {import('./parse.js').ParsedVerseLookup} parsed
@@ -193,6 +208,112 @@ export async function tryDeterministicQuranVerseReply(input) {
         parse_ok: parsed.parse_ok,
         validation_ok: parsed.validation_ok,
         explanation_generated: Boolean(explanation),
+      },
+      model: 'deterministic',
+      provider: 'atlas-quran-verse-lookup',
+      tokensUsed: 0,
+      costUsd: 0,
+      latencyMs: 0,
+    },
+  };
+}
+
+/** Small ranked set — never dump the whole curated list into one reply. */
+const MAX_TOPIC_VERSES = 3;
+
+/**
+ * Topic-based verse retrieval — a separate path from explicit-reference
+ * lookup above. Only reached when detectQuranTopicIntent() recognizes a
+ * "<topic> hakkında/ile ilgili ayet(ler)" question; the caller is
+ * responsible for trying explicit-reference lookup FIRST so an explicit
+ * "2:255 nedir?" is never diverted here (see atlas-message-service.js).
+ *
+ * Every candidate reference from the curated index still goes through
+ * parseQuranVerseLookup + retrieveVerifiedVerse — the index only decides
+ * WHICH references to attempt; nothing is shown unless independently
+ * verified. Fails closed (no result at all) if the topic is unrecognized
+ * or none of its candidates verify.
+ * @param {{ message: string, verseStore?: import('./retrieve.js').VerseStore|null, retrieveOpts?: object, explainVerse?: Function }} input
+ */
+function formatVerifiedQuranTopicItems(items, topicKey) {
+  const label = TOPIC_DISPLAY_LABEL[topicKey] ?? topicKey;
+  const lines = [`“${label}” konusuyla ilgili doğrulanmış ayetler:`, ''];
+  for (const v of items) {
+    lines.push(
+      `${v.retrieved.surah_name} ${v.retrieved.surah_number}:${v.retrieved.ayah_number} (doğrulanmış kaynak)`,
+    );
+    if (v.retrieved.arabic) lines.push('', 'Arapça:', v.retrieved.arabic);
+    if (v.retrieved.translation) {
+      lines.push('', `Meal (${v.retrieved.translation_source}):`, v.retrieved.translation);
+    }
+    if (v.explanation) lines.push('', 'Açıklaması:', v.explanation);
+    lines.push('', '—', '');
+  }
+  lines.push(
+    'Not: Bu metinler Atlas yorumu veya tefsir değildir; yalnızca doğrulanmış kaynaktan aktarılmıştır.',
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Qur'an's TopicRetrievalHandler — the generalizable shape lives in
+ * knowledge-domains/topic-retrieval.js; this is the thin, domain-specific
+ * plug-in. Reused as-is by any future caller of the generic engine.
+ * @type {import('../knowledge-domains/topic-retrieval.js').TopicRetrievalHandler}
+ */
+const quranTopicHandler = {
+  domain: 'quran',
+  detectTopic: detectQuranTopicIntent,
+  getCandidates: (topicKey) => TOPIC_VERSE_INDEX[topicKey] ?? [],
+  async verifyCandidate(ref, input) {
+    const parsed = parseQuranVerseLookup(ref);
+    if (!parsed.parse_ok || !parsed.validation_ok) return { verified: false }; // defense-in-depth only
+    const retrieved = await retrieveVerifiedVerse(parsed, input?.verseStore ?? null, {
+      ...(input?.retrieveOpts ?? {}),
+    });
+    if (retrieved.verified !== true) return { verified: false }; // only verified verses ever surface
+
+    let explanation = null;
+    if (typeof input?.explainVerse === 'function') {
+      try {
+        const generated = await input.explainVerse({
+          ...retrieved,
+          prompt: buildGroundedQuranExplanationPrompt(retrieved),
+        });
+        explanation = sanitizeGroundedQuranExplanation(generated, retrieved);
+      } catch (err) {
+        console.warn(
+          `[Quran] topic explanation failed for ${parsed.verse_key}: ${err?.message ?? err}`,
+        );
+      }
+    }
+    return { verified: true, item: { parsed, retrieved, explanation } };
+  },
+  formatVerified: formatVerifiedQuranTopicItems,
+  unsupportedTopicMessage: MSG_TOPIC_UNSUPPORTED,
+  sourceUnavailableMessage: MSG_TOPIC_SOURCE_UNAVAILABLE,
+  maxItems: MAX_TOPIC_VERSES,
+};
+
+export async function tryQuranTopicReply(input) {
+  const generic = await runTopicRetrieval(quranTopicHandler, input);
+  if (!generic.handled) return { handled: false };
+
+  const candidateCount = generic.topicKey ? (TOPIC_VERSE_INDEX[generic.topicKey]?.length ?? 0) : 0;
+  return {
+    handled: true,
+    reply: generic.reply,
+    status: generic.status,
+    resultStatus: generic.resultStatus,
+    intent: 'quran_topic_lookup',
+    engine: 'quran-verse-lookup',
+    data: {
+      version: QURAN_VERSE_LOOKUP_VERSION,
+      quranTopicLookup: {
+        topicKey: generic.topicKey,
+        candidateCount,
+        verifiedCount: generic.verifiedItems.length,
+        verseKeys: generic.verifiedItems.map((v) => v.parsed.verse_key),
       },
       model: 'deterministic',
       provider: 'atlas-quran-verse-lookup',
