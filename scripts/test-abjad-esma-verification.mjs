@@ -241,6 +241,50 @@ check('Latin Hüseyin without Arabic asks confirmation', () => {
   assert.equal(result.confidence, 'insufficient');
 });
 
+check('Lara (Latin, no gazetteer match) auto-transliterates and computes (ADR-010)', () => {
+  const spelling = resolveArabicSpelling({ originalInput: 'Lara', latinHint: 'Lara' });
+  assert.equal(spelling.status, 'confirmed');
+  assert.equal(spelling.spellingConfirmed, true);
+  assert.equal(spelling.autoTransliterated, true);
+  assert.equal(spelling.transliterationMethod, 'default-latin-ar-v1');
+  assert.equal(spelling.normalizedArabic, 'لارا');
+  assert.ok(Array.isArray(spelling.transliterationBreakdown));
+  assert.equal(spelling.transliterationBreakdown.length, 4);
+  assert.ok(spelling.disclosures.length >= 1);
+
+  const calc = calculateAbjad(spelling.normalizedArabic, ABJAD_KABIR_CLASSICAL_V1);
+  assert.equal(calc.ok, true);
+  assert.equal(calc.total, 232);
+});
+
+check('Lara ebced chat reply computes immediately, no clarifying question', () => {
+  const result = tryDeterministicAbjadReply({ message: 'Lara isminin ebced değeri kaç?' });
+  assert.ok(result?.reply);
+  assert.match(result.reply, /Toplam\s*=\s*232/);
+  assert.match(result.reply, /L\s*→\s*ل/);
+  assert.doesNotMatch(result.reply, /Arapça yazımı belirtin|onaylar mısın/i);
+  assert.equal(result.confidence, 'high');
+});
+
+check("Lara'nın ebcedi kaç? (possessive suffix form) also resolves the name", () => {
+  const result = tryDeterministicAbjadReply({ message: "Lara'nın ebcedi kaç?" });
+  assert.ok(result?.reply);
+  assert.match(result.reply, /Toplam\s*=\s*232/);
+});
+
+check('gazetteer name (Hüseyin) is unaffected by default transliteration', () => {
+  const spelling = resolveArabicSpelling({ originalInput: 'Hüseyin', latinHint: 'Hüseyin' });
+  assert.equal(spelling.status, 'proposed');
+  assert.equal(spelling.autoTransliterated, false);
+});
+
+check('bare "ebced hesapla" (no captured name) still asks for spelling, does not compute garbage', () => {
+  const result = tryDeterministicAbjadReply({ message: 'ebced hesapla' });
+  assert.ok(result?.reply);
+  assert.match(result.reply, /Arapça yazımı belirtin/i);
+  assert.equal(result.confidence, 'insufficient');
+});
+
 check('calculateAbjad IO contract', () => {
   const out = calculateAbjad('حسين', 'abjad-kabir-classical-v1');
   assert.equal(out.ok, true);
@@ -294,6 +338,25 @@ check('intent detection for objection chain', () => {
   assert.equal(intent.active, true);
   assert.equal(intent.kind, 'user_value_claim');
   assert.equal(intent.esmaClaim.claimedValue, 128);
+});
+
+// Note: "Lara" is intentionally not used here — it is a special-cased
+// founder/identity name in atlas-message-service.js's identity-clarification
+// gate (fires before the abjad gate), so it never reaches abjad-verification
+// in the live pipeline. Any other Latin name exercises the same code path.
+await checkAsync('Telegram flow: Zeynep isminin ebced değeri kaç? (ADR-010 default translit, full pipeline)', async () => {
+  const result = await processAtlasMessage(
+    {
+      channel: 'telegram',
+      message: 'Zeynep isminin ebced değeri kaç?',
+      history: [],
+      conversationId: 'abjad-test-translit-1',
+    },
+    { mode: 'conversational' },
+  );
+  assert.equal(result.engine, 'abjad-verification');
+  assert.doesNotMatch(result.reply, /Arapça yazımı belirtin|onaylar mısın/i);
+  assert.equal(result.data?.abjadVerification?.calcTotal, 71);
 });
 
 await checkAsync('Telegram flow: حسين → 128 via processAtlasMessage', async () => {

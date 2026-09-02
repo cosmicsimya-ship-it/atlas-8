@@ -1,6 +1,11 @@
 /**
  * Resolve Latin/Arabic name input into a classical-abjad spelling contract.
  * User objections are NOT auto-accepted as truth — only confirmed Arabic is calculated.
+ *
+ * Latin-only names with no gazetteer match are resolved via a deterministic
+ * default transliteration (see ADR-010) rather than blocked on a question —
+ * the result is disclosed via `disclosures`, not silently presented as the
+ * one true spelling.
  */
 
 import { ABJAD_KABIR_CLASSICAL_V1 } from './calculate-abjad.js';
@@ -10,6 +15,10 @@ import {
   normalizeLatinNameKey,
   stripArabicMarks,
 } from './data/arabic-name-spellings.js';
+import {
+  DEFAULT_LATIN_TRANSLITERATION_METHOD,
+  transliterateLatinToArabicDefault,
+} from './data/default-latin-arabic-map.js';
 
 const ARABIC_LETTER_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/u;
 
@@ -37,6 +46,10 @@ export function hasArabicLetters(text) {
 }
 
 /**
+ * @typedef {{ latinChar: string, arabicChar: string, value: number }} TransliterationBreakdownEntry
+ */
+
+/**
  * @typedef {{
  *   originalInput: string,
  *   normalizedArabic: string|null,
@@ -45,9 +58,12 @@ export function hasArabicLetters(text) {
  *   calculationMethod: string,
  *   status: 'confirmed'|'proposed'|'rejected_variant'|'needs_confirmation'|'unsupported',
  *   warnings: string[],
+ *   disclosures: string[],
  *   displayLatin: string|null,
  *   rejectedVariant: string|null,
  *   standardArabic: string|null,
+ *   autoTransliterated: boolean,
+ *   transliterationBreakdown: TransliterationBreakdownEntry[]|null,
  * }} SpellingResolution
  */
 
@@ -87,9 +103,12 @@ export function resolveArabicSpelling(input = {}) {
         calculationMethod,
         status: 'rejected_variant',
         warnings,
+        disclosures: [],
         displayLatin: classified.entry.displayLatin,
         rejectedVariant: stripArabicMarks(arabicFromInput),
         standardArabic: classified.entry.standardArabic,
+        autoTransliterated: false,
+        transliterationBreakdown: null,
       };
     }
 
@@ -103,9 +122,12 @@ export function resolveArabicSpelling(input = {}) {
       calculationMethod,
       status: confirmed ? 'confirmed' : 'needs_confirmation',
       warnings,
+      disclosures: [],
       displayLatin: classified?.entry.displayLatin ?? null,
       rejectedVariant: null,
       standardArabic: classified?.entry.standardArabic ?? stripArabicMarks(arabicFromInput),
+      autoTransliterated: false,
+      transliterationBreakdown: null,
     };
   }
 
@@ -122,9 +144,12 @@ export function resolveArabicSpelling(input = {}) {
         calculationMethod,
         status: 'confirmed',
         warnings,
+        disclosures: [],
         displayLatin: entry.displayLatin,
         rejectedVariant: null,
         standardArabic: entry.standardArabic,
+        autoTransliterated: false,
+        transliterationBreakdown: null,
       };
     }
     warnings.push(
@@ -138,13 +163,53 @@ export function resolveArabicSpelling(input = {}) {
       calculationMethod,
       status: 'proposed',
       warnings,
+      disclosures: [],
       displayLatin: entry.displayLatin,
       rejectedVariant: null,
       standardArabic: entry.standardArabic,
+      autoTransliterated: false,
+      transliterationBreakdown: null,
     };
   }
 
+  // Only auto-transliterate when a specific name was actually captured
+  // (input.latinHint) — never for a bare fallback to the whole raw message
+  // (e.g. "ebced hesapla" with no name), which has no name to compute from.
+  const hasExplicitLatinHint = Boolean(input.latinHint && String(input.latinHint).trim());
+
   if (latinKey) {
+    if (hasExplicitLatinHint) {
+      // No explicit Arabic, no gazetteer hit: apply the deterministic default
+      // transliteration and compute immediately (ADR-010) instead of blocking
+      // on a question. The result is disclosed, not presented as the one true
+      // spelling, and user-supplied Arabic / gazetteer hits above still win.
+      const translit = transliterateLatinToArabicDefault(input.latinHint);
+      if (translit.ok) {
+        const displayLatin = input.latinHint || originalInput || latinKey;
+        const breakdownText = translit.breakdown
+          .map((b) => `${b.latinChar}→${b.arabicChar}`)
+          .join(', ');
+        return {
+          originalInput,
+          normalizedArabic: translit.arabicText,
+          transliterationMethod: DEFAULT_LATIN_TRANSLITERATION_METHOD,
+          spellingConfirmed: true,
+          calculationMethod,
+          status: 'confirmed',
+          warnings,
+          disclosures: [
+            `Bu, "${displayLatin}" adının varsayılan Latin→Arapça harf çevirisiyle (${breakdownText}) hesaplanmıştır.`,
+            'Öneriler kutsal/resmî imla belgesi değildir; hesap sonucu farklı bir yazıma göre değişebilir.',
+          ],
+          displayLatin,
+          rejectedVariant: null,
+          standardArabic: null,
+          autoTransliterated: true,
+          transliterationBreakdown: translit.breakdown,
+        };
+      }
+    }
+
     warnings.push(
       'Latin harfli isim doğrudan tahmini Arapça harflere çevrilerek hesaplanmaz. Lütfen Arapça yazımı belirtin.',
     );
@@ -156,9 +221,12 @@ export function resolveArabicSpelling(input = {}) {
       calculationMethod,
       status: 'needs_confirmation',
       warnings,
+      disclosures: [],
       displayLatin: null,
       rejectedVariant: null,
       standardArabic: null,
+      autoTransliterated: false,
+      transliterationBreakdown: null,
     };
   }
 
@@ -170,8 +238,11 @@ export function resolveArabicSpelling(input = {}) {
     calculationMethod,
     status: 'unsupported',
     warnings: ['Hesaplanacak Arapça yazım bulunamadı.'],
+    disclosures: [],
     displayLatin: null,
     rejectedVariant: null,
     standardArabic: null,
+    autoTransliterated: false,
+    transliterationBreakdown: null,
   };
 }

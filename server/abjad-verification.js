@@ -30,7 +30,7 @@ export const ABJAD_VERIFICATION_SYSTEM_RULES = `
 - Kullanıcının düzeltmesi, hesaplama sonucu için kaynak gerçekliği değildir.
 - Her sayısal itirazda harf harf yeniden hesaplama yap (VERIFIED ABJAD / ESMA blokları).
 - Kullanıcıyla uyum sağlamak amacıyla doğrulanmış değeri değiştirme.
-- Latin harfli isimleri tahmini Arapçaya çevirip sessizce hesaplama.
+- Latin harfli isim için Arapça yazım verilmemişse ve eşleşen bir isim kaydı yoksa, varsayılan Latin→Arapça çeviri motorunun sonucunu kullan: onay bekletme, doğrudan hesapla ve harf harf dökümü + alternatif yazım uyarısını göster (ADR-010).
 - Esma adı uydurma; yalnızca doğrulanmış veri seti sonuçlarını kullan.
 - "Tam eşleşme", "yakın değer", "indirgenmiş eşleşme", "geleneksel ilişkilendirme" türlerini karıştırma.
 - LLM zihinsel toplam üretme; yalnızca motor çıktısındaki total / letterBreakdown kullan.
@@ -65,6 +65,38 @@ const REJECT_EBCED_PREREQ_RE =
 
 const NAME_CALC_RE =
   /\b(hüseyin|huseyin|hussain|husayn|muhammed|muhammad|ali)\b/iu;
+
+/**
+ * Generic "<name> isminin ebced ..." / "<name>'nin ebced ..." construction —
+ * captures an arbitrary Latin name for calculation, not just the curated
+ * NAME_CALC_RE whitelist. Feeds the default-transliteration path (ADR-010).
+ */
+const NAME_BEFORE_POSSESSIVE_EBCED_RE =
+  /\b([a-zçğıiöşü]{2,30})(?:['’][a-zçğıiöşü]{0,6})?\s+(?:isminin\s+ebced\w*|ismi\s+ebced\w*|adının\s+ebced\w*|adı\s+ebced\w*)/iu;
+const NAME_APOSTROPHE_EBCED_RE =
+  /\b([a-zçğıiöşü]{2,30})['’][a-zçğıiöşü]{0,6}\s+ebced\w*/iu;
+
+/** Common function/pronoun words that must never be treated as a name hint. */
+const NAME_HINT_STOP_WORDS = new Set([
+  'bu', 'şu', 'o', 'bir', 'ne', 'nasıl', 'kaç', 'hangi', 'benim', 'senin', 'onun',
+  'bizim', 'sizin', 'onların', 'isim', 'ismi', 'ismin', 'ad', 'adı', 'adın',
+  'harf', 'sayı', 'değer', 'değeri', 'toplam', 'hesap', 'hesabı', 'yeniden',
+  'tekrar', 'ebced', 'abjad', 'esma', 'kelimenin', 'kelime', 'sözün', 'söz',
+]);
+
+/**
+ * @param {string} text
+ * @returns {string|null}
+ */
+function extractGenericLatinNameHint(text) {
+  const candidate =
+    text.match(NAME_BEFORE_POSSESSIVE_EBCED_RE)?.[1] ||
+    text.match(NAME_APOSTROPHE_EBCED_RE)?.[1] ||
+    null;
+  if (!candidate || candidate.length < 2) return null;
+  if (NAME_HINT_STOP_WORDS.has(candidate.toLocaleLowerCase('tr-TR'))) return null;
+  return candidate;
+}
 
 /**
  * True when the turn is a personal ebced↔Esma match ask (not zikir recommendation).
@@ -197,6 +229,8 @@ export function detectAbjadEsmaIntent(message, history = []) {
   const hasCalcHint = CALC_HINT_RE.test(text);
   const esmaClaim = extractEsmaValueClaim(text);
   const hasName = NAME_CALC_RE.test(text);
+  const genericLatinName = hasName ? null : extractGenericLatinNameHint(text);
+  const effectiveHasName = hasName || Boolean(genericLatinName);
   const objection = USER_OBJECTION_RE.test(text);
   const lastTotal = extractLastVerifiedTotalFromHistory(history);
   const rejectsEbcedPrereq = REJECT_EBCED_PREREQ_RE.test(text);
@@ -251,17 +285,17 @@ export function detectAbjadEsmaIntent(message, history = []) {
       kind: 'calculate',
       arabicSpans,
       lastTotal,
-      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : null,
+      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : genericLatinName,
     };
   }
 
-  if (hasExplicitEbced && (hasName || arabicSpans.length || /\d{2,4}/.test(text) || hasCalcHint)) {
+  if (hasExplicitEbced && (effectiveHasName || arabicSpans.length || /\d{2,4}/.test(text) || hasCalcHint)) {
     return {
       active: true,
       kind: 'calculate',
       arabicSpans,
       lastTotal,
-      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : null,
+      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : genericLatinName,
     };
   }
 
@@ -272,7 +306,7 @@ export function detectAbjadEsmaIntent(message, history = []) {
       kind: 'calculate',
       arabicSpans,
       lastTotal,
-      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : null,
+      latinHint: hasName ? text.match(NAME_CALC_RE)?.[1] : genericLatinName,
     };
   }
 
@@ -583,11 +617,24 @@ export function runAbjadEsmaVerification(input = {}) {
     });
   }
 
+  const translitLines = spelling.autoTransliterated
+    ? [
+        '',
+        'Varsayılan Latin→Arapça çeviri:',
+        (spelling.transliterationBreakdown || [])
+          .map((b) => `${b.latinChar} → ${b.arabicChar} = ${b.value}`)
+          .join('\n'),
+        '',
+        ...(spelling.disclosures || []),
+      ]
+    : [];
+
   const reply = [
-    `Kullanılan Arapça yazım: ${calc.normalizedText}`,
+    `Kullanılan Arapça yazım${spelling.autoTransliterated ? ' (varsayılan çeviri)' : ''}: ${calc.normalizedText}`,
     `Yöntem: ${calc.methodologyId}`,
     '',
     formatAbjadBreakdown(calc.letters, calc.total),
+    ...translitLines,
   ].join('\n');
 
   return finalize({
