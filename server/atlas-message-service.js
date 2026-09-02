@@ -106,6 +106,11 @@ import {
   MESSAGE_SYNTHESIS_BRIDGE_VERSION,
 } from './cross-layer-synthesis/message-integration.js';
 import {
+  buildDailyThemeSections,
+  formatDailyThemeReply,
+  DAILY_THEME_FORMATTER_VERSION,
+} from './cross-layer-synthesis/daily-theme-formatter.js';
+import {
   applyNarrowReflexPostGuard,
   buildEpistemicSeparationPromptLock,
   buildEvidenceMeaningPromptLock,
@@ -3207,6 +3212,42 @@ evidence=${(semanticLayers.evidence || []).join('|')}`;
     if (astrologyContext.intent === 'date_specific_astrology') {
       rememberSymbolicDomain(conversationId, 'astrology');
     }
+  }
+
+  // ── Daily cross-domain theme synthesis ("bugünün temasını oku") — before generic cross-layer synthesis ──
+  // Fully deterministic (Tarih/Numerolojik örüntü/Hicrî tarih/Ay fazı/Astrolojik
+  // katman/Ortak tema/Atlas sentezi) — short-circuits so the generic synthesis
+  // block below does not also run for the same turn.
+  if (!hasImage && !healthSafety.active && synthesisIntentPre.dailyThemeRequested) {
+    const dailyThemeSections = buildDailyThemeSections({ date: new Date(), message });
+    const dailyThemeReply = formatDailyThemeReply(dailyThemeSections);
+    noteAssistantTurn(conversationId, {
+      reply: dailyThemeReply,
+      intent: 'daily-theme-synthesis',
+      responseMode: 'analysis_request',
+    });
+    return applyPrivacyGuardToResult(
+      {
+        status: 'complete',
+        reply: dailyThemeReply,
+        intent: 'daily-theme-synthesis',
+        engine: 'daily-theme-synthesis',
+        memoryUpdated: false,
+        data: {
+          mode,
+          profile: resolveChatProfile(mode),
+          dailyThemeVersion: DAILY_THEME_FORMATTER_VERSION,
+          model: 'deterministic',
+          provider: 'atlas-daily-theme-synthesis',
+          tokensUsed: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          pipelineDebug,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+      },
+      privacyGuardCtx,
+    );
   }
 
   // ── Cross-layer synthesis (deterministic skeleton before LLM) — at most once ──

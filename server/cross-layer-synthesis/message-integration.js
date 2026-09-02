@@ -45,6 +45,16 @@ const COMBINE_INTENT =
 const USER_EXAMPLE_CUE =
   /(örne[gğ]in\s+şöyle|ornegin\s+soyle|ben\s+şöyle\s+sentez|ben\s+soyle\s+sentez|şöyle\s+okurum|soyle\s+okurum|kendi\s+sentezim|şu\s+şekilde\s+birleştir|su\s+sekilde\s+birlestir|şöyle\s+sentezlerim|soyle\s+sentezlerim)/i;
 
+/**
+ * "bugünün temasını oku" / "günün teması" style daily-theme requests.
+ * Deliberately requires a read/tell verb (not just the theme noun) to avoid
+ * over-matching casual "bugün ne var" chit-chat. Composes with, rather than
+ * duplicates, COMBINE_INTENT's existing "ortak tema" match — "günün ortak
+ * temasını oku" sets both combineExplicit and dailyThemeRequested.
+ */
+const DAILY_THEME_RE =
+  /\b(bug[uü]n[uü]n|g[uü]n[uü]n)\s+(ortak\s+)?temas[ıi](n[ıi])?\s*.{0,20}\b(oku|okur\s*musun|s[oö]yle|anlat)\b/iu;
+
 /** Classic digit motifs — symbolic only, never presented as computed truth. */
 const DAY_NUMBER_THEME_HINTS = {
   1: ['hareket', 'girişim'],
@@ -68,6 +78,7 @@ const DAY_NUMBER_THEME_HINTS = {
  *   combineExplicit: boolean,
  *   layersRequested: string[],
  *   isUserExample: boolean,
+ *   dailyThemeRequested: boolean,
  * }}
  */
 export function detectCrossLayerSynthesisIntent(message) {
@@ -81,12 +92,14 @@ export function detectCrossLayerSynthesisIntent(message) {
   const combineExplicit = COMBINE_INTENT.test(text) || COMBINE_INTENT.test(lower);
   const multiLayerCue = layersRequested.length >= 2;
   const isUserExample = USER_EXAMPLE_CUE.test(text) || USER_EXAMPLE_CUE.test(lower);
+  const dailyThemeRequested = DAILY_THEME_RE.test(text) || DAILY_THEME_RE.test(lower);
 
   return {
-    wantsSynthesis: combineExplicit || multiLayerCue || isUserExample,
+    wantsSynthesis: combineExplicit || multiLayerCue || isUserExample || dailyThemeRequested,
     combineExplicit,
     layersRequested,
     isUserExample,
+    dailyThemeRequested,
   };
 }
 

@@ -367,5 +367,39 @@ function baseInput(message, extras = {}) {
   );
 }
 
+// ── 21. Daily theme detection composes with, doesn't duplicate, "ortak tema" ─
+{
+  const bare = detectCrossLayerSynthesisIntent('bugünün temasını oku');
+  record('21 bare daily-theme detected', bare.dailyThemeRequested === true && bare.wantsSynthesis === true);
+
+  // Note: COMBINE_INTENT's "ortak tema" alternative requires the bare word
+  // "tema" (trailing \b) so it does not match the accusative "temasını" —
+  // a pre-existing regex characteristic, unrelated to this new detector.
+  // What matters here is that dailyThemeRequested fires regardless, with no
+  // collision/interference from COMBINE_INTENT's own (separate) match.
+  const withOrtak = detectCrossLayerSynthesisIntent('günün ortak temasını oku');
+  record('21 daily-theme + "ortak" wording no collision', withOrtak.dailyThemeRequested === true);
+
+  const bareOrtakTema = detectCrossLayerSynthesisIntent('ortak tema nedir, söyle');
+  record(
+    '21 bare "ortak tema" phrasing still sets combineExplicit (regression)',
+    bareOrtakTema.combineExplicit === true,
+  );
+
+  const casual = detectCrossLayerSynthesisIntent('bugün nasılsın');
+  record('21 casual message not daily-theme', casual.dailyThemeRequested === false && casual.wantsSynthesis === false);
+}
+
+// ── 22. Full pipeline: "bugünün temasını oku" returns 7-section structured reply ─
+{
+  const result = await processAtlasMessage(baseInput('bugünün temasını oku'), {});
+  record('22 engine is daily-theme-synthesis', result.engine === 'daily-theme-synthesis');
+  const sections = ['Tarih', 'Numerolojik örüntü', 'Hicrî tarih', 'Ay fazı', 'Astrolojik katman', 'Ortak tema', 'Atlas sentezi'];
+  const allPresentInOrder =
+    sections.every((s) => result.reply?.includes(s)) &&
+    sections.every((s, i) => i === 0 || result.reply.indexOf(sections[i - 1]) < result.reply.indexOf(s));
+  record('22 all 7 sections present in order', allPresentInOrder, sections.join(' | '));
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
