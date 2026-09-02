@@ -1,6 +1,6 @@
 /*
  * North Star visual reconciliation for CosmicShell surfaces.
- * Keeps Lara Prime premium, but prevents gold from becoming a second site identity.
+ * Lara Prime stays premium, but gold is never allowed to become a second page atmosphere.
  */
 
 .north-star-shell {
@@ -13,10 +13,18 @@
   --ns-gold-accent: #bda96f;
 }
 
-/* Large Prime surfaces should remain blue-black instead of drifting into bronze/gold. */
+/* Large Prime surfaces stay blue-black instead of drifting into bronze/gold. */
 .north-star-shell [class*="bg-[#c9b37a]"],
 .north-star-shell [class*="bg-[#d5c184]"] {
   background-color: var(--ns-blue-fill) !important;
+}
+
+/* Tailwind arbitrary gradients are where the remaining warm haze was coming from. */
+.north-star-shell [class*="bg-[radial-gradient"][class*="201,179,122"],
+.north-star-shell [class*="bg-[linear-gradient"][class*="201,179,122"],
+.north-star-shell [class*="bg-[radial-gradient"][class*="213,193,132"],
+.north-star-shell [class*="bg-[linear-gradient"][class*="213,193,132"] {
+  background-image: radial-gradient(ellipse at 50% 35%, rgba(55, 103, 148, 0.10), rgba(20, 48, 78, 0.035) 42%, transparent 72%) !important;
 }
 
 .north-star-shell [class*="border-[#c9b37a]"],
@@ -24,11 +32,13 @@
   border-color: var(--ns-blue-border) !important;
 }
 
-.north-star-shell [class*="shadow-"][class*="201,179,122"] {
+.north-star-shell [class*="shadow-"][class*="201,179,122"],
+.north-star-shell [class*="shadow-"][class*="213,193,132"] {
   --tw-shadow-color: rgba(55, 91, 122, 0.08) !important;
+  box-shadow: 0 20px 64px rgba(22, 48, 74, 0.08) !important;
 }
 
-/* Gold remains only as a small premium notation, not the dominant reading colour. */
+/* Gold survives only as small premium notation: eyebrow/check/label level. */
 .north-star-shell [class*="text-[#c9b37a]"],
 .north-star-shell [class*="text-[#d3c08a]"] {
   color: var(--ns-gold-accent) !important;
