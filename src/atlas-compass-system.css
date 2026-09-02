@@ -42,7 +42,6 @@ html, body, #root { background: var(--atlas-ink); }
   backdrop-filter: blur(10px);
 }
 
-/* Warm metal is annotation only; never a page field. */
 .atlas-compass-shell [class*="text-[#c9b37a]"],
 .atlas-compass-shell [class*="text-[#d3c08a]"],
 .atlas-compass-shell [class*="text-[#d8c48b]"] { color: var(--atlas-warm) !important; }
@@ -78,10 +77,7 @@ html, body, #root { background: var(--atlas-ink); }
 
 .atlas-compass-shell article,
 .atlas-compass-shell table,
-.atlas-compass-shell [class*="rounded-2xl"] {
-  border-color: rgba(228,229,232,.11) !important;
-}
-
+.atlas-compass-shell [class*="rounded-2xl"] { border-color: rgba(228,229,232,.11) !important; }
 .atlas-compass-shell article { background-color: rgba(255,255,255,.018); }
 
 .atlas-compass-shell main > section { position: relative; }
@@ -91,21 +87,18 @@ html, body, #root { background: var(--atlas-ink); }
 .atlas-compass-shell h2,
 .atlas-compass-shell h3 { text-wrap: balance; }
 
-.atlas-compass-shell main h1 {
-  color: var(--atlas-silver-strong) !important;
-  max-width: 18ch;
-}
-
-/* Prevent oversized marketing typography from overwhelming the system. */
+.atlas-compass-shell main h1 { color: var(--atlas-silver-strong) !important; max-width: 18ch; }
 .atlas-compass-shell main h1[class*="text-[clamp"] { font-size: clamp(2.7rem, 6vw, 4.8rem) !important; line-height: .98 !important; }
 
-.atlas-compass-rule {
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(235,236,238,.36), transparent);
-}
+/* Internal Atlas OS inherits the same material system. */
+.atlas-compass-shell .bg-atlas-bg { background-color: #040405 !important; }
+.atlas-compass-shell .bg-atlas-surface { background-color: rgba(255,255,255,.025) !important; }
+.atlas-compass-shell .bg-atlas-surface2 { background-color: rgba(255,255,255,.04) !important; }
+.atlas-compass-shell .border-atlas-border { border-color: rgba(228,229,232,.10) !important; }
+.atlas-compass-shell .text-atlas-accent { color: #d8d9dc !important; }
+.atlas-compass-shell .text-atlas-text { color: #ececea !important; }
+.atlas-compass-shell .text-atlas-text-dim { color: #8f9298 !important; }
+.atlas-compass-shell [class*="bg-atlas-accent"] { background-color: rgba(255,255,255,.055) !important; }
 
-.atlas-compass-eyebrow {
-  color: #aeb0b5;
-  letter-spacing: .32em;
-  text-transform: uppercase;
-}
+.atlas-compass-rule { height: 1px; background: linear-gradient(90deg, transparent, rgba(235,236,238,.36), transparent); }
+.atlas-compass-eyebrow { color: #aeb0b5; letter-spacing: .32em; text-transform: uppercase; }
