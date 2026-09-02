@@ -180,6 +180,10 @@ import {
   logSelfProfileDebug,
 } from './conversation-context-engine.js';
 import {
+  detectGeneralRepairSignal,
+  GENERAL_NEGATIVE_REACTION_RE,
+} from './general-repair-signal.js';
+import {
   evaluateActivation,
   CONVERSATION_ACTIVATION_VERSION,
 } from './conversation-activation.js';
@@ -1936,6 +1940,12 @@ export async function processAtlasMessage(input, options = {}) {
         intent: numerologyFlow.intent,
         responseMode: 'numerology_analysis',
         symbolicDomain: 'numerology',
+        engineInvocation: {
+          engine: numerologyFlow.engine || 'numerology-engine',
+          intent: numerologyFlow.intent,
+          status: 'ok',
+          inputSummary: message.slice(0, 160),
+        },
       });
       rememberSymbolicDomain(conversationId, 'numerology');
       const styleDebug = buildStyleRuntimeDebug({
@@ -2294,6 +2304,78 @@ export async function processAtlasMessage(input, options = {}) {
       },
       privacyGuardCtx,
     );
+  }
+
+  // ── General repair-signal resumption (negative reaction to a failed/ambiguous engine turn) ──
+  // Distinct from the narrow zodiac/property repair path already handled inside
+  // tryResolveConversationContext above. Only resumes when the last engine turn
+  // was NOT 'ok' — an ok result being called "wrong" stays on that existing path.
+  if (!hasImage && !healthSafety.active) {
+    const repairState = getConversationState(conversationId);
+    const repairSignal = detectGeneralRepairSignal(message, repairState);
+    if (repairSignal.hasResumableEngine) {
+      const lastEngine = repairSignal.lastEngineInvocation.engine;
+      const remainder = message.replace(GENERAL_NEGATIVE_REACTION_RE, '').trim();
+      let resumedReply = null;
+      let resumedIntent = null;
+      if (remainder.length >= 2 && lastEngine === 'abjad-verification') {
+        const retry = tryDeterministicAbjadReply({ message: remainder, history });
+        if (retry?.reply) {
+          resumedReply = retry.reply;
+          resumedIntent = `abjad:${retry.intent?.kind || 'verify'}`;
+        }
+      } else if (remainder.length >= 2 && lastEngine === 'numerology-engine') {
+        const retry = tryNumerologyFlowReply({
+          message: remainder,
+          history,
+          userId,
+          conversationId,
+          now: new Date(),
+        });
+        if (retry?.handled && retry.reply) {
+          resumedReply = retry.reply;
+          resumedIntent = retry.intent;
+        }
+      }
+
+      if (!resumedReply) {
+        const engineLabel =
+          lastEngine === 'abjad-verification'
+            ? 'Ebced hesaplaması'
+            : lastEngine === 'numerology-engine'
+              ? 'Numeroloji analizi'
+              : lastEngine;
+        resumedReply = `${engineLabel} ile ilgili bir sorun mu oldu? Neyi düzeltmemi istersin — ismi mi, tarihi mi?`;
+        resumedIntent = 'general_repair:clarify';
+      }
+
+      noteAssistantTurn(conversationId, {
+        reply: resumedReply,
+        intent: resumedIntent,
+      });
+      return applyPrivacyGuardToResult(
+        {
+          status: 'complete',
+          reply: resumedReply,
+          intent: resumedIntent,
+          engine: 'general-repair-signal',
+          memoryUpdated: false,
+          data: {
+            mode,
+            profile: resolveChatProfile(mode),
+            resumedEngine: lastEngine,
+            model: 'deterministic',
+            provider: 'atlas-general-repair-signal',
+            tokensUsed: 0,
+            costUsd: 0,
+            latencyMs: 0,
+            pipelineDebug,
+            pipelineVersion: PIPELINE_VERSION,
+          },
+        },
+        privacyGuardCtx,
+      );
+    }
   }
 
   // ── Identity clarification (before founder-privacy biography short-circuit) ──
@@ -2670,6 +2752,16 @@ export async function processAtlasMessage(input, options = {}) {
       // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
       const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
       if (abjadDeterministic?.reply) {
+        noteAssistantTurn(conversationId, {
+          reply: abjadDeterministic.reply,
+          intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+          engineInvocation: {
+            engine: 'abjad-verification',
+            intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+            status: abjadDeterministic.confidence === 'insufficient' ? 'ambiguous' : 'ok',
+            inputSummary: message.slice(0, 160),
+          },
+        });
         return applyPrivacyGuardToResult(
           {
             status: 'complete',

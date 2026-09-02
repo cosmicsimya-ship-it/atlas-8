@@ -674,6 +674,25 @@ assert(
   tryDeterministicConversationReply({ message: 'Atlas' })?.reply === 'Buradayım.',
 );
 
+// General repair signal (distinct from the zodiac-scoped REPAIR_RE above)
+console.log('\n--- General repair signal ---');
+{
+  const { detectGeneralRepairSignal } = await import('../server/general-repair-signal.js');
+  const errorState = { lastEngineInvocation: { engine: 'abjad-verification', status: 'ambiguous' } };
+  const okState = { lastEngineInvocation: { engine: 'abjad-verification', status: 'ok' } };
+
+  const resumable = detectGeneralRepairSignal('tövbe yarabbi', errorState);
+  assert('tövbe yarabbi + ambiguous last turn → resumable', resumable.hasResumableEngine === true);
+
+  const notResumable = detectGeneralRepairSignal('tövbe yarabbi', okState);
+  assert('tövbe yarabbi + ok last turn → not resumable (stays on zodiac-repair path)', notResumable.hasResumableEngine === false);
+
+  const noState = detectGeneralRepairSignal('tövbe yarabbi', null);
+  assert('tövbe yarabbi + no prior engine turn → not resumable', noState.hasResumableEngine === false);
+
+  const noMatch = detectGeneralRepairSignal('merhaba nasılsın', errorState);
+  assert('unrelated casual message does not match', noMatch.matched === false);
+}
 const failed = results.filter((r) => !r.pass);
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===\n`);
 if (failed.length) {

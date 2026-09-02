@@ -66,6 +66,7 @@ export const CONVERSATION_CONTEXT_VERSION = 'conversation-context-engine-v1';
  *   participantFactsByTelegramId: Record<string, Record<string, { value: string, source: string, temporary?: boolean, updatedAt: string }>>,
  *   pendingSlot: { field: string, subjectDisplayName?: string|null, subjectUserId?: string|null, askedAt: string }|null,
  *   openTopicCollect: { topic: string, collected: Record<string, string> }|null,
+ *   lastEngineInvocation: { engine: string, intent: string, status: 'ok'|'error'|'ambiguous', inputSummary: string|null, timestamp: string }|null,
  *   updatedAt: string|null,
  * }} ConversationState
  */
@@ -220,6 +221,7 @@ export function createEmptyConversationState() {
     participantFactsByTelegramId: {},
     pendingSlot: null,
     openTopicCollect: null,
+    lastEngineInvocation: null,
     updatedAt: null,
   };
 }
@@ -1083,6 +1085,19 @@ export function noteAssistantTurn(conversationId, info) {
 
   if (info.clearPendingSlot) state.pendingSlot = null;
   if (info.pendingSlot) state.pendingSlot = info.pendingSlot;
+
+  // Which engine/gate handled this turn, for general repair-signal resumption
+  // (see general-repair-signal.js). Additive: populated incrementally by
+  // individual gates, not all of them — absence just means no resumption.
+  if (info.engineInvocation) {
+    state.lastEngineInvocation = {
+      engine: info.engineInvocation.engine ?? null,
+      intent: info.engineInvocation.intent ?? null,
+      status: info.engineInvocation.status ?? 'ok',
+      inputSummary: info.engineInvocation.inputSummary ?? null,
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   // If we said "kayıtlı değil" / "doğrulanmış bilgim yok" for a burç, open slot.
   if (/do[gğ]rulanm[ıi][sş].*yok|kay[ıi]tl[ıi]\s*de[gğ]il/i.test(reply) && /burc/i.test(reply)) {
