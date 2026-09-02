@@ -6,7 +6,8 @@ interface SiteAtmosphereProps {
 
 /**
  * Page-wide visual field for the North Star identity.
- * Near-black, silver depth and restrained warm-metal reflection only.
+ * Deep blue-black, cool optical depth and restrained cobalt accents.
+ * The star system is environmental, not a pasted illustration.
  */
 export default function SiteAtmosphere({ className }: SiteAtmosphereProps) {
   return (
@@ -14,25 +15,24 @@ export default function SiteAtmosphere({ className }: SiteAtmosphereProps) {
       className={cn('pointer-events-none absolute inset-0 overflow-hidden', className)}
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[#030304]" />
+      <div className="absolute inset-0 bg-[#02050a]" />
 
-      {/* Soft silver depth — replaces the previous blue/cyan cast. */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_72%_8%,rgba(221,225,232,0.075)_0%,rgba(135,142,153,0.025)_30%,transparent_62%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_10%_48%,rgba(255,255,255,0.035)_0%,transparent_46%)]" />
+      {/* Primary cool depth: dark enough to stay premium, blue enough to avoid flat black. */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_72%_10%,rgba(39,92,151,0.16)_0%,rgba(18,43,77,0.07)_28%,transparent_61%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_12%_45%,rgba(83,126,172,0.08)_0%,transparent_44%)]" />
+      <div className="absolute inset-x-0 top-[34rem] h-[90rem] bg-[linear-gradient(to_bottom,transparent,rgba(17,37,64,0.12)_34%,rgba(6,18,33,0.18)_58%,transparent_90%)]" />
 
-      {/* Very restrained warm reflection so the old gold language survives only as material depth. */}
-      <div className="absolute inset-x-0 top-[18%] h-[34rem] bg-[radial-gradient(ellipse_at_50%_50%,rgba(201,179,122,0.025),transparent_68%)]" />
+      {/* Large, low-contrast navigation geometry — part of the atmosphere, not a separate image. */}
+      <div className="absolute right-[-25rem] top-[14rem] h-[58rem] w-[58rem] rounded-full border border-[#6ea4d8]/[0.045]" />
+      <div className="absolute right-[-17rem] top-[22rem] h-[42rem] w-[42rem] rounded-full border border-[#8fb8df]/[0.026]" />
+      <div className="absolute right-[2rem] top-[13rem] h-[64rem] w-px bg-[linear-gradient(to_bottom,transparent,rgba(111,160,205,0.055),transparent)] max-md:hidden" />
+      <div className="absolute right-[-1rem] top-[42rem] h-px w-[52rem] bg-[linear-gradient(to_right,transparent,rgba(92,143,190,0.045),transparent)] max-md:hidden" />
 
-      {/* Large compass geometry; intentionally almost subliminal. */}
-      <div className="absolute right-[-24rem] top-[18rem] h-[54rem] w-[54rem] rounded-full border border-white/[0.025]" />
-      <div className="absolute right-[-17rem] top-[25rem] h-[40rem] w-[40rem] rounded-full border border-white/[0.018]" />
-      <div className="absolute right-[2rem] top-[16rem] h-[58rem] w-px bg-[linear-gradient(to_bottom,transparent,rgba(235,238,243,0.035),transparent)] max-md:hidden" />
+      {/* Faint stellar dust; no neon bloom. */}
+      <div className="absolute inset-0 opacity-[0.34] [background-image:radial-gradient(circle_at_20%_18%,rgba(200,220,238,0.36)_0_1px,transparent_1.3px),radial-gradient(circle_at_78%_24%,rgba(129,174,214,0.28)_0_1px,transparent_1.2px),radial-gradient(circle_at_64%_70%,rgba(210,227,242,0.18)_0_1px,transparent_1.2px),radial-gradient(circle_at_31%_76%,rgba(120,165,204,0.18)_0_1px,transparent_1.2px)]" />
 
-      {/* Long page-light, keeping lower sections from turning into flat black cards. */}
-      <div className="absolute inset-x-0 top-[48rem] h-[82rem] bg-[linear-gradient(to_bottom,transparent,rgba(255,255,255,0.012)_32%,rgba(255,255,255,0.022)_52%,transparent_88%)]" />
-
-      <div className="site-grain opacity-[0.035]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,rgba(0,0,0,0.48)_100%)]" />
+      <div className="site-grain opacity-[0.032]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_42%,rgba(0,2,6,0.58)_100%)]" />
     </div>
   );
 }
