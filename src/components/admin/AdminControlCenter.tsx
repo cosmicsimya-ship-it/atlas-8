@@ -4,8 +4,9 @@ import { apiRequest } from '../../services/api-client';
 import AdminUserActions from './AdminUserActions';
 import AdminFeedbackPanel from './AdminFeedbackPanel';
 import AdminErrorsPanel from './AdminErrorsPanel';
+import AdminAgentTasksPanel from './AdminAgentTasksPanel';
 
-type Tab = 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'analytics' | 'health' | 'audit';
+type Tab = 'agent-tasks' | 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'analytics' | 'health' | 'audit';
 
 type AdminUserRow = {
   userId: string;
@@ -80,6 +81,7 @@ type AuditEvent = { eventId: string; timestamp: string; actor: string; action: s
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'agent-tasks', label: 'Agent Tasks' },
   { id: 'feedback', label: 'Feedback' },
   { id: 'errors', label: 'Errors' },
   { id: 'users', label: 'Users' },
@@ -618,6 +620,7 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
       </nav>
       <div className="mt-5 rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.025] to-white/[0.008] p-4 sm:p-6">
         {tab === 'overview' ? <OverviewTab /> : null}
+        {tab === 'agent-tasks' ? <AdminAgentTasksPanel /> : null}
         {tab === 'feedback' ? <AdminFeedbackPanel /> : null}
         {tab === 'errors' ? <AdminErrorsPanel /> : null}
         {tab === 'users' ? <UsersTab actorUserId={actorUserId} /> : null}

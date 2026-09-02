@@ -21,6 +21,14 @@ export const VALID_AGENTS = [
   'critic-engine',
   'quality-engine',
   'core-engine',
+  // AgentOS research pipeline (Phase 1) — distinct roles from the content/
+  // personal-analysis agents above; never share a filename or an identity.
+  'research-atlas-core',
+  'research-core-engine',
+  'research-pattern-engine',
+  'research-critic-engine',
+  'research-quality-engine',
+  'research-visual-engine',
 ];
 
 export function loadAgentPrompt(agentName) {

@@ -36,6 +36,9 @@ import {
   getAdminHealth,
   getAdminAuditLog,
 } from './admin/control-center.js';
+import { createAgentTask } from './agentos/orchestrator.js';
+import { getTask, listTasks, listSubtasks } from './agentos/task-store.js';
+import { cancelAgentTask, approveAgentTaskAction } from './admin/agentos-task-actions.js';
 import {
   grantPrime,
   revokePrime,
@@ -1123,6 +1126,126 @@ app.get(
       return res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[ATLAS] admin/audit error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// AgentOS Task Orchestration (Phase 1) — Admin can create a research/
+// review/implementation-allowed task, pick an owner agent, and watch the
+// real Runner (runner/runner.js) execute it. See server/agentos/. No
+// implementation/commit/push/deploy action ever executes automatically —
+// approveAgentTaskAction() only ever records an approval decision.
+// ═══════════════════════════════════════════════════════════════════════
+const agentTaskCreateRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 10,
+  message: 'Çok fazla görev oluşturma isteği. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `agent-task-create:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/admin/agent-tasks',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  agentTaskCreateRateLimit,
+  async (req, res) => {
+    try {
+      const result = await createAgentTask({
+        title: req.body?.title,
+        prompt: req.body?.prompt,
+        ownerAgent: req.body?.ownerAgent,
+        mode: req.body?.mode,
+        notes: req.body?.notes,
+        actorId: req.auth.userId,
+      });
+      if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
+      return res.status(201).json({ ok: true, task: result.task });
+    } catch (err) {
+      console.error('[ATLAS] admin/agent-tasks create error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/agent-tasks',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const tasks = listTasks({ limit: req.query.limit });
+      return res.json({ ok: true, tasks });
+    } catch (err) {
+      console.error('[ATLAS] admin/agent-tasks list error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/agent-tasks/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const task = getTask(req.params.id);
+      if (!task) return res.status(404).json({ ok: false, error: 'Task not found' });
+      const subtasks = listSubtasks(req.params.id);
+      return res.json({ ok: true, task, subtasks });
+    } catch (err) {
+      console.error('[ATLAS] admin/agent-tasks/:id error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.post(
+  '/api/admin/agent-tasks/:id/cancel',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  async (req, res) => {
+    try {
+      const result = await cancelAgentTask({ actorId: req.auth.userId, taskId: req.params.id, reason: req.body?.reason });
+      if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
+      return res.json({ ok: true, task: result.task });
+    } catch (err) {
+      console.error('[ATLAS] admin/agent-tasks/:id/cancel error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.post(
+  '/api/admin/agent-tasks/:id/approve',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  async (req, res) => {
+    try {
+      const result = await approveAgentTaskAction({
+        actorId: req.auth.userId,
+        taskId: req.params.id,
+        action: req.body?.action,
+        reason: req.body?.reason,
+      });
+      if (!result.ok) return res.status(result.status).json({ ok: false, error: result.error });
+      return res.json({ ok: true, task: result.task });
+    } catch (err) {
+      console.error('[ATLAS] admin/agent-tasks/:id/approve error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
