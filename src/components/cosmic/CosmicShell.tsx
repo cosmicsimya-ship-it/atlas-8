@@ -20,7 +20,7 @@ export default function CosmicShell({
   className = '',
 }: CosmicShellProps) {
   return (
-    <div className={`relative min-h-[100dvh] bg-[#050608] text-[#e8ecf2] ${className}`}>
+    <div className={`north-star-shell relative min-h-[100dvh] bg-[#010307] text-[#e8ecf2] ${className}`}>
       <a href="#cosmic-main" className="atlas-skip-link">
         İçeriğe geç
       </a>

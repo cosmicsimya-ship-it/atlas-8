@@ -1,6 +1,6 @@
 /**
- * Hero atmosphere — North Star identity.
- * Deep black, silver optical depth, restrained warm-metal reflection.
+ * Hero atmosphere — integrated North Star identity.
+ * Near-black first, with a restrained cool field concentrated around the optical core.
  */
 export default function HeroAtmosphere() {
   return (
@@ -8,40 +8,32 @@ export default function HeroAtmosphere() {
       className="hero-atmosphere pointer-events-none absolute inset-0 overflow-hidden"
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-[#030304]" />
+      <div className="absolute inset-0 bg-[#010205]" />
 
-      {/* Silver light field instead of navy/violet/cyan atmosphere. */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_38%,rgba(225,229,235,0.09)_0%,rgba(135,143,154,0.028)_28%,transparent_61%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_62%_8%,rgba(255,255,255,0.045)_0%,transparent_45%)]" />
+      {/* Cool depth stays local to the right-hand observation field. */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_78%_40%,rgba(34,68,101,0.09)_0%,rgba(15,31,50,0.028)_30%,transparent_58%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_68%_10%,rgba(98,128,153,0.035)_0%,transparent_40%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(116deg,#010205_0%,#02050a_46%,rgba(4,11,19,0.88)_70%,#010205_100%)]" />
 
-      {/* Volumetric metal haze. */}
+      {/* Very restrained volume — enough depth, no blue fog. */}
       <div className="hero-haze absolute inset-0">
-        <div className="absolute right-[-10%] top-[7%] h-[58vmin] w-[64vmin] rounded-full bg-[radial-gradient(circle,rgba(210,216,225,0.075),transparent_70%)] blur-[100px] site-animate-drift max-md:h-[46vmin] max-md:w-[52vmin] max-md:opacity-55" />
-        <div className="absolute right-[8%] top-[42%] h-[32vmin] w-[38vmin] rounded-full bg-[radial-gradient(circle,rgba(160,169,182,0.055),transparent_74%)] blur-[72px] site-animate-pulse-soft max-md:hidden" />
-        <div className="absolute left-[35%] top-[60%] h-[24vmin] w-[30vmin] rounded-full bg-[radial-gradient(circle,rgba(201,179,122,0.026),transparent_72%)] blur-[56px] opacity-55 max-md:hidden" />
+        <div className="absolute right-[-8%] top-[10%] h-[52vmin] w-[58vmin] rounded-full bg-[radial-gradient(circle,rgba(45,78,108,0.055),transparent_72%)] blur-[126px] site-animate-drift max-md:h-[42vmin] max-md:w-[48vmin] max-md:opacity-45" />
       </div>
 
-      {/* Compass-scale geometry, subtle enough to read as depth rather than illustration. */}
-      <div className="absolute right-[-5%] top-[9%] h-[76vmin] w-[76vmin] rounded-full border border-white/[0.035] max-md:right-[-34%] max-md:top-[34%] max-md:h-[72vmin] max-md:w-[72vmin]" />
-      <div className="absolute right-[2%] top-[16%] h-[62vmin] w-[62vmin] rounded-full border border-white/[0.018] max-md:hidden" />
-      <div className="absolute right-[33%] top-[5%] h-[82%] w-px bg-[linear-gradient(to_bottom,transparent,rgba(236,239,244,0.045),transparent)] max-md:hidden" />
-      <div className="absolute right-[-2%] top-[44%] h-px w-[72%] bg-[linear-gradient(to_right,transparent,rgba(236,239,244,0.04),transparent)] max-md:hidden" />
+      {/* Geometry almost disappears until the eye reaches the star. */}
+      <div className="absolute right-[-4%] top-[11%] h-[72vmin] w-[72vmin] rounded-full border border-[#9ab3c7]/[0.028] max-md:right-[-34%] max-md:top-[34%] max-md:h-[70vmin] max-md:w-[70vmin]" />
+      <div className="absolute right-[4%] top-[18%] h-[56vmin] w-[56vmin] rounded-full border border-[#9ab3c7]/[0.014] max-md:hidden" />
+      <div className="absolute right-[33%] top-[8%] h-[78%] w-px bg-[linear-gradient(to_bottom,transparent,rgba(132,158,180,0.028),transparent)] max-md:hidden" />
 
-      {/* Soft floor reflection. */}
-      <div className="absolute inset-x-0 bottom-0 h-[46%] bg-[linear-gradient(to_top,rgba(205,212,222,0.035)_0%,transparent_60%)] opacity-65 max-md:opacity-35" />
-      <div className="absolute right-[21%] top-[29%] h-[14vmin] w-[14vmin] rounded-full bg-[radial-gradient(circle,rgba(246,242,226,0.07),transparent_68%)] opacity-45 mix-blend-screen max-md:opacity-20" />
+      {/* Sparse points, not a starfield effect. */}
+      <div className="absolute inset-0 opacity-[0.2] [background-image:radial-gradient(circle_at_74%_20%,rgba(220,235,248,0.44)_0_1px,transparent_1.4px),radial-gradient(circle_at_85%_52%,rgba(133,180,220,0.22)_0_1px,transparent_1.3px),radial-gradient(circle_at_91%_72%,rgba(105,154,197,0.15)_0_1px,transparent_1.2px)]" />
 
-      {/* Refraction without a colored neon streak. */}
-      <div className="hero-refraction absolute inset-0 opacity-35 max-md:opacity-18">
-        <div className="absolute inset-0 bg-[linear-gradient(122deg,transparent_48%,rgba(232,236,242,0.035)_50%,transparent_54%)] max-md:hidden" />
-        <div className="hero-lens-flare absolute right-[5%] top-[22%] h-[34vmin] w-[34vmin] max-md:right-[-6%] max-md:top-[36%] max-md:h-[42vmin] max-md:w-[42vmin]" />
-      </div>
-
+      <div className="absolute inset-x-0 bottom-0 h-[48%] bg-[linear-gradient(to_top,rgba(12,25,40,0.038)_0%,transparent_64%)]" />
       <div className="site-grain hero-grain" />
-      <div className="hero-lens-texture absolute inset-0 opacity-[0.055] mix-blend-overlay max-md:opacity-[0.035]" />
+      <div className="hero-lens-texture absolute inset-0 opacity-[0.025] mix-blend-overlay max-md:opacity-[0.018]" />
       <div className="hero-core-vignette absolute inset-0" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_54%,#030304_100%)]" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_60%,rgba(3,3,4,0.48)_84%,#030304_100%)] max-md:hidden" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,#010205_100%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent_57%,rgba(1,2,5,0.4)_83%,#010205_100%)] max-md:hidden" />
     </div>
   );
 }
