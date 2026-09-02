@@ -42,6 +42,7 @@ html, body, #root { background: var(--atlas-ink); }
   backdrop-filter: blur(10px);
 }
 
+/* Warm metal is annotation only; never a page field. */
 .atlas-compass-shell [class*="text-[#c9b37a]"],
 .atlas-compass-shell [class*="text-[#d3c08a]"],
 .atlas-compass-shell [class*="text-[#d8c48b]"] { color: var(--atlas-warm) !important; }
@@ -52,8 +53,17 @@ html, body, #root { background: var(--atlas-ink); }
 .atlas-compass-shell [class*="border-[#c9b37a]"],
 .atlas-compass-shell [class*="border-[#d5c184]"] { border-color: var(--atlas-line-strong) !important; }
 
-.atlas-compass-shell [class*="201,179,122"],
-.atlas-compass-shell [class*="213,193,132"] { --tw-shadow-color: rgba(0,0,0,.24) !important; }
+.atlas-compass-shell [class*="bg-[radial-gradient"][class*="201,179,122"],
+.atlas-compass-shell [class*="bg-[linear-gradient"][class*="201,179,122"],
+.atlas-compass-shell [class*="bg-[radial-gradient"][class*="213,193,132"],
+.atlas-compass-shell [class*="bg-[linear-gradient"][class*="213,193,132"] {
+  background-image: linear-gradient(145deg, rgba(255,255,255,.032), rgba(255,255,255,.01)) !important;
+}
+
+.atlas-compass-shell [class*="shadow-"][class*="201,179,122"],
+.atlas-compass-shell [class*="shadow-"][class*="213,193,132"] {
+  box-shadow: 0 24px 72px rgba(0,0,0,.28) !important;
+}
 
 .atlas-compass-shell .atlas-btn-primary {
   border-color: rgba(239,239,238,.38) !important;
@@ -61,7 +71,6 @@ html, body, #root { background: var(--atlas-ink); }
   color: #080809 !important;
   box-shadow: 0 12px 42px rgba(0,0,0,.28) !important;
 }
-
 .atlas-compass-shell .atlas-btn-primary:hover { filter: brightness(1.05); }
 
 .atlas-compass-shell .landing-nav-link { color: #a9abb0; letter-spacing: .08em; }
@@ -73,9 +82,22 @@ html, body, #root { background: var(--atlas-ink); }
   border-color: rgba(228,229,232,.11) !important;
 }
 
+.atlas-compass-shell article { background-color: rgba(255,255,255,.018); }
+
+.atlas-compass-shell main > section { position: relative; }
+.atlas-compass-shell main > section + section { border-color: rgba(228,229,232,.08) !important; }
+
 .atlas-compass-shell h1,
 .atlas-compass-shell h2,
 .atlas-compass-shell h3 { text-wrap: balance; }
+
+.atlas-compass-shell main h1 {
+  color: var(--atlas-silver-strong) !important;
+  max-width: 18ch;
+}
+
+/* Prevent oversized marketing typography from overwhelming the system. */
+.atlas-compass-shell main h1[class*="text-[clamp"] { font-size: clamp(2.7rem, 6vw, 4.8rem) !important; line-height: .98 !important; }
 
 .atlas-compass-rule {
   height: 1px;
