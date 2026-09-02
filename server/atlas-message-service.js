@@ -2323,11 +2323,13 @@ export async function processAtlasMessage(input, options = {}) {
       const remainder = message.replace(GENERAL_NEGATIVE_REACTION_RE, '').trim();
       let resumedReply = null;
       let resumedIntent = null;
+      let resumedFromEngine = false;
       if (remainder.length >= 2 && lastEngine === 'abjad-verification') {
         const retry = tryDeterministicAbjadReply({ message: remainder, history });
         if (retry?.reply) {
           resumedReply = retry.reply;
           resumedIntent = `abjad:${retry.intent?.kind || 'verify'}`;
+          resumedFromEngine = retry.confidence !== 'insufficient';
         }
       } else if (remainder.length >= 2 && lastEngine === 'numerology-engine') {
         const retry = tryNumerologyFlowReply({
@@ -2340,6 +2342,7 @@ export async function processAtlasMessage(input, options = {}) {
         if (retry?.handled && retry.reply) {
           resumedReply = retry.reply;
           resumedIntent = retry.intent;
+          resumedFromEngine = true;
         }
       }
 
@@ -2354,9 +2357,20 @@ export async function processAtlasMessage(input, options = {}) {
         resumedIntent = 'general_repair:clarify';
       }
 
+      // QUALITY REVIEW B2 fix: reflect the resumption's real outcome in
+      // lastEngineInvocation. Without this, a successful resumption left the
+      // prior 'ambiguous'/'error' status in place, so a later, unrelated
+      // repair-phrase message kept re-triggering this gate against the
+      // already-resolved engine turn instead of falling through normally.
       noteAssistantTurn(conversationId, {
         reply: resumedReply,
         intent: resumedIntent,
+        engineInvocation: {
+          engine: lastEngine,
+          intent: resumedIntent,
+          status: resumedFromEngine ? 'ok' : 'ambiguous',
+          inputSummary: message.slice(0, 160),
+        },
       });
       return applyPrivacyGuardToResult(
         {

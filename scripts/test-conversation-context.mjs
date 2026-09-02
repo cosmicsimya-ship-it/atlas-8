@@ -692,7 +692,30 @@ console.log('\n--- General repair signal ---');
 
   const noMatch = detectGeneralRepairSignal('merhaba nasılsın', errorState);
   assert('unrelated casual message does not match', noMatch.matched === false);
+
+  // QUALITY REVIEW B1 regression: "ay atlas" / "allah allah" are common
+  // casual interjections and must not hijack an unrelated message just
+  // because they appear in it — only when they make up essentially the
+  // whole message are they trusted as a repair signal.
+  const falsePositive = detectGeneralRepairSignal('ay atlas, bugün hava nasıl olacak?', errorState);
+  assert(
+    'B1: "ay atlas" embedded in an unrelated sentence does not match (false-positive fix)',
+    falsePositive.matched === false && falsePositive.hasResumableEngine === false,
+  );
+
+  const truePositiveAnchored = detectGeneralRepairSignal('allah allah', errorState);
+  assert(
+    'B1: "allah allah" as the whole message still matches (true positive preserved)',
+    truePositiveAnchored.hasResumableEngine === true,
+  );
+
+  const truePositiveAnchoredPunct = detectGeneralRepairSignal('Ay atlas!', errorState);
+  assert(
+    'B1: "ay atlas" with trailing punctuation, anchored, still matches',
+    truePositiveAnchoredPunct.hasResumableEngine === true,
+  );
 }
+
 const failed = results.filter((r) => !r.pass);
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===\n`);
 if (failed.length) {

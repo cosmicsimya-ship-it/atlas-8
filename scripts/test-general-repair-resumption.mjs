@@ -100,6 +100,50 @@ await check('successful (ok) engine turn is not treated as resumable by the gene
   assert.notEqual(turn2.engine, 'general-repair-signal');
 });
 
+await check('QUALITY REVIEW B2: successful resumption clears stale state, does not re-hijack a later unrelated repair-phrase message', async () => {
+  const conversationId = 'general-repair-e2e-b2-stale-state';
+  const turn1 = await processAtlasMessage(
+    { channel: 'telegram', message: 'ebced hesapla', history: [], conversationId },
+    { mode: 'conversational' },
+  );
+  assert.equal(turn1.engine, 'abjad-verification');
+
+  const turn2 = await processAtlasMessage(
+    {
+      channel: 'telegram',
+      message: 'tövbe yarabbi Zeynep isminin ebced değeri kaç?',
+      history: [
+        { role: 'user', content: 'ebced hesapla' },
+        { role: 'assistant', content: turn1.reply },
+      ],
+      conversationId,
+    },
+    { mode: 'conversational' },
+  );
+  assert.equal(turn2.engine, 'general-repair-signal');
+  assert.match(turn2.reply, /Toplam\s*=\s*71/);
+
+  // A later, unrelated repair-phrase message must NOT re-surface the
+  // already-resolved Ebced question — lastEngineInvocation.status should
+  // have flipped to 'ok' after turn2's successful resumption.
+  const turn3 = await processAtlasMessage(
+    {
+      channel: 'telegram',
+      message: 'tövbe yarabbi',
+      history: [
+        { role: 'user', content: 'ebced hesapla' },
+        { role: 'assistant', content: turn1.reply },
+        { role: 'user', content: 'tövbe yarabbi Zeynep isminin ebced değeri kaç?' },
+        { role: 'assistant', content: turn2.reply },
+      ],
+      conversationId,
+    },
+    { mode: 'conversational' },
+  );
+  assert.notEqual(turn3.engine, 'general-repair-signal');
+  assert.doesNotMatch(turn3.reply ?? '', /Ebced hesaplaması ile ilgili bir sorun mu oldu/);
+});
+
 console.log(`\n────────────────────────────────`);
 console.log(`Passed: ${passed}`);
 console.log(`Failed: ${failed}`);
