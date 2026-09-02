@@ -2,14 +2,12 @@ import { cn } from '../../utils/cn';
 
 interface AtlasCoreVisualProps {
   className?: string;
-  /** Preserve the canonical mobile close-crop API while using the North Star identity. */
   crop?: 'desktop' | 'mobile';
 }
 
 /**
- * Approved North Star hero anchor.
- * Keeps the canonical desktop/mobile contract while replacing the old abstract
- * observation engine with the product's primary visual identity.
+ * North Star hero anchor drawn as part of the interface field.
+ * No pasted image: the star, axes and orbital geometry are one integrated system.
  */
 export default function AtlasCoreVisual({ className, crop = 'desktop' }: AtlasCoreVisualProps) {
   const mobile = crop === 'mobile';
@@ -23,27 +21,36 @@ export default function AtlasCoreVisual({ className, crop = 'desktop' }: AtlasCo
       )}
       aria-hidden="true"
     >
-      {/* Wide silver halo — optical depth, never a generic glowing AI orb. */}
-      <div className="absolute left-1/2 top-1/2 h-[86%] w-[86%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(226,230,236,0.09)_0%,rgba(151,160,173,0.025)_34%,transparent_69%)] blur-xl" />
+      {/* Deep optical field. */}
+      <div className="absolute left-1/2 top-1/2 h-[92%] w-[92%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(70,128,183,0.12)_0%,rgba(29,68,108,0.05)_34%,transparent_70%)] blur-2xl" />
 
-      {/* Quiet compass/instrument geometry. */}
-      <div className="absolute left-1/2 top-1/2 h-[80%] w-[80%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.055]" />
-      <div className="absolute left-1/2 top-1/2 h-[68%] w-[68%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/[0.025]" />
-      <div className="absolute left-1/2 top-[7%] h-[86%] w-px -translate-x-1/2 bg-[linear-gradient(to_bottom,transparent,rgba(235,239,244,0.055),transparent)]" />
-      <div className="absolute left-[7%] top-1/2 h-px w-[86%] -translate-y-1/2 bg-[linear-gradient(to_right,transparent,rgba(235,239,244,0.045),transparent)]" />
+      {/* Instrument rings. */}
+      <div className="absolute left-1/2 top-1/2 h-[82%] w-[82%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#90b7da]/[0.08]" />
+      <div className="absolute left-1/2 top-1/2 h-[68%] w-[68%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#90b7da]/[0.04]" />
+      <div className="absolute left-1/2 top-1/2 h-[52%] w-[52%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#90b7da]/[0.028]" />
 
-      {/* Approved North Star mark. */}
-      <img
-        src="/atlas-north-star.png"
-        alt=""
-        className={cn(
-          'absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.96] drop-shadow-[0_16px_44px_rgba(0,0,0,0.62)]',
-          mobile ? 'h-[84%] w-[84%]' : 'h-[76%] w-[76%]',
-        )}
-      />
+      {/* Navigation axes. */}
+      <div className="absolute left-1/2 top-[5%] h-[90%] w-px -translate-x-1/2 bg-[linear-gradient(to_bottom,transparent,rgba(125,169,208,0.08)_28%,rgba(181,211,236,0.16)_50%,rgba(125,169,208,0.08)_72%,transparent)]" />
+      <div className="absolute left-[5%] top-1/2 h-px w-[90%] -translate-y-1/2 bg-[linear-gradient(to_right,transparent,rgba(125,169,208,0.07)_28%,rgba(181,211,236,0.14)_50%,rgba(125,169,208,0.07)_72%,transparent)]" />
 
-      {/* Restrained neutral material glint. */}
-      <div className="absolute left-1/2 top-1/2 z-20 h-[8%] w-[8%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.28),rgba(230,234,240,0.06)_34%,transparent_72%)] mix-blend-screen" />
+      {/* Diagonal bearings. */}
+      <div className="absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[linear-gradient(to_right,transparent,rgba(111,158,198,0.055),transparent)]" />
+      <div className="absolute left-1/2 top-1/2 h-px w-[72%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-[linear-gradient(to_right,transparent,rgba(111,158,198,0.055),transparent)]" />
+
+      {/* North Star — constructed from light, not an image asset. */}
+      <div className="absolute left-1/2 top-1/2 z-10 h-[72%] w-[72%] -translate-x-1/2 -translate-y-1/2">
+        <div className="absolute left-1/2 top-1/2 h-full w-[1.5px] -translate-x-1/2 -translate-y-1/2 bg-[linear-gradient(to_bottom,transparent_0%,rgba(149,193,229,0.12)_18%,rgba(224,240,252,0.9)_49%,rgba(149,193,229,0.12)_82%,transparent_100%)] shadow-[0_0_22px_rgba(109,164,211,0.14)]" />
+        <div className="absolute left-1/2 top-1/2 h-[1.5px] w-full -translate-x-1/2 -translate-y-1/2 bg-[linear-gradient(to_right,transparent_0%,rgba(149,193,229,0.1)_18%,rgba(224,240,252,0.82)_49%,rgba(149,193,229,0.1)_82%,transparent_100%)] shadow-[0_0_22px_rgba(109,164,211,0.12)]" />
+        <div className="absolute left-1/2 top-1/2 h-[52%] w-[1px] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-[linear-gradient(to_bottom,transparent,rgba(181,211,235,0.48),transparent)]" />
+        <div className="absolute left-1/2 top-1/2 h-[52%] w-[1px] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-[linear-gradient(to_bottom,transparent,rgba(181,211,235,0.48),transparent)]" />
+        <div className="absolute left-1/2 top-1/2 h-[17%] w-[17%] -translate-x-1/2 -translate-y-1/2 rotate-45 border border-[#d8e9f7]/45 bg-[#8eb9dd]/[0.035] shadow-[0_0_32px_rgba(108,164,211,0.16)]" />
+        <div className="absolute left-1/2 top-1/2 h-[5%] w-[5%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#eef7ff]/75 shadow-[0_0_20px_rgba(183,219,247,0.5)]" />
+      </div>
+
+      {/* Tiny orbital nodes keep the identity technical, not decorative. */}
+      <div className="absolute left-[18%] top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full border border-[#9bc2e2]/30 bg-[#5c8fb9]/25" />
+      <div className="absolute right-[18%] top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full border border-[#9bc2e2]/30 bg-[#5c8fb9]/25" />
+      <div className="absolute left-1/2 top-[18%] h-1.5 w-1.5 -translate-x-1/2 rounded-full border border-[#9bc2e2]/30 bg-[#5c8fb9]/25" />
 
       <div className="hero-core-vignette absolute inset-0" />
     </div>
