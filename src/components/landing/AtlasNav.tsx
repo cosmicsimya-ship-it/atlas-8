@@ -2,13 +2,16 @@ import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 import AuthSessionControl from '../cosmic/AuthSessionControl';
-import { landingNav } from '../../data/landing-content';
 import { cn } from '../../utils/cn';
-import { scrollToSection } from '../../utils/scroll-section';
 
-const navLinkClass =
-  'site-focus landing-nav-link rounded-sm px-3.5 py-2 text-[13px] transition';
+const primaryNav = [
+  { label: 'ATLAS', to: '/atlas' },
+  { label: 'İZDÜŞÜM', to: '/analysis' },
+  { label: 'LARA PRIME', to: '/lara-prime' },
+  { label: 'VAROLUŞ', to: '/about' },
+] as const;
 
 export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: boolean }) {
   const location = useLocation();
@@ -22,111 +25,51 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
-
+  useEffect(() => setOpen(false), [location.pathname]);
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [open]);
 
   return (
-    <header
-      className={cn(
-        'fixed inset-x-0 top-0 z-50 transition-[background,border-color,backdrop-filter] duration-300',
-        scrolled || open ? 'obs-nav-glass obs-nav-glass-scrolled' : 'obs-nav-glass',
-        !(scrolled || open) && 'bg-[#030304]/48',
-      )}
-    >
+    <header className={cn('fixed inset-x-0 top-0 z-50 transition duration-300', scrolled || open ? 'border-b border-white/[0.08] bg-[#040405]/92 backdrop-blur-xl' : 'bg-[#040405]/55')}>
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <Link
-          to="/"
-          className="site-focus group flex shrink-0 items-center gap-2.5 rounded-sm"
-          aria-label="ATLAS ana sayfa"
-        >
-          <img
-            src="/atlas-north-star.png"
-            alt=""
-            className="h-8 w-8 shrink-0 object-contain opacity-90 drop-shadow-[0_0_16px_rgba(226,230,236,0.08)]"
-          />
+        <Link to="/" className="site-focus flex shrink-0 items-center gap-2.5 rounded-sm" aria-label="ATLAS ana sayfa">
+          <AtlasCompassMark compact className="h-8 w-8" />
           <span className="flex flex-col">
-            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
-            <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9aa3ae]">
-              Cosmic Simya
-            </span>
+            <span className="font-display text-[15px] tracking-[0.34em] text-[#f0f0ef]">ATLAS</span>
+            <span className="mt-0.5 text-[8px] uppercase tracking-[0.32em] text-[#8f9298]">Cosmic Simya</span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-0.5 md:flex" aria-label="Ana menü">
-          {landingNav.map((item) =>
-            'to' in item && item.to ? (
-              <Link key={item.label} to={item.to} className={navLinkClass}>
+        <nav className="hidden items-center gap-2 md:flex" aria-label="Ana menü">
+          {primaryNav.map((item) => {
+            const active = location.pathname === item.to;
+            return (
+              <Link key={item.to} to={item.to} className={cn('site-focus rounded-sm px-3 py-2 text-[11px] tracking-[0.14em] transition', active ? 'text-[#f3f3f1]' : 'text-[#9a9ca1] hover:text-[#e5e5e3]')}>
                 {item.label}
               </Link>
-            ) : (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => 'sectionId' in item && item.sectionId && scrollToSection(item.sectionId)}
-                className={navLinkClass}
-              >
-                {item.label}
-              </button>
-            ),
-          )}
+            );
+          })}
         </nav>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-2">
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
           <AuthSessionControl appearance="landing" autoOpen={autoOpenLogin} />
-          <button
-            type="button"
-            className="site-focus inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-white/14 text-[#d4dae2] md:hidden"
-            aria-expanded={open}
-            aria-controls="landing-mobile-nav"
-            aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'}
-            onClick={() => setOpen((v) => !v)}
-          >
+          <button type="button" className="site-focus inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/14 text-[#d4d5d7] md:hidden" aria-expanded={open} aria-controls="landing-mobile-nav" aria-label={open ? 'Menüyü kapat' : 'Menüyü aç'} onClick={() => setOpen((v) => !v)}>
             {open ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
       </div>
 
-      {open ? (
-        <nav
-          id="landing-mobile-nav"
-          className="border-t border-white/[0.08] bg-[#030304]/97 px-4 py-4 md:hidden"
-          aria-label="Mobil menü"
-        >
+      {open && (
+        <nav id="landing-mobile-nav" className="border-t border-white/[0.08] bg-[#040405]/98 px-4 py-4 md:hidden" aria-label="Mobil menü">
           <ul className="space-y-1">
-            {landingNav.map((item) => (
-              <li key={item.label}>
-                {'to' in item && item.to ? (
-                  <Link
-                    to={item.to}
-                    className="site-focus flex min-h-12 items-center rounded-sm px-4 text-base text-[#e8ecf2] hover:bg-white/[0.04]"
-                  >
-                    {item.label}
-                  </Link>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if ('sectionId' in item && item.sectionId) scrollToSection(item.sectionId);
-                      setOpen(false);
-                    }}
-                    className="site-focus flex min-h-12 w-full items-center rounded-sm px-4 text-left text-base text-[#e8ecf2] hover:bg-white/[0.04]"
-                  >
-                    {item.label}
-                  </button>
-                )}
-              </li>
+            {primaryNav.map((item) => (
+              <li key={item.to}><Link to={item.to} className="site-focus flex min-h-12 items-center rounded-sm px-4 text-sm tracking-[0.12em] text-[#dededd] hover:bg-white/[0.035]">{item.label}</Link></li>
             ))}
           </ul>
         </nav>
-      ) : null}
+      )}
     </header>
   );
 }

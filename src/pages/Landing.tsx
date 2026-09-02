@@ -20,10 +20,8 @@ export default function Landing() {
   const adminLogin = useMemo(() => params.get('admin') === '1', [params]);
 
   return (
-    <div className="relative min-h-[100dvh] bg-[#050505] text-[#f0ebe3]">
-      <a href="#main-content" className="atlas-skip-link">
-        İçeriğe geç
-      </a>
+    <div className="atlas-compass-shell relative min-h-[100dvh]">
+      <a href="#main-content" className="atlas-skip-link">İçeriğe geç</a>
       <SiteAtmosphere />
       <AtlasNav autoOpenLogin={adminLogin} />
       <main id="main-content" className="relative z-10">
@@ -38,9 +36,7 @@ export default function Landing() {
         <AtlasIntelligenceStrip />
         <FinalCTA />
       </main>
-      <div className="relative z-10">
-        <SiteFooter />
-      </div>
+      <div className="relative z-10"><SiteFooter /></div>
     </div>
   );
 }

@@ -4,81 +4,44 @@ import { landingHero } from '../../data/landing-content';
 import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
 
-/**
- * Cinematic hero — production hierarchy + spatial observation engine.
- * Desktop: interlocking type + giant cropped mechanism.
- * Mobile: type overlays extreme lens close-crop (not stack + tiny orb).
- */
 export default function HeroSection() {
-  const { brand, titleLines, methodLines, body, primaryCta } = landingHero;
+  const { titleLines, methodLines, body, primaryCta } = landingHero;
 
   return (
-    <section
-      className="relative min-h-[100dvh] overflow-hidden pt-[5.5rem]"
-      aria-labelledby="landing-hero-title"
-    >
+    <section className="relative min-h-[100dvh] overflow-hidden pt-16" aria-labelledby="landing-hero-title">
       <HeroAtmosphere />
 
-      {/* Mobile midground — extreme close-crop fills the scene behind type */}
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 top-[28%] z-[1] overflow-hidden lg:hidden"
-        aria-hidden="true"
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,rgba(201,179,122,0.1),transparent_55%)]" />
-        <AtlasCoreVisual crop="mobile" className="h-full w-full scale-[1.15]" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#050505_0%,rgba(5,5,5,0.55)_18%,transparent_42%,rgba(5,5,5,0.35)_78%,#050505_100%)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[39%] z-[1] overflow-hidden lg:hidden" aria-hidden="true">
+        <AtlasCoreVisual crop="mobile" className="h-full w-full scale-[0.92] opacity-55" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#020203_0%,rgba(2,2,3,.82)_24%,transparent_50%,rgba(2,2,3,.82)_84%,#020203_100%)]" />
       </div>
 
-      {/* Desktop midground — giant mechanism */}
-      <div
-        className="pointer-events-none absolute inset-y-0 right-0 z-[1] hidden w-[min(72%,54rem)] lg:block"
-        aria-hidden="true"
-      >
-        <div className="absolute inset-y-0 left-0 z-[1] w-48 bg-[linear-gradient(to_right,#050505,transparent)]" />
-        <AtlasCoreVisual crop="desktop" className="h-full w-full" />
+      <div className="pointer-events-none absolute inset-y-0 right-[2%] z-[1] hidden w-[min(48%,40rem)] lg:flex lg:items-center lg:justify-center" aria-hidden="true">
+        <div className="absolute inset-y-0 left-0 z-[1] w-48 bg-[linear-gradient(to_right,#020203,transparent)]" />
+        <AtlasCoreVisual crop="desktop" className="w-full opacity-78" />
       </div>
 
-      {/* Foreground editorial */}
-      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-5.5rem)] w-full max-w-6xl flex-col justify-center px-4 pb-28 pt-4 sm:px-6 lg:px-8 lg:pb-24">
-        <div className="max-w-xl lg:max-w-[34rem]">
-          <p className="hero-reveal hero-reveal-1 atlas-mark mb-5 text-[clamp(1.55rem,5vw,2.75rem)] leading-none text-transparent sm:mb-7">
-            {brand}
-          </p>
+      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-6xl items-center px-4 pb-24 pt-10 sm:px-6 lg:px-8">
+        <div className="max-w-[39rem]">
+          <div className="mb-7 flex items-center gap-4">
+            <div className="h-px w-14 bg-[linear-gradient(to_right,rgba(240,240,239,.65),transparent)]" />
+            <p className="atlas-compass-eyebrow text-[10px]">COSMIC SIMYA · ATLAS</p>
+          </div>
 
-          <p
-            lang="en"
-            className="hero-reveal hero-reveal-2 mb-4 text-[0.7rem] font-medium tracking-[0.34em] text-[#c9b37a]/75 sm:mb-5"
-          >
-            COSMIC SIMYA
-          </p>
-
-          <h1
-            id="landing-hero-title"
-            className="hero-reveal hero-reveal-3 font-display text-[clamp(2.05rem,7vw,3.85rem)] font-medium leading-[1.06] tracking-[-0.02em] text-[#f5f0e6]"
-          >
-            {titleLines.map((line) => (
-              <span key={line} className="block">
-                {line}
-              </span>
-            ))}
+          <h1 id="landing-hero-title" className="font-display text-[clamp(2.5rem,6vw,4.35rem)] font-medium leading-[1.02] tracking-[-0.035em] text-[#f2f2f0]">
+            {titleLines.map((line) => <span key={line} className="block">{line}</span>)}
           </h1>
 
-          <p className="hero-reveal hero-reveal-4 mt-4 max-w-md font-display text-[clamp(1.1rem,3.2vw,1.55rem)] font-medium leading-[1.25] tracking-[-0.01em] text-[#c9b37a]/c8 sm:mt-6">
+          <p className="mt-7 max-w-lg font-display text-[clamp(1.08rem,2.2vw,1.42rem)] leading-[1.35] text-[#c6c7ca]">
             <span className="block sm:inline">{methodLines[0]}</span>{' '}
             <span className="block sm:inline">{methodLines[1]}</span>
           </p>
 
-          <p className="hero-reveal hero-reveal-5 mt-4 max-w-md text-[14px] leading-6 text-[#9a9488] sm:mt-7 sm:text-[1.05rem] sm:leading-8">
-            {body}
-          </p>
+          <p className="mt-6 max-w-lg text-[14px] leading-7 text-[#8f9298] sm:text-[15px] sm:leading-8">{body}</p>
 
-          <div className="hero-reveal hero-reveal-6 mt-8 flex sm:mt-11">
-            <Link
-              to={primaryCta.to}
-              className="atlas-btn-primary min-h-12 w-full touch-manipulation sm:w-auto sm:min-w-[10.5rem]"
-            >
-              {primaryCta.label}
-            </Link>
+          <div className="mt-10 flex items-center gap-6">
+            <Link to={primaryCta.to} className="atlas-btn-primary min-h-12 min-w-[10.5rem] px-6">{primaryCta.label}</Link>
+            <div className="hidden h-px w-24 bg-[linear-gradient(to_right,rgba(235,236,238,.28),transparent)] sm:block" />
           </div>
         </div>
       </div>
