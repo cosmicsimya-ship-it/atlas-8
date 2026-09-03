@@ -85,7 +85,15 @@ ok('LaraPrimePage links to Gizlilik / KVKK', Boolean(laraPrime) && laraPrime.inc
 ok('LaraPrimePage links to SSS', Boolean(laraPrime) && laraPrime.includes('to="/sss"'));
 ok('LaraPrimePage links to Destek', Boolean(laraPrime) && laraPrime.includes('to="/destek"'));
 ok('LaraPrimePage discloses auto-renewal/cancellation near the CTA', Boolean(laraPrime) && laraPrime.includes('Aylık otomatik yenilenir'));
-ok('LaraPrimePage was NOT redesigned wholesale — hero/hero copy untouched', Boolean(laraPrime) && laraPrime.includes('LARA PRIME') && laraPrime.includes('BENEFIT_CARDS'));
+// Superseded by the public sales-page rebuild task: the hero was intentionally
+// rebalanced (calmer scale, no giant gold field). Verify the new invariants
+// instead — checkout logic intact, no old oversized/gold-heavy hero markup.
+ok('LaraPrimePage still drives real checkout (startPremiumCheckout, entitlements)', Boolean(laraPrime) && laraPrime.includes('startPremiumCheckout') && laraPrime.includes('isPremiumPlan'));
+ok('LaraPrimePage hero headline scale was reduced (no old 6.3rem clamp)', Boolean(laraPrime) && !laraPrime.includes('clamp(3rem,8vw,6.3rem)'));
+ok('LaraPrimePage no longer has a large detached gold hero blob', Boolean(laraPrime) && !laraPrime.includes('rgba(201,179,122,0.08)_0%,rgba(201,179,122,0.025)'));
+ok('LaraPrimePage separates available-now vs coming-next transparently', Boolean(laraPrime) && laraPrime.includes('AVAILABLE_NOW') && laraPrime.includes('COMING_NEXT'));
+ok('LaraPrimePage presents the four-pillar architecture', Boolean(laraPrime) && ['My Prime', 'Frequency Library', 'Prime Rooms'].every((p) => laraPrime.includes(p)));
+ok('LaraPrimePage renders a page-level SiteFooter (legal/social links)', Boolean(laraPrime) && laraPrime.includes('<SiteFooter'));
 
 // Contact form — real backend path, honeypot bot defense, no hardcoded identity.
 ok('ContactForm posts to the real backend via submitContactMessage', Boolean(contactForm) && contactForm.includes('submitContactMessage'));
