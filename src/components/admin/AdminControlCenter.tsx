@@ -4,9 +4,10 @@ import { apiRequest } from '../../services/api-client';
 import AdminUserActions from './AdminUserActions';
 import AdminFeedbackPanel from './AdminFeedbackPanel';
 import AdminErrorsPanel from './AdminErrorsPanel';
+import AdminAgentOsPanel from './AdminAgentOsPanel';
 import AdminAgentTasksPanel from './AdminAgentTasksPanel';
 
-type Tab = 'agent-tasks' | 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'analytics' | 'health' | 'audit';
+type Tab = 'agentos' | 'agent-tasks' | 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'analytics' | 'health' | 'audit';
 
 type AdminUserRow = {
   userId: string;
@@ -80,8 +81,9 @@ type HealthResponse = {
 type AuditEvent = { eventId: string; timestamp: string; actor: string; action: string; targetUserId: string | null; result: string };
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
+  { id: 'agentos', label: 'ATLAS Operations' },
   { id: 'agent-tasks', label: 'Agent Tasks' },
+  { id: 'overview', label: 'Overview' },
   { id: 'feedback', label: 'Feedback' },
   { id: 'errors', label: 'Errors' },
   { id: 'users', label: 'Users' },
@@ -594,7 +596,7 @@ function AuditTab() {
 }
 
 export default function AdminControlCenter({ actorUserId }: { actorUserId: string }) {
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>('agentos');
   return (
     <div className="mt-10 border-t border-white/10 pt-8">
       <p className="font-brand text-[11px] uppercase tracking-[0.28em] text-[#8b93a3]">Control Center</p>
@@ -619,8 +621,9 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
         ))}
       </nav>
       <div className="mt-5 rounded-2xl border border-white/[0.06] bg-gradient-to-b from-white/[0.025] to-white/[0.008] p-4 sm:p-6">
-        {tab === 'overview' ? <OverviewTab /> : null}
+        {tab === 'agentos' ? <AdminAgentOsPanel /> : null}
         {tab === 'agent-tasks' ? <AdminAgentTasksPanel /> : null}
+        {tab === 'overview' ? <OverviewTab /> : null}
         {tab === 'feedback' ? <AdminFeedbackPanel /> : null}
         {tab === 'errors' ? <AdminErrorsPanel /> : null}
         {tab === 'users' ? <UsersTab actorUserId={actorUserId} /> : null}

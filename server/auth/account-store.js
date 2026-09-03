@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcryptjs';
+import { logAdminAudit } from './admin-audit.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PATH = join(__dirname, '..', '..', 'data', 'auth_accounts.json');
@@ -337,6 +338,53 @@ export async function registerAccount(input) {
   });
 }
 
+// Primary-owner bootstrap (ATLAS Admin bridge integration). Configurable via
+// env; falls back to the operator-designated owner identity if unset. This
+// is not a credential — it is a plain identifier compared with
+// normalizeEmail()'s exact lowercase/trim match, the same comparison every
+// other email lookup in this file already uses.
+const OWNER_EMAIL = normalizeEmail(process.env.ATLAS_OWNER_EMAIL || 'cosmicsimya@gmail.com');
+
+/**
+ * Ensures the ONE operator-designated owner email always carries 'owner' +
+ * 'admin', added idempotently on every Google login. Deliberately narrow:
+ * - Can only ever ADD these two roles, never remove any existing role.
+ * - Only ever applies to an exact match against OWNER_EMAIL - every other
+ *   account's roles pass through completely unchanged.
+ * - Only reachable from findOrProvisionGoogleAccount(), which by this point
+ *   has already required `emailVerified === true` from Google itself - this
+ *   never trusts a client-supplied or unverified email.
+ * - Not exposed via any HTTP route/request body - mirrors the existing
+ *   "no HTTP API for self role escalation" rule enforced by
+ *   server/scripts/grant-admin-role.mjs (CLI-only), just applied
+ *   automatically for this one identity instead of requiring a manual
+ *   CLI run every time a fresh account is provisioned.
+ */
+function ensureOwnerRoles(roles, email) {
+  if (!OWNER_EMAIL || normalizeEmail(email) !== OWNER_EMAIL) return [...roles];
+  const next = [...roles];
+  for (const r of ['admin', 'owner']) {
+    if (!next.includes(r)) next.push(r);
+  }
+  return next;
+}
+
+function auditOwnerRoleBootstrap({ rolesBefore, rolesAfter, email, userId, username }) {
+  if (rolesAfter.length === rolesBefore.length) return; // nothing added, nothing to log
+  logAdminAudit({
+    action: 'role.grant',
+    actor: 'system:owner-bootstrap',
+    targetUserId: userId,
+    targetEmail: email,
+    targetUsername: username,
+    role: 'owner+admin',
+    rolesBefore,
+    rolesAfter,
+    result: 'ok',
+    reason: 'primary_owner_email_login',
+  });
+}
+
 /**
  * Find or create an account for a verified Google identity.
  * Reuses an existing account with the same verified email (no duplicate).
@@ -375,13 +423,16 @@ export async function findOrProvisionGoogleAccount(input) {
       throw err;
     }
     const providers = [...new Set([...(bySub.authProviders ?? []), 'google'])];
+    const rolesBefore = bySub.roles ?? [];
+    const rolesAfter = ensureOwnerRoles(rolesBefore, email);
+    auditOwnerRoleBootstrap({ rolesBefore, rolesAfter, email, userId: bySub.userId, username: bySub.username });
     return upsertAccount({
       id: bySub.id,
       username: bySub.username,
       password: null,
       passwordHash: bySub.passwordHash ?? null,
       email: bySub.email || email,
-      roles: bySub.roles,
+      roles: rolesAfter,
       userId: bySub.userId,
       telegramBindings: bySub.telegramBindings,
       disabled: bySub.disabled,
@@ -406,13 +457,16 @@ export async function findOrProvisionGoogleAccount(input) {
     }
     const providers = [...new Set([...(byEmail.authProviders ?? []), 'google'])];
     if (byEmail.passwordHash && !providers.includes('password')) providers.push('password');
+    const rolesBefore = byEmail.roles ?? [];
+    const rolesAfter = ensureOwnerRoles(rolesBefore, email);
+    auditOwnerRoleBootstrap({ rolesBefore, rolesAfter, email, userId: byEmail.userId, username: byEmail.username });
     return upsertAccount({
       id: byEmail.id,
       username: byEmail.username,
       password: null,
       passwordHash: byEmail.passwordHash ?? null,
       email,
-      roles: byEmail.roles,
+      roles: rolesAfter,
       userId: byEmail.userId,
       telegramBindings: byEmail.telegramBindings,
       disabled: byEmail.disabled,
@@ -424,12 +478,14 @@ export async function findOrProvisionGoogleAccount(input) {
   }
 
   const userId = `web:${randomBytes(12).toString('hex')}`;
+  const newAccountRoles = ensureOwnerRoles(['user'], email);
+  auditOwnerRoleBootstrap({ rolesBefore: ['user'], rolesAfter: newAccountRoles, email, userId, username: email });
   return upsertAccount({
     username: email,
     email,
     password: null,
     passwordHash: null,
-    roles: ['user'],
+    roles: newAccountRoles,
     userId,
     displayName: input.displayName
       ? String(input.displayName).trim().slice(0, 120)

@@ -36,6 +36,7 @@ import {
   getAdminHealth,
   getAdminAuditLog,
 } from './admin/control-center.js';
+import { getAgentOsSummary, runAgentOsSweep } from './admin/agentos-bridge.js';
 import { createAgentTask } from './agentos/orchestrator.js';
 import { getTask, listTasks, listSubtasks } from './agentos/task-store.js';
 import { cancelAgentTask, approveAgentTaskAction } from './admin/agentos-task-actions.js';
@@ -1042,6 +1043,41 @@ app.get(
       return res.json({ ok: true, overview: getAdminOverview() });
     } catch (err) {
       console.error('[ATLAS] admin/overview error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/agentos',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  async (req, res) => {
+    try {
+      const result = await getAgentOsSummary();
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/agentos error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.post(
+  '/api/admin/agentos/sweep',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  async (req, res) => {
+    try {
+      const result = await runAgentOsSweep();
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/agentos/sweep error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
