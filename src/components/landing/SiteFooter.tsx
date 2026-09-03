@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { landingFooter, socialLinks } from '../../data/landing-content';
 
 export default function SiteFooter() {
-  const { brand, systemMark, tagline, trust, links } = landingFooter;
+  const { brand, systemMark, tagline, trust, links, legalLinks } = landingFooter;
 
   return (
     <footer className="relative border-t border-white/[0.07] py-12">
@@ -38,6 +38,21 @@ export default function SiteFooter() {
         </div>
 
         <p className="max-w-2xl text-[12px] leading-5 text-[#6f6a60]">{trust}</p>
+
+        <nav aria-label="Yasal ve destek" className="border-t border-white/[0.06] pt-5">
+          <ul className="flex flex-wrap gap-x-5 gap-y-2">
+            {legalLinks.map((link) => (
+              <li key={link.label}>
+                <Link
+                  to={link.to}
+                  className="site-focus text-[11.5px] tracking-wide text-[#7c7669] transition hover:text-[#c5bfb3]"
+                >
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
         <div className="flex flex-col gap-4 border-t border-white/[0.06] pt-5 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
           <nav aria-label="Sosyal medya" className="min-w-0">

@@ -56,6 +56,13 @@ import {
   updateFeedbackPriority,
   setFeedbackAdminNote,
 } from './feedback/store.js';
+import {
+  createContactMessage,
+  listContactMessages,
+  getContactMessageById,
+  updateContactMessageStatus,
+} from './contact/store.js';
+import { getPublicOperatorConfig } from './config/operator-config.js';
 import { recordChatFeedback, getChatFeedbackSummary } from './chat-feedback.js';
 import { trackEvent } from './analytics/events.js';
 import {
@@ -435,6 +442,20 @@ app.use(
   '/api/billing/webhook',
   createBillingWebhookRouter({ rateLimit: billingWebhookRateLimit }),
 );
+
+// ── Public operator / support identity — used by the trust/legal/contact
+// pages (Privacy, Terms, Refund, FAQ, Contact, Support). No auth required;
+// every field is env-driven and null when not configured (see
+// server/config/operator-config.js) — nothing here is invented.
+const publicOperatorRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 60,
+  keyFn: (req) => `public-operator:${req.ip || 'unknown'}`,
+});
+
+app.get('/api/public/operator', publicOperatorRateLimit, (req, res) => {
+  return res.json({ ok: true, operator: getPublicOperatorConfig() });
+});
 
 // ══════════════════════════════════════════════════════════════════════
 // SEO — /sitemap.xml + /robots.txt (before static SPA fallback)
@@ -928,6 +949,48 @@ app.post(
   },
 );
 
+// ═══════════════════════════════════════════════════════════════════════
+// Public contact/support submission — Contact and Support pages. No login
+// required (payment-provider reviewers and prospective users are usually
+// signed out); still session-aware so CSRF double-submit protection and
+// per-identity rate limiting apply. Persists to server/contact/store.js —
+// does NOT send email (no transactional email provider is configured in
+// this stack today). See BEFORE PRODUCTION notes in the implementation
+// report for the operational gap this leaves.
+// ═══════════════════════════════════════════════════════════════════════
+const contactSubmitRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 5,
+  message: 'Çok fazla mesaj gönderildi. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `contact-submit:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/contact',
+  attachAuthFromSession({ createAnonymous: true }),
+  requireCsrfProtection,
+  contactSubmitRateLimit,
+  async (req, res) => {
+    const result = await createContactMessage({
+      name: req.body?.name,
+      email: req.body?.email,
+      topic: req.body?.topic,
+      message: req.body?.message,
+      route: req.body?.route,
+      userId: req.auth?.isAnonymous ? null : req.auth?.userId || null,
+      // Hidden form field — never rendered/filled by a real visitor.
+      honeypot: req.body?.website,
+    });
+    if (!result.ok) return res.status(400).json({ ok: false, error: result.error });
+    trackEvent('contact_submitted', {
+      userId: req.auth?.isAnonymous ? undefined : req.auth?.userId,
+      source: 'web',
+      props: { topic: result.dropped ? null : result.message?.topic ?? null },
+    });
+    return res.json({ ok: true });
+  },
+);
+
 // ── Analytics — client-observable events the server cannot see on its own
 // (page views, discrete UI interactions). Guests may send a narrow allow-
 // listed set (e.g. pricing_viewed); identity, when present, is always
@@ -1291,6 +1354,72 @@ app.get(
       return res.json({ ok: true, feedback: entry });
     } catch (err) {
       console.error('[ATLAS] admin/feedback/:id error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// Admin — Contact/Support inbox (read + triage). Backs the public Contact
+// and Support forms (POST /api/contact above). No dedicated Admin Control
+// Center tab renders this yet — out of scope for this pass; these routes
+// exist so submissions are retrievable by an admin today rather than
+// write-only. See implementation report for this gap.
+// ═══════════════════════════════════════════════════════════════════════
+app.get(
+  '/api/admin/contact',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const result = listContactMessages({
+        status: req.query.status,
+        topic: req.query.topic,
+        limit: req.query.limit,
+        offset: req.query.offset,
+      });
+      return res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[ATLAS] admin/contact error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/contact/:id',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const entry = getContactMessageById(req.params.id);
+      if (!entry) return res.status(404).json({ ok: false, error: 'Contact message not found' });
+      return res.json({ ok: true, message: entry });
+    } catch (err) {
+      console.error('[ATLAS] admin/contact/:id error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.patch(
+  '/api/admin/contact/:id/status',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  async (req, res) => {
+    try {
+      const result = await updateContactMessageStatus({ id: req.params.id, status: req.body?.status });
+      if (!result.ok) return res.status(result.status || 400).json({ ok: false, error: result.error });
+      return res.json({ ok: true, message: result.message });
+    } catch (err) {
+      console.error('[ATLAS] admin/contact/:id/status error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },

@@ -1,20 +1,36 @@
 ﻿import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import CosmicShell from '../components/cosmic/CosmicShell';
-import { atlasManifesto, socialLinks } from '../data/landing-content';
+import { atlasManifesto } from '../data/landing-content';
+
+/** Old anchor ids that used to hold inline legal text — now redirect to the dedicated pages. */
+const LEGACY_ANCHOR_REDIRECT: Record<string, string> = {
+  gizlilik: '/gizlilik',
+  sartlar: '/uyelik-sozlesmesi',
+  iletisim: '/iletisim',
+};
 
 export default function AboutPage() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!location.hash) return;
     const id = location.hash.replace('#', '');
+    // These anchors used to hold inline privacy/terms/contact text. That
+    // content now lives on dedicated pages (single source of truth) — old
+    // links/bookmarks still work, just redirected instead of duplicated.
+    const redirectTo = LEGACY_ANCHOR_REDIRECT[id];
+    if (redirectTo) {
+      navigate(redirectTo, { replace: true });
+      return;
+    }
     const el = document.getElementById(id);
     if (el) {
       requestAnimationFrame(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     }
-  }, [location.hash]);
+  }, [location.hash, navigate]);
 
   return (
     <CosmicShell>
@@ -39,54 +55,45 @@ export default function AboutPage() {
           </p>
         </div>
 
-        <section id="gizlilik" className="mt-16 scroll-mt-28 border-t border-white/8 pt-10">
-          <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">Gizlilik</h2>
-          <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/62">
-            Oturum çerezleri HttpOnly olarak saklanır. Şifreler tarayıcıda tutulmaz. Analiz
-            kayıtları hesabınıza bağlıdır; üçüncü taraflarla pazarlama amaçlı paylaşılmaz.
-            Ürün geliştirme sırasında veri saklama politikası genişletilebilir — güncel özet bu
-            sayfada yer alır.
+        <section className="mt-16 scroll-mt-28 border-t border-white/8 pt-10">
+          <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">Yasal ve destek</h2>
+          <p className="mt-4 max-w-xl text-sm leading-7 text-[#e8ecf2]/62">
+            Gizlilik, üyelik şartları, iade/iptal, sık sorulan sorular, destek ve iletişim artık kendi
+            sayfalarında yer alır — tek kaynaktan güncel tutulur.
           </p>
-        </section>
-
-        <section id="sartlar" className="mt-12 scroll-mt-28 border-t border-white/8 pt-10">
-          <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">Kullanım şartları</h2>
-          <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/62">
-            Atlas bir karar destek ve anlamlandırma aracıdır; tıbbi, hukuki veya finansal tavsiye
-            değildir. Kullanıcı kendi yargı ve sorumluluğuyla hareket eder. Hizmet kesintileri veya
-            model hataları mümkün olabilir; kritik kararlarda bağımsız doğrulama gerekir.
-          </p>
-        </section>
-
-        <section id="iletisim" className="mt-12 scroll-mt-28 border-t border-white/8 pt-10">
-          <h2 className="font-brand text-2xl font-semibold text-[#e8ecf2]">İletişim</h2>
-          <p className="mt-4 text-sm leading-7 text-[#e8ecf2]/62">
-            Marka ve ürün soruları için Cosmic Simya sosyal kanallarını kullanabilirsiniz.
-          </p>
-          <ul className="mt-5 space-y-3 text-sm">
-            <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[#8b93a3]">Sosyal</span>
-              <a
-                href={socialLinks.instagram.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={socialLinks.instagram.ariaLabel}
+          <ul className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <li>
+              <Link to="/gizlilik" className="site-focus text-[#c9b37a] underline-offset-4 hover:underline">
+                Gizlilik / KVKK
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/uyelik-sozlesmesi"
                 className="site-focus text-[#c9b37a] underline-offset-4 hover:underline"
               >
-                Instagram {socialLinks.instagram.label}
-              </a>
+                Üyelik Sözleşmesi
+              </Link>
             </li>
-            <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-[#6f7886]">Kanal</span>
-              <a
-                href={socialLinks.telegram.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={socialLinks.telegram.ariaLabel}
-                className="site-focus text-[#9aa3ae] underline-offset-4 hover:underline"
-              >
-                {socialLinks.telegram.label}
-              </a>
+            <li>
+              <Link to="/iade-iptal" className="site-focus text-[#c9b37a] underline-offset-4 hover:underline">
+                İade ve İptal
+              </Link>
+            </li>
+            <li>
+              <Link to="/sss" className="site-focus text-[#c9b37a] underline-offset-4 hover:underline">
+                SSS
+              </Link>
+            </li>
+            <li>
+              <Link to="/destek" className="site-focus text-[#9aa3ae] underline-offset-4 hover:underline">
+                Destek
+              </Link>
+            </li>
+            <li>
+              <Link to="/iletisim" className="site-focus text-[#9aa3ae] underline-offset-4 hover:underline">
+                İletişim
+              </Link>
             </li>
           </ul>
         </section>

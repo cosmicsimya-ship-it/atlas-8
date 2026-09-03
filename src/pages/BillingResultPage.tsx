@@ -119,6 +119,15 @@ export default function BillingResultPage() {
             Atlas’a dön
           </Link>
         </div>
+        {view === 'failed' || view === 'invalid' || view === 'error' ? (
+          <p className="mt-8 text-[13px] leading-6 text-[#838b98]">
+            Ödeme ile ilgili bir sorun mu yaşıyorsun?{' '}
+            <Link to="/destek" className="text-[#c9b37a] underline-offset-4 hover:underline">
+              Destek
+            </Link>{' '}
+            sayfasından üyelik/ödeme konusuyla bize ulaşabilirsin.
+          </p>
+        ) : null}
       </main>
     </CosmicShell>
   );

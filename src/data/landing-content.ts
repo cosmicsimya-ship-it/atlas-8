@@ -199,10 +199,21 @@ export const landingFooter = {
   links: [
     { label: 'Atlas', to: '/atlas' },
     { label: 'Nasıl çalışır?', to: '/#nasil-calisir' },
+    { label: 'Lara Prime', to: '/lara-prime' },
     { label: 'Hakkında', to: '/about' },
-    { label: 'Gizlilik', to: '/about#gizlilik' },
-    { label: 'Kullanım şartları', to: '/about#sartlar' },
-    { label: 'İletişim', to: '/about#iletisim' },
+  ],
+  /**
+   * Trust / legal / support — dedicated pages, not About-page anchors.
+   * Kept in a separate row from product nav so this doesn't read as a
+   * cluttered main-nav-style list (see src/data/trust-content.ts).
+   */
+  legalLinks: [
+    { label: 'Gizlilik / KVKK', to: '/gizlilik' },
+    { label: 'Üyelik Sözleşmesi', to: '/uyelik-sozlesmesi' },
+    { label: 'İade ve İptal', to: '/iade-iptal' },
+    { label: 'SSS', to: '/sss' },
+    { label: 'Destek', to: '/destek' },
+    { label: 'İletişim', to: '/iletisim' },
   ],
 } as const;
 

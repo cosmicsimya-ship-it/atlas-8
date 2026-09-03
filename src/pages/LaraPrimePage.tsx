@@ -312,6 +312,13 @@ export default function LaraPrimePage() {
             ? 'Üyeliğin mevcut Atlas hesabına tanımlanır.'
             : 'Devam etmek için giriş yap. Sonrasında otomatik olarak bu sayfaya dönersin.'}
         </p>
+        <p className="mt-2 text-[12px] leading-5 text-[#6f7886]">
+          Aylık otomatik yenilenir. İstediğin zaman iptal edebilirsin —{' '}
+          <Link to="/iade-iptal" className="text-[#9aa8b3] underline-offset-4 hover:underline">
+            yenileme ve iptal koşulları
+          </Link>
+          .
+        </p>
 
         {message ? <p className="mt-4 text-[12px] leading-5 text-[#a7afbc]">{message}</p> : null}
         {error ? <p className="mt-4 text-[12px] leading-5 text-rose-300/90">{error}</p> : null}
@@ -490,6 +497,36 @@ export default function LaraPrimePage() {
               </div>
             </div>
           </div>
+
+          <nav aria-label="Üyelik şeffaflığı ve destek" className="mt-8 border-t border-white/[0.06] pt-6">
+            <ul className="flex flex-wrap gap-x-5 gap-y-2 text-[12.5px]">
+              <li>
+                <Link to="/uyelik-sozlesmesi" className="site-focus text-[#9aa3b2] underline-offset-4 hover:text-[#c9b37a] hover:underline">
+                  Üyelik Sözleşmesi
+                </Link>
+              </li>
+              <li>
+                <Link to="/iade-iptal" className="site-focus text-[#9aa3b2] underline-offset-4 hover:text-[#c9b37a] hover:underline">
+                  İade ve İptal
+                </Link>
+              </li>
+              <li>
+                <Link to="/gizlilik" className="site-focus text-[#9aa3b2] underline-offset-4 hover:text-[#c9b37a] hover:underline">
+                  Gizlilik / KVKK
+                </Link>
+              </li>
+              <li>
+                <Link to="/sss" className="site-focus text-[#9aa3b2] underline-offset-4 hover:text-[#c9b37a] hover:underline">
+                  SSS
+                </Link>
+              </li>
+              <li>
+                <Link to="/destek" className="site-focus text-[#9aa3b2] underline-offset-4 hover:text-[#c9b37a] hover:underline">
+                  Destek
+                </Link>
+              </li>
+            </ul>
+          </nav>
         </section>
 
         {/* Final CTA */}

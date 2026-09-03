@@ -32,6 +32,12 @@ import Chat from "./pages/Chat";
 import BillingResultPage from "./pages/BillingResultPage";
 import LaraPrimePage from "./pages/LaraPrimePage";
 import PrimePage from "./pages/PrimePage";
+import ContactPage from "./pages/ContactPage";
+import SupportPage from "./pages/SupportPage";
+import PrivacyPolicyPage from "./pages/PrivacyPolicyPage";
+import MembershipTermsPage from "./pages/MembershipTermsPage";
+import RefundCancellationPage from "./pages/RefundCancellationPage";
+import FAQPage from "./pages/FAQPage";
 
 /** A new surface always opens at its beginning — unless it targets a section. */
 function ScrollToTop() {
@@ -61,6 +67,12 @@ export default function App() {
         <Route path="lara-prime" element={<LaraPrimePage />} />
         <Route path="prime" element={<PrimePage />} />
         <Route path="billing/result" element={<BillingResultPage />} />
+        <Route path="iletisim" element={<ContactPage />} />
+        <Route path="destek" element={<SupportPage />} />
+        <Route path="gizlilik" element={<PrivacyPolicyPage />} />
+        <Route path="uyelik-sozlesmesi" element={<MembershipTermsPage />} />
+        <Route path="iade-iptal" element={<RefundCancellationPage />} />
+        <Route path="sss" element={<FAQPage />} />
         <Route path="admin" element={<AdminPage />} />
 
         <Route element={<AppLayout />}>
