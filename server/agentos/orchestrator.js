@@ -6,11 +6,15 @@
 // GET /api/admin/agent-tasks/:id for live status).
 //
 // runAgentTask() claims the task (no-duplicate-execution guard), builds a
-// delegation list, runs delegates through the REAL runner (runner/runner.js
-// -> callOpenAI, genuine completions, no fabricated output), and — for
-// owner "atlas-core" — makes one more real call to research-atlas-core for
-// the final synthesis. Every LLM call goes through the existing Runner
-// class exactly as the personal-analysis pipeline already does.
+// delegation list, runs delegates through the REAL execution engine
+// (runner/sdk-runner.js -> the official OpenAI Agents SDK, genuine
+// completions, no fabricated output), and — for owner "atlas-core" —
+// makes one more real call to research-atlas-core for the final
+// synthesis. Every LLM call goes through SdkRunner.callAgent(), which
+// mirrors runner/runner.js's Runner.callAgent() contract exactly (see
+// runner/sdk-runner.js for the field-for-field parity notes) — task
+// states, subtask persistence, and approval gates are unaffected by
+// which engine sits underneath.
 //
 // KNOWN LIMITATION (see docs/adr or the AgentOS report for the full
 // writeup): delegate agents have no file/tool access. They reason only
@@ -19,7 +23,7 @@
 // "Critical Operating Constraint" section in agents/research-*.md.
 // ═══════════════════════════════════════════════════════════════════════
 
-import { Runner } from '../../runner/runner.js';
+import { SdkRunner } from '../../runner/sdk-runner.js';
 import {
   OWNER_TO_DELEGATE_AGENT,
   isValidOwnerAgent,
@@ -53,7 +57,7 @@ const DELEGATE_LABELS = Object.freeze({
 
 const VISUAL_KEYWORD_RE = /\b(ui|ux|visual|design system|information architecture|\bia\b|navigation|nav\b|layout|screen|interface)\b/i;
 
-const runner = new Runner({ provider: 'openai' });
+const runner = new SdkRunner({ provider: 'openai' });
 
 function nowIso() {
   return new Date().toISOString();

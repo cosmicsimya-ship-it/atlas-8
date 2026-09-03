@@ -27,6 +27,7 @@
     "test:admin": "node server/verify-admin.mjs",
     "test:admin-feedback-errors": "node scripts/test-admin-feedback-errors.mjs",
     "test:admin-agentos-bridge": "node scripts/test-admin-agentos-bridge.mjs",
+    "test:agentos-sdk-engine": "node scripts/test-agentos-sdk-engine.mjs",
     "test:contact-support": "node scripts/test-contact-support.mjs",
     "test:trust-surfaces": "node scripts/test-trust-surfaces.mjs",
     "test:founder": "node server/verify-founder-identity.mjs",
@@ -83,6 +84,7 @@
     "test:conversation-regression-fixtures": "node scripts/test-conversation-regression-fixtures.mjs"
   },
   "dependencies": {
+    "@openai/agents": "^0.17.0",
     "astronomy-engine": "^2.1.19",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
@@ -100,6 +102,7 @@
     "react-dom": "19.2.6",
     "react-router-dom": "^7.18.1",
     "tailwind-merge": "3.4.0",
+    "zod": "^4.5.4",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
