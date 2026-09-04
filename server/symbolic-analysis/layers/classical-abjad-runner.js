@@ -182,6 +182,23 @@ export function tokenizeClassicalSpelling(selectedSpelling) {
       continue;
     }
 
+    /**
+     * Zero-width joiner/non-joiner (U+200C/U+200D) — found via
+     * EBCED HESAPLAMA TABLOSU.xlsx cross-check used informally as a
+     * word-separator inside compound names (e.g. "عبد‌الغفار") instead of
+     * a space. Treated as a word boundary, same as whitespace — it carries
+     * no letter value of its own in any classical or workbook table.
+     */
+    if (ch === '‌' || ch === '‍') {
+      ignored.push(
+        traceEntry(ch, {
+          ruleApplied: 'zero-width-joiner-ignore',
+          status: 'ignored',
+        }),
+      );
+      continue;
+    }
+
     if (CLASSICAL_HARAKAT.has(ch)) {
       ignored.push(
         traceEntry(ch, {

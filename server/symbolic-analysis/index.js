@@ -71,3 +71,31 @@ export {
   lookupNameSpelling,
   classifyArabicNameVariant,
 } from './data/arabic-name-spellings.js';
+
+export { classifyArabicText, CLASSIFICATION_METHODOLOGY_ID } from './classifications.js';
+export {
+  LETTER_CLASSIFICATIONS,
+  HAMZA_CLASSIFICATION,
+  LETTER_CLASSIFICATION_SOURCE,
+} from './data/letter-classifications.js';
+
+export {
+  calculateCompatibility as calculateNamePairCompatibility,
+  COMPATIBILITY_METHODOLOGY_ID,
+  COMPATIBILITY_ERROR_CODES,
+} from './compatibility.js';
+
+export {
+  calculateVerseAbjad,
+  calculateArabicTextAbjad,
+  VERSE_ABJAD_METHODOLOGY_ID,
+  VERSE_ABJAD_ERROR_CODES,
+} from './verse-abjad.js';
+
+/**
+ * atlas-ebced-v1 — the stable public API surface. Prefer importing from
+ * here over any of the lower-level modules above when building a new
+ * caller (chat routing, admin tools, tests) — see atlas-ebced-v1.js for
+ * why this composition exists instead of a second engine.
+ */
+export * as atlasEbced from './atlas-ebced-v1.js';

@@ -86,6 +86,13 @@ export const CLASSICAL_CARRIER_FOLDS = Object.freeze({
   چ: { to: 'ج', rule: 'persian-fold-che' },
   ژ: { to: 'ز', rule: 'persian-fold-zhe' },
   گ: { to: 'ك', rule: 'persian-fold-gaf' },
+  /**
+   * Farsi Yeh (U+06CC) glyph-folded to Arabic Yeh — same letter, font/keyboard
+   * variant. Found via EBCED HESAPLAMA TABLOSU.xlsx cross-check: 3 of 99 Esma
+   * catalog rows (Bari, Kerim, Mütaali) used ی where ي was intended, which
+   * otherwise fails as an unsupported character despite being the same value.
+   */
+  ی: { to: 'ي', rule: 'farsi-yeh-fold' },
 });
 
 export const ALIF_MADDA = 'آ';

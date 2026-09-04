@@ -37,6 +37,7 @@ const LATIN_TO_ARABIC_CHAR = Object.freeze({
   ı: 'ي',
   i: 'ي',
   î: 'ي',
+  â: 'ا', // Turkish circumflex-a (e.g. "lâzım") — long a, grouped with a/e
   y: 'ي',
   k: 'ك',
   q: 'ق',
@@ -58,7 +59,14 @@ const LATIN_TO_ARABIC_CHAR = Object.freeze({
   z: 'ز',
 });
 
-const MAPPABLE_LATIN_CHAR_RE = /[a-zçşğıöü]/;
+/**
+ * NOTE: â/î/û were previously missing here even though î/û already had
+ * LATIN_TO_ARABIC_CHAR entries — those entries were unreachable dead code
+ * (this gate runs first and silently treated them as ignorable punctuation).
+ * Found via the Ebced engine v1 test suite (Phase 14) — see
+ * scripts/test-ebced-engine.mjs check 7.
+ */
+const MAPPABLE_LATIN_CHAR_RE = /[a-zçşğıöüâîû]/;
 
 /**
  * @param {string} arabicChars
