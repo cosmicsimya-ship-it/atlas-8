@@ -13,7 +13,10 @@ import {
   INTENTION_THEME_HINTS,
 } from './symbolic-analysis/data/esma-catalog.js';
 import { sanitizeSymbolicProse } from './symbolic-analysis/safety.js';
-import { isExplicitEbcedEsmaMatchAsk } from './abjad-verification.js';
+import {
+  isExplicitEbcedEsmaMatchAsk,
+  extractLastVerifiedTotalFromHistory,
+} from './abjad-verification.js';
 import {
   applyMedicalSpiritualClaimGuard,
 } from './evidence-meaning-boundaries.js';
@@ -69,7 +72,15 @@ export function detectDevotionalRecommendationIntent(message, opts = {}) {
   }
 
   const history = opts.history || [];
-  const lastTotal = null; // recommendation path never needs abjad total
+  // Wired to real history (Ebced/Intelligence Layer integration): a recent
+  // verified Ebced total is exactly the signal isExplicitEbcedEsmaMatchAsk's
+  // own "short follow-up after a verified total" branch already looks for
+  // (see abjad-verification.js) — without it, an ambiguous short "Hangi
+  // Esma?" after a Furkan/etc. calculation had no way to defer to the
+  // Ebced engine and was claimed here instead, since ESMA_ASK_RE alone
+  // can't distinguish "which Esma matches my number" from "which Esma
+  // should I recite".
+  const lastTotal = extractLastVerifiedTotalFromHistory(history);
   const ebcedRequested =
     EXPLICIT_EBCED_RE.test(text) || isExplicitEbcedEsmaMatchAsk(text, lastTotal);
   const medicalContext = MEDICAL_CONTEXT_RE.test(text);
