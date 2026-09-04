@@ -1,4 +1,5 @@
 import { cn } from '../../utils/cn';
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 
 interface AtlasCoreVisualProps {
   className?: string;
@@ -53,6 +54,20 @@ export default function AtlasCoreVisual({ className, crop = 'desktop' }: AtlasCo
               className="obs-orbit-ultra origin-center [transform-box:fill-box] [transform-origin:360px_300px]"
             />
           </svg>
+        </div>
+
+        {/* North Star plane — the approved eight-pointed mark, same family as
+            the header mark. Sits behind the MID plane's aperture/ticks so it
+            reads as the mechanism's true form rather than a sticker on top;
+            mix-blend-screen lets its bright facets glow into the dark field
+            instead of showing a flat opaque edge. */}
+        <div className="obs-engine-layer obs-engine-star flex items-center justify-center">
+          <AtlasCompassMark
+            className={cn(
+              'mix-blend-screen opacity-60 drop-shadow-[0_0_32px_rgba(201,179,122,0.06)]',
+              mobile ? 'h-[56%] w-[56%]' : 'h-[46%] w-[46%]',
+            )}
+          />
         </div>
 
         {/* MID plane — main observation mechanism */}

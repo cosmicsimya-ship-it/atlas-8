@@ -688,6 +688,13 @@ body {
   filter: blur(0.4px);
 }
 
+/* North Star focal plane — sits between FAR and MID so the aperture (MID)
+   still reads in front of it: the star lives inside the mechanism's depth
+   stack instead of being pasted on top of the whole scene. */
+.obs-engine-star {
+  transform: translateZ(-40px) scale(1.02);
+}
+
 .obs-engine-mid {
   transform: translateZ(0) rotateY(-8deg) rotateX(4deg) scale(1.05);
 }
@@ -752,6 +759,7 @@ body {
     perspective: none;
   }
   .obs-engine-far,
+  .obs-engine-star,
   .obs-engine-mid,
   .obs-engine-near {
     transform: none;
