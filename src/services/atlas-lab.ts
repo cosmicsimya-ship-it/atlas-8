@@ -45,3 +45,24 @@ export async function fetchAtlasLabTraces(opts: { channel?: string; limit?: numb
 export async function fetchAtlasLabTrace(requestId: string): Promise<{ ok: true; trace: AtlasLabTrace }> {
   return apiRequest<{ ok: true; trace: AtlasLabTrace }>(`/api/admin/atlas-lab/traces/${encodeURIComponent(requestId)}`, { method: 'GET' });
 }
+
+export type AtlasLabEvaluationVerdict = {
+  verdict: 'PASS' | 'WARN' | 'FAIL';
+  categories: string[];
+  explanation: string;
+  expectedBehavior: string;
+  confidence: 'high' | 'medium' | 'low';
+};
+
+export type AtlasLabEvaluateResponse = { ok: true; verdict: AtlasLabEvaluationVerdict; model: string; latencyMs: number };
+
+/**
+ * Triggers a manual, on-demand, observational evaluation of one trace.
+ * Never rewrites the underlying interaction — read-only diagnostic action.
+ * On failure (evaluator unavailable, malformed model output, etc.) the
+ * backend responds non-2xx and apiRequest throws ApiError — callers should
+ * catch it and read err.body?.error / err.body?.blocked for detail.
+ */
+export async function evaluateAtlasLabTrace(requestId: string): Promise<AtlasLabEvaluateResponse> {
+  return apiRequest<AtlasLabEvaluateResponse>(`/api/admin/atlas-lab/traces/${encodeURIComponent(requestId)}/evaluate`, { method: 'POST' });
+}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { fetchAtlasLabTraces, type AtlasLabTrace } from '../../services/atlas-lab';
+import { ApiError } from '../../services/api-client';
+import { fetchAtlasLabTraces, evaluateAtlasLabTrace, type AtlasLabTrace, type AtlasLabEvaluationVerdict } from '../../services/atlas-lab';
 
 function fmtTime(iso: string | null) {
   if (!iso) return '—';
@@ -24,6 +25,67 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 
 function ListField({ label, items }: { label: string; items: string[] }) {
   return <Field label={label} value={items && items.length > 0 ? items.join(', ') : null} />;
+}
+
+function verdictColor(verdict: AtlasLabEvaluationVerdict['verdict']) {
+  if (verdict === 'PASS') return 'text-[#7fd88f]';
+  if (verdict === 'WARN') return 'text-[#c9b37a]';
+  return 'text-red-300/85';
+}
+
+function EvaluatePanel({ requestId }: { requestId: string }) {
+  const [state, setState] = useState<
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ok'; verdict: AtlasLabEvaluationVerdict; model: string; latencyMs: number }
+  >({ status: 'idle' });
+
+  const run = async () => {
+    setState({ status: 'loading' });
+    try {
+      const res = await evaluateAtlasLabTrace(requestId);
+      setState({ status: 'ok', verdict: res.verdict, model: res.model, latencyMs: res.latencyMs });
+    } catch (err) {
+      const message = err instanceof ApiError ? (err.body as { error?: string } | null)?.error || err.message : 'Değerlendirme başarısız oldu';
+      setState({ status: 'error', message });
+    }
+  };
+
+  return (
+    <div className="mt-5 border-t border-white/[0.08] pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10.5px] uppercase tracking-[0.1em] text-[#8b93a3]">Değerlendirme (gözlemsel, isteğe bağlı)</p>
+        <button
+          type="button"
+          onClick={run}
+          disabled={state.status === 'loading'}
+          className="atlas-focus shrink-0 rounded border border-[#c9b37a]/30 bg-[#c9b37a]/[0.08] px-2.5 py-1 text-[12px] text-[#eef1f5] hover:bg-[#c9b37a]/[0.15] disabled:opacity-50"
+        >
+          {state.status === 'loading' ? 'Değerlendiriliyor…' : 'Evaluate interaction'}
+        </button>
+      </div>
+      {state.status === 'error' ? (
+        <p className="mt-2 text-[12px] text-red-300/80">{state.message}</p>
+      ) : null}
+      {state.status === 'ok' ? (
+        <div className="mt-3 space-y-2">
+          <p className={`text-[15px] font-medium ${verdictColor(state.verdict.verdict)}`}>
+            {state.verdict.verdict}
+            <span className="ml-2 text-[11px] text-[#8b93a3]">confidence: {state.verdict.confidence}</span>
+          </p>
+          {state.verdict.categories.length > 0 ? (
+            <p className="text-[12px] text-[#9aa3b2]">Kategoriler: {state.verdict.categories.join(', ')}</p>
+          ) : null}
+          <p className="text-[13px] text-[#e8ecf2]">{state.verdict.explanation}</p>
+          {state.verdict.expectedBehavior ? (
+            <p className="text-[12px] text-[#9aa3b2]">Beklenen davranış: {state.verdict.expectedBehavior}</p>
+          ) : null}
+          <p className="text-[11px] text-[#8b93a3]">{state.model} · {state.latencyMs}ms</p>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function TraceDetailPanel({ trace, onClose }: { trace: AtlasLabTrace; onClose: () => void }) {
@@ -80,6 +142,8 @@ function TraceDetailPanel({ trace, onClose }: { trace: AtlasLabTrace; onClose: (
             </ul>
           )}
         </div>
+
+        <EvaluatePanel requestId={trace.requestId} />
       </div>
     </div>
   );

@@ -38,6 +38,7 @@ import {
 } from './admin/control-center.js';
 import { getAgentOsSummary, runAgentOsSweep } from './admin/agentos-bridge.js';
 import { listAtlasLabTraces, getAtlasLabTrace } from './atlas-lab/trace-store.js';
+import { evaluateAtlasLabTrace } from './atlas-lab/evaluator.js';
 import { createAgentTask } from './agentos/orchestrator.js';
 import { getTask, listTasks, listSubtasks } from './agentos/task-store.js';
 import { cancelAgentTask, approveAgentTaskAction } from './admin/agentos-task-actions.js';
@@ -1269,6 +1270,40 @@ app.get(
       return res.json({ ok: true, trace });
     } catch (err) {
       console.error('[ATLAS] admin/atlas-lab/traces/:requestId error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// Evaluation calls cost real money (an OpenAI call per press) — a tight,
+// dedicated limit independent of the general adminRateLimit, same pattern
+// as agentTaskCreateRateLimit below.
+const atlasLabEvaluateRateLimit = rateLimitMiddleware({
+  windowMs: 60_000,
+  max: 10,
+  message: 'Çok fazla değerlendirme isteği. Lütfen kısa bir süre sonra yeniden dene.',
+  keyFn: (req) => `atlas-lab-evaluate:${req.auth?.userId || req.ip || 'unknown'}`,
+});
+
+app.post(
+  '/api/admin/atlas-lab/traces/:requestId/evaluate',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  requireCsrfProtection,
+  adminRateLimit,
+  atlasLabEvaluateRateLimit,
+  async (req, res) => {
+    try {
+      const trace = getAtlasLabTrace(req.params.requestId);
+      if (!trace) return res.status(404).json({ ok: false, error: 'Trace not found' });
+      const result = await evaluateAtlasLabTrace(trace, { requestedBy: req.auth.userId });
+      if (!result.ok) {
+        return res.status(result.blocked ? 503 : 502).json({ ok: false, error: result.error, blocked: Boolean(result.blocked) });
+      }
+      return res.json({ ok: true, verdict: result.verdict, model: result.model, latencyMs: result.latencyMs });
+    } catch (err) {
+      console.error('[ATLAS] admin/atlas-lab/traces/:requestId/evaluate error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
