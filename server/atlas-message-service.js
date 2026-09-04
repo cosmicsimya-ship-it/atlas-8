@@ -160,6 +160,7 @@ import {
   tryDeterministicCompatibilityReply,
   tryDeterministicVerseEbcedReply,
   detectVerseEbcedIntent,
+  tryDeterministicSelfReferentialEbcedReply,
   EBCED_ENGINE_METHOD_VERSION,
 } from './abjad-verification.js';
 import {
@@ -2793,6 +2794,66 @@ export async function processAtlasMessage(input, options = {}) {
       }
 
       // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
+      // Self-referential follow-up ("Benimkine de bak.") only fires while
+      // Ebced is the persisted domain — never inferred from message text
+      // alone, so it can't misfire as a standalone opener.
+      const ebcedDomainActive =
+        symbolicContext.primaryDomain === 'ebced' ||
+        getConversationState(conversationId).symbolicDomain === 'ebced';
+      const selfEbcedDeterministic = tryDeterministicSelfReferentialEbcedReply({
+        message,
+        ebcedDomainActive,
+        selfName: trustedSpeakerEarly?.senderDisplayName || input.displayName || null,
+      });
+      if (selfEbcedDeterministic?.reply) {
+        const engineSuccess = selfEbcedDeterministic.confidence !== 'insufficient';
+        noteAssistantTurn(conversationId, {
+          reply: selfEbcedDeterministic.reply,
+          intent: `abjad:${selfEbcedDeterministic.operation}`,
+          symbolicDomain: 'ebced',
+          engineInvocation: {
+            engine: 'abjad-verification',
+            intent: `abjad:${selfEbcedDeterministic.operation}`,
+            status: engineSuccess ? 'ok' : 'ambiguous',
+            inputSummary: message.slice(0, 160),
+          },
+        });
+        rememberSymbolicDomain(conversationId, 'ebced');
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: selfEbcedDeterministic.reply,
+            intent: `abjad:${selfEbcedDeterministic.operation}`,
+            engine: 'abjad-verification',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              abjadVerification: { version: ABJAD_VERIFICATION_VERSION, calc: selfEbcedDeterministic.calc },
+              engineTelemetry: {
+                activeDomain: 'ebced',
+                engineExpected: EBCED_ENGINE_METHOD_VERSION,
+                engineUsed: EBCED_ENGINE_METHOD_VERSION,
+                engineBypassed: false,
+                engineMethodVersion: selfEbcedDeterministic.methodVersion,
+                engineOperation: selfEbcedDeterministic.operation,
+                engineSuccess,
+                topicChangeDetected: false,
+                selfCorrectionTriggered: false,
+              },
+              model: 'deterministic',
+              provider: 'atlas-abjad-verification',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
       // Verse-ebced and compatibility are checked first: both require an
       // explicit ebced/abjad cue combined with something (a surah:ayah
       // reference, or two connected names) the generic calculate/esma_match

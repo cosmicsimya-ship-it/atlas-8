@@ -753,6 +753,95 @@ export function tryDeterministicAbjadReply(input) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Self-referential Ebced follow-up ("Benimkine de bak.") — a short message
+// with no name, no Arabic, and no "ebced" keyword of its own, only
+// interpretable as an Ebced request because the conversation is already in
+// the Ebced domain. Gated by the caller passing `ebcedDomainActive: true`
+// (from symbolicDomain state) — this function has no way to know that on
+// its own and must never guess a domain from message text alone here.
+// ─────────────────────────────────────────────────────────────────────────
+
+const SELF_REFERENTIAL_EBCED_RE =
+  /^(?:benimkine\s+de\s+bak|benim\s*(?:kine)?\s+de\s+bak|bana\s+da\s+bak|beni\s+de\s+hesapla|benimkini\s+de\s+hesapla|ya\s+benim\s*(?:kim?)?)[.!?…]*$/iu;
+
+/**
+ * @param {string} message
+ * @param {boolean} ebcedDomainActive
+ * @returns {{ active: boolean }}
+ */
+export function detectSelfReferentialEbcedFollowUp(message, ebcedDomainActive) {
+  if (!ebcedDomainActive) return { active: false };
+  const text = normalizeTr(message);
+  if (!text || text.length > 40) return { active: false };
+  return { active: SELF_REFERENTIAL_EBCED_RE.test(text) };
+}
+
+/**
+ * @param {{ message: string, ebcedDomainActive: boolean, selfName: string|null }} input
+ */
+export function tryDeterministicSelfReferentialEbcedReply(input) {
+  const intent = detectSelfReferentialEbcedFollowUp(input.message, input.ebcedDomainActive);
+  if (!intent.active) return null;
+
+  if (!input.selfName) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'calculate_name',
+      confidence: 'insufficient',
+      reply: 'İsmini paylaşır mısın? Onu da hesaplayayım.',
+      calc: null,
+      spelling: null,
+    };
+  }
+
+  const spelling = resolveArabicSpelling({ originalInput: input.selfName, latinHint: input.selfName });
+  if (!spelling.normalizedArabic || !spelling.spellingConfirmed) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'calculate_name',
+      confidence: 'insufficient',
+      reply: spelling.warnings.join(' ') || `${input.selfName} için Arapça yazım onayı gerekli.`,
+      calc: null,
+      spelling,
+    };
+  }
+
+  const calc = calculateAbjad(spelling.normalizedArabic, ABJAD_KABIR_CLASSICAL_V1);
+  if (!calc.ok) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'calculate_name',
+      confidence: 'insufficient',
+      reply: `Bu yazım hesaplanamadı (${calc.errorCode}).`,
+      calc,
+      spelling,
+    };
+  }
+
+  const reply = [
+    `${input.selfName}: ${calc.normalizedText}`,
+    formatAbjadBreakdown(calc.letters, calc.total),
+  ].join('\n');
+
+  return {
+    active: true,
+    engine: 'abjad-verification',
+    methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+    operation: 'calculate_name',
+    confidence: 'high',
+    reply,
+    calc,
+    spelling,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Name-pair compatibility (Çift Uyumu) — genuinely new capability, not
 // present anywhere in the chat layer before atlas-ebced-v1. Scoped
 // conservatively: requires an explicit ebced/abjad cue alongside "uyum" so
