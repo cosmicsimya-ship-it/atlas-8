@@ -97,13 +97,17 @@ check('5 zero-width non-joiner is treated as a word boundary, same as whitespace
   assert.equal(withZwnj.total, withSpace.total);
 });
 
-// ── 6. Turkish names (Latin input, default transliteration) ────────────
-check('6 Turkish names — default transliteration computes without asking for Arabic', () => {
+// ── 6. Turkish names (Latin input) ──────────────────────────────────────
+check('6 Turkish names — compute immediately, never ask for Arabic spelling', () => {
+  // Furkan resolves via the gazetteer's autoConfirm path (a known, single,
+  // uncontested canonical spelling) rather than default transliteration —
+  // both paths share the same no-confirmation-needed contract, which is
+  // what this test actually verifies (Phase 4: never ask for Arabic first).
   for (const name of ['Lara', 'Furkan', 'Hakan', 'Zeynep', 'Işık']) {
     const r = E.calculateName(name);
     assert.equal(r.ok, true, `${name} should resolve`);
     assert.equal(typeof r.total, 'number');
-    assert.equal(r.autoTransliterated, true);
+    assert.equal(r.spellingConfirmed, true, `${name} must not require confirmation`);
     assert.ok(r.disclosures.length >= 1);
   }
 });

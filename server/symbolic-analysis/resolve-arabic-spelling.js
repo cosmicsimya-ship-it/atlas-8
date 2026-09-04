@@ -135,7 +135,7 @@ export function resolveArabicSpelling(input = {}) {
   const latinKey = normalizeLatinNameKey(input.latinHint || originalInput);
   const entry = lookupNameSpelling(latinKey);
   if (entry) {
-    if (confirmedFlag) {
+    if (confirmedFlag || entry.autoConfirm === true) {
       return {
         originalInput,
         normalizedArabic: entry.standardArabic,
@@ -144,7 +144,14 @@ export function resolveArabicSpelling(input = {}) {
         calculationMethod,
         status: 'confirmed',
         warnings,
-        disclosures: [],
+        // autoConfirm entries disclose (like ADR-010's default transliteration)
+        // rather than silently presenting one spelling as the only one.
+        disclosures:
+          entry.autoConfirm === true && !confirmedFlag
+            ? [
+                `Bu, "${entry.displayLatin}" adının bilinen tek standart Arapça yazımıyla (${entry.standardArabic}) hesaplanmıştır.`,
+              ]
+            : [],
         displayLatin: entry.displayLatin,
         rejectedVariant: null,
         standardArabic: entry.standardArabic,

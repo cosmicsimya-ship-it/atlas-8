@@ -14,6 +14,13 @@
  * already produces; nothing here changes what is computed or returned
  * to the user — attachRequestTiming() only reads `result`, it never
  * mutates `result.reply` or `result.status`.
+ *
+ * Ebced/Intelligence-Layer integration extension (additive, same
+ * discipline): a dispatch branch may optionally set `result.data.engineTelemetry`
+ * with a bounded set of engine-decision fields (activeDomain, engineExpected,
+ * engineUsed, engineBypassed, engineMethodVersion, engineOperation,
+ * engineSuccess, topicChangeDetected, selfCorrectionTriggered). All nullable;
+ * a branch that doesn't set it changes nothing here.
  */
 
 import { randomBytes, createHash } from 'crypto';
@@ -63,6 +70,15 @@ const SUMMARY_MAX_CHARS = 200;
  *   totalDurationMs: number,
  *   llmCallCount: number,
  *   usedRetryOrFallback: boolean,
+ *   activeDomain: string|null,
+ *   engineExpected: string|null,
+ *   engineUsed: string|null,
+ *   engineBypassed: boolean|null,
+ *   engineMethodVersion: string|null,
+ *   engineOperation: string|null,
+ *   engineSuccess: boolean|null,
+ *   topicChangeDetected: boolean|null,
+ *   selfCorrectionTriggered: boolean|null,
  * }} RequestTimingSnapshot
  */
 
@@ -255,6 +271,18 @@ export function createRequestTiming(opts = {}) {
         totalDurationMs,
         llmCallCount,
         usedRetryOrFallback,
+        activeDomain: meta.engineTelemetry?.activeDomain ?? data?.engineTelemetry?.activeDomain ?? null,
+        engineExpected: meta.engineTelemetry?.engineExpected ?? data?.engineTelemetry?.engineExpected ?? null,
+        engineUsed: meta.engineTelemetry?.engineUsed ?? data?.engineTelemetry?.engineUsed ?? null,
+        engineBypassed: meta.engineTelemetry?.engineBypassed ?? data?.engineTelemetry?.engineBypassed ?? null,
+        engineMethodVersion:
+          meta.engineTelemetry?.engineMethodVersion ?? data?.engineTelemetry?.engineMethodVersion ?? null,
+        engineOperation: meta.engineTelemetry?.engineOperation ?? data?.engineTelemetry?.engineOperation ?? null,
+        engineSuccess: meta.engineTelemetry?.engineSuccess ?? data?.engineTelemetry?.engineSuccess ?? null,
+        topicChangeDetected:
+          meta.engineTelemetry?.topicChangeDetected ?? data?.engineTelemetry?.topicChangeDetected ?? null,
+        selfCorrectionTriggered:
+          meta.engineTelemetry?.selfCorrectionTriggered ?? data?.engineTelemetry?.selfCorrectionTriggered ?? null,
       };
     },
   };

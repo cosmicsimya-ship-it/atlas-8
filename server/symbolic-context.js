@@ -20,7 +20,7 @@ import { wantsQuranExplanation } from './quran-verse-lookup/explanation.js';
 
 export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v1';
 
-/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|'quran'|null} SymbolicDomainId */
+/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|'quran'|'ebced'|null} SymbolicDomainId */
 
 const SHORT_FOLLOWUP_RE =
   /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz|mesela|mesel[aâ]|[oö]rnek(\s+ver)?|nas[ıi]l\s+yani|bunu\s+a[cç]|birinci(si)?|ikinci(si)?|üçüncü(sü)?|hangisi)[.!?…]*$/iu;
@@ -337,9 +337,17 @@ export function shouldBlockUnrelatedCapability(ctx, message) {
     !/\b(tarot|kart|r[uü]ya|sembol)\b/i.test(text);
   if (clearOps) return false;
 
-  const symbolicPrimary = ['tarot', 'dream', 'symbol', 'date_pattern', 'person', 'choice', 'pattern', 'astrology'].includes(
-    ctx.primaryDomain || '',
-  );
+  const symbolicPrimary = [
+    'tarot',
+    'dream',
+    'symbol',
+    'date_pattern',
+    'person',
+    'choice',
+    'pattern',
+    'astrology',
+    'ebced',
+  ].includes(ctx.primaryDomain || '');
   if (!symbolicPrimary && !ctx.preserveActiveDomain) return false;
 
   if (ctx.shortFollowUp || ctx.preserveActiveDomain) return true;
