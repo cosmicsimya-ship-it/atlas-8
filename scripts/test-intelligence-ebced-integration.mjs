@@ -10,6 +10,10 @@
 import assert from 'node:assert/strict';
 import { processAtlasMessage } from '../server/atlas-message-service.js';
 import { resetConversationState } from '../server/conversation-context-engine.js';
+import {
+  resetFounderKnowledgeForTests,
+  unlockFounderKnowledgeForTests,
+} from '../server/founder-knowledge.js';
 
 let passed = 0;
 let failed = 0;
@@ -243,6 +247,80 @@ await check('M. Real Telegram DM regression — "Hadi ebced değerimi ismimden h
   assert.doesNotMatch(r2.reply, /ifadesi tek başına net değil|hangi esma veya hangi bağlamda/i, 'must not ask what "Esması" means when a verified total already exists in history');
   assert.doesNotMatch(r2.reply, /yak[ıi]n\s+frekans|titre[sş]im|vibrasyon/i);
 });
+
+// ── N. Founder self-name resolution — personalName, not displayName label ──
+// Reproduces the 2026-09-05 real Telegram regression: a founder session whose
+// channel displayName is a branded label ("Lara | Cosmic Simya") must resolve
+// the canonical personal name ("Lara") from founder-identity's existing
+// getFounderPreferredName() source for self-referential Ebced requests — the
+// engine itself is untouched; only the input selected at the call site changes.
+process.env.ATLAS_TEST_TRUST_INPUT_USERID = '1';
+const FOUNDER_TEST_USER_ID = 'telegram:990041';
+const FOUNDER_TEST_DISPLAY_NAME = 'Lara | Cosmic Simya';
+resetFounderKnowledgeForTests({
+  profiles: [
+    {
+      id: 'test-founder-lara',
+      founderName: 'Lara',
+      role: 'Cosmicsimya.com Kurucusu · Atlas Sistem Mimarı',
+      linkedUserIds: [FOUNDER_TEST_USER_ID],
+    },
+  ],
+});
+
+await check('N1. Founder self-name — resolves canonical personal name "Lara", not the display label', async () => {
+  const id = convId('n1');
+  const r1 = await send(id, 'Hadi ebced değerimi ismimden hesapla', [], 'telegram', {
+    userId: FOUNDER_TEST_USER_ID,
+    displayName: FOUNDER_TEST_DISPLAY_NAME,
+  });
+  assert.equal(r1.engine, 'abjad-verification', `expected Ebced engine, got ${r1.engine}`);
+  assert.match(r1.reply, /^Lara:/, `engine input must be the canonical personal name "Lara", got reply: ${r1.reply}`);
+  assert.doesNotMatch(r1.reply, /Cosmic Simya/, 'must not calculate the full display/profile label');
+  assert.equal(r1.data?.engineTelemetry?.engineUsed, 'atlas-ebced-v1');
+  assert.equal(r1.data?.engineTelemetry?.engineSuccess, true);
+
+  // Follow-up in the same real entry point — domain persists and reuses Lara's result.
+  const history = [
+    { role: 'user', content: 'Hadi ebced değerimi ismimden hesapla' },
+    { role: 'assistant', content: r1.reply },
+  ];
+  const r2 = await send(id, 'Esması?', history, 'telegram', {
+    userId: FOUNDER_TEST_USER_ID,
+    displayName: FOUNDER_TEST_DISPLAY_NAME,
+  });
+  assert.equal(r2.engine, 'abjad-verification', `expected Ebced/Esma context retained, got ${r2.engine}`);
+  assert.doesNotMatch(r2.reply, /ifadesi tek başına net değil|hangi esma veya hangi bağlamda/i, 'must not ask what "Esması" means when a verified total already exists in history');
+});
+
+// Note: "Lara | Cosmic Simya ifadesinin ebcedini hesapla" (a quoted-phrase
+// construction with "ifadesinin") is not itself a name-extraction pattern
+// the generic engine supports today (NAME_BEFORE_POSSESSIVE_EBCED_RE /
+// NAME_APOSTROPHE_EBCED_RE only capture a single bare word before an
+// isim/ad-possessive + "ebced", not an arbitrary multi-word quoted phrase
+// after "ifadesinin") — confirmed pre-existing and unrelated to this fix:
+// with the founder-personalName override reverted, the same message still
+// does not reach abjad-verification. What this fix must guarantee instead
+// is narrower and is what N2 actually verifies: the founder-personalName
+// substitution added at the self-referential call site can only ever fire
+// inside the self-referential branch (self-reference markers required by
+// detectSelfReferentialEbcedFollowUp), so it can never clobber an
+// explicitly-named request — proven here with the founder session active
+// but a different, explicitly-named target ("Furkan"), which must still
+// compute Furkan's own total, not "Lara" and not the display label.
+await check('N2. Explicit named request is unaffected by the founder-personalName override', async () => {
+  const id = convId('n2');
+  const r = await send(id, "Furkan'ın ebced değerini hesapla.", [], 'telegram', {
+    userId: FOUNDER_TEST_USER_ID,
+    displayName: FOUNDER_TEST_DISPLAY_NAME,
+  });
+  assert.equal(r.engine, 'abjad-verification', `expected Ebced engine, got ${r.engine}`);
+  assert.equal(r.data?.abjadVerification?.calcTotal, 431, 'explicit named request must compute the named person, not the founder session');
+  assert.doesNotMatch(r.reply, /^Lara:/, 'must not be redirected to the founder personal name');
+  assert.doesNotMatch(r.reply, /Cosmic Simya/, 'must not leak the display label');
+});
+
+unlockFounderKnowledgeForTests();
 
 // ── Final Acceptance Test (task-specified conversation) ──────────────────
 await check('FINAL ACCEPTANCE — Furkan -> Hangi Esma -> Benimkine de bak -> Ne alaka tarot', async () => {

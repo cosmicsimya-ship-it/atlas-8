@@ -2800,10 +2800,19 @@ export async function processAtlasMessage(input, options = {}) {
       const ebcedDomainActive =
         symbolicContext.primaryDomain === 'ebced' ||
         getConversationState(conversationId).symbolicDomain === 'ebced';
+      // Prefer the founder's canonical personal name (distinct from a
+      // channel display/profile label like "Lara | Cosmic Simya") when a
+      // founder session is resolved; unknown/non-founder users keep the
+      // prior display-name fallback — no blind label-splitting.
+      const selfEbcedPersonalName =
+        (founderSession && getFounderPreferredName(founderSession)) ||
+        trustedSpeakerEarly?.senderDisplayName ||
+        input.displayName ||
+        null;
       const selfEbcedDeterministic = tryDeterministicSelfReferentialEbcedReply({
         message,
         ebcedDomainActive,
-        selfName: trustedSpeakerEarly?.senderDisplayName || input.displayName || null,
+        selfName: selfEbcedPersonalName,
       });
       if (selfEbcedDeterministic?.reply) {
         const engineSuccess = selfEbcedDeterministic.confidence !== 'insufficient';
