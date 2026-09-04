@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 import { cn } from '../../utils/cn';
 import AuthSessionControl from './AuthSessionControl';
 
@@ -90,17 +91,20 @@ export default function CosmicNav({ transparent = false, chatMode = false }: Cos
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="atlas-focus group flex shrink-0 flex-col gap-0.5 rounded-sm"
+          className="atlas-focus group flex shrink-0 items-center gap-3 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
-            ATLAS
-          </span>
-          {!chatMode && (
-            <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
-              Cosmic Simya
+          <AtlasCompassMark compact className="h-8 w-8" />
+          <span className="flex flex-col gap-0.5">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none text-transparent">
+              ATLAS
             </span>
-          )}
+            {!chatMode && (
+              <span className="mt-1 block text-[9px] uppercase tracking-[0.28em] text-[#9aa3ae]">
+                Cosmic Simya
+              </span>
+            )}
+          </span>
         </Link>
 
         <nav

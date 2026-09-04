@@ -2,6 +2,7 @@ import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 import AuthSessionControl from '../cosmic/AuthSessionControl';
 import { landingNav } from '../../data/landing-content';
 import { cn } from '../../utils/cn';
@@ -44,12 +45,15 @@ export default function AtlasNav({ autoOpenLogin = false }: { autoOpenLogin?: bo
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           to="/"
-          className="site-focus group shrink-0 rounded-sm"
+          className="site-focus group flex shrink-0 items-center gap-3 rounded-sm"
           aria-label="ATLAS ana sayfa"
         >
-          <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
-          <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9a9488]">
-            Cosmic Simya
+          <AtlasCompassMark compact className="h-8 w-8" />
+          <span className="flex flex-col gap-0.5">
+            <span className="atlas-mark atlas-mark-sm atlas-mark-nav block leading-none">ATLAS</span>
+            <span lang="en" className="mt-1 block text-[0.625rem] tracking-[0.28em] text-[#9a9488]">
+              Cosmic Simya
+            </span>
           </span>
         </Link>
 
