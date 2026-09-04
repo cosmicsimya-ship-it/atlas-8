@@ -127,10 +127,21 @@ export function isExplicitEbcedEsmaMatchAsk(text, lastTotal = null) {
     if (DEVOTIONAL_ESMA_CUE_RE.test(msg)) return false;
     if (EXPLICIT_EBCED_RE.test(msg) || ESMA_PERSONAL_MATCH_RE.test(msg)) return true;
     if (/\b\d{2,4}\b/.test(msg)) return true;
-    // Short follow-up after a verified total, without practice cues
-    if (Number.isFinite(lastTotal) && msg.length < 80 && !DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
-      return /\b(esma|eşleş|denk|nedir|ne\b)/i.test(msg);
-    }
+  }
+  // Short follow-up mentioning Esma in any form ("Esması?", "hangi esma",
+  // "esma nedir" ...) right after a verified total, without practice cues.
+  // Previously nested only inside the "hangi esma" branch above, so a bare
+  // "Esması?" follow-up never reached this check even with a valid
+  // lastTotal - found via the same 2026-09-04 forensic trace as the
+  // self-referential name-extraction gap (once that one is fixed, the
+  // follow-up needs this fix too to actually complete the flow).
+  if (
+    Number.isFinite(lastTotal) &&
+    msg.length < 80 &&
+    !DEVOTIONAL_ESMA_CUE_RE.test(msg) &&
+    /\besma/i.test(msg)
+  ) {
+    return /\b(esma|eşleş|denk|nedir|ne\b)/i.test(msg);
   }
   if (/\b(eşleşen\s*esma|esma\s*bul)\b/i.test(msg) && !DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
     return true;
@@ -753,16 +764,32 @@ export function tryDeterministicAbjadReply(input) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Self-referential Ebced follow-up ("Benimkine de bak.") — a short message
-// with no name, no Arabic, and no "ebced" keyword of its own, only
-// interpretable as an Ebced request because the conversation is already in
-// the Ebced domain. Gated by the caller passing `ebcedDomainActive: true`
-// (from symbolicDomain state) — this function has no way to know that on
-// its own and must never guess a domain from message text alone here.
+// Self-referential Ebced requests — two distinct classes:
+//
+// 1. Unambiguous OPENING requests: an explicit ebced/abjad cue combined
+//    with a self-reference marker ("ismimden", "adımın ebcedi", ...). These
+//    need no prior domain context — "ismimin ebcedini hesapla" cannot mean
+//    anything else — so they're recognized regardless of ebcedDomainActive.
+//    Found via a real production gap (2026-09-04 forensic trace,
+//    req_b5c15d16a946): "Hadi ebced değerimi ismimden hesapla" fell through
+//    to the "no name captured" rejection because extractGenericLatinNameHint
+//    only recognizes name-then-ebced constructions ("Furkan'ın ebced..."),
+//    never a self-reference-only construction with no named person at all.
+//
+// 2. Short, context-DEPENDENT follow-ups ("Benimkine de bak.") — no name,
+//    no Arabic, no ebced keyword of their own, only interpretable as Ebced
+//    because the conversation is already in that domain. Gated by the
+//    caller passing `ebcedDomainActive: true` (from symbolicDomain state) —
+//    this function has no way to know that on its own and must never guess
+//    a domain from message text alone for these.
 // ─────────────────────────────────────────────────────────────────────────
 
-const SELF_REFERENTIAL_EBCED_RE =
+const SELF_REFERENTIAL_EBCED_FOLLOWUP_RE =
   /^(?:benimkine\s+de\s+bak|benim\s*(?:kine)?\s+de\s+bak|bana\s+da\s+bak|beni\s+de\s+hesapla|benimkini\s+de\s+hesapla|ya\s+benim\s*(?:kim?)?)[.!?…]*$/iu;
+
+/** Self-reference marker with no named person — "from/of MY OWN name". */
+const SELF_REFERENTIAL_NAME_MARKER_RE =
+  /\b(ismimden|adımdan|ismimin|adımın|ismimi|ad[ıi]m[ıi])\b/iu;
 
 /**
  * @param {string} message
@@ -770,10 +797,18 @@ const SELF_REFERENTIAL_EBCED_RE =
  * @returns {{ active: boolean }}
  */
 export function detectSelfReferentialEbcedFollowUp(message, ebcedDomainActive) {
-  if (!ebcedDomainActive) return { active: false };
   const text = normalizeTr(message);
-  if (!text || text.length > 40) return { active: false };
-  return { active: SELF_REFERENTIAL_EBCED_RE.test(text) };
+  if (!text) return { active: false };
+
+  // Class 1: unambiguous on its own, no domain context required.
+  if (EXPLICIT_EBCED_RE.test(text) && SELF_REFERENTIAL_NAME_MARKER_RE.test(text)) {
+    return { active: true };
+  }
+
+  // Class 2: short context-dependent follow-up, only valid mid-Ebced-domain.
+  if (!ebcedDomainActive) return { active: false };
+  if (text.length > 40) return { active: false };
+  return { active: SELF_REFERENTIAL_EBCED_FOLLOWUP_RE.test(text) };
 }
 
 /**

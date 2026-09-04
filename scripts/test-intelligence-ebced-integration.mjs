@@ -209,6 +209,41 @@ await check('L. Turkish characters — ç ğ ı i ö ş ü all compute without a
   }
 });
 
+// ── M. Real production regression (2026-09-04 forensic trace, req_b5c15d16a946) ──
+// Reproduces the exact live Telegram DM failure verbatim, through the exact
+// same entry point real Telegram traffic uses (processAtlasMessage with
+// channel: 'telegram') - not a synthetic call to a lower-level detector
+// function. Before the fix this fell through to the "Latin harfli isim
+// doğrudan tahmini Arapça harflere çevrilerek hesaplanmaz" rejection because
+// no name was ever captured for this self-referential-with-no-named-person
+// phrasing (distinct from "Furkan'ın ebced..." and from the already-covered
+// "Benimkine de bak." follow-up).
+await check('M. Real Telegram DM regression — "Hadi ebced değerimi ismimden hesapla" (no name in text)', async () => {
+  const id = convId('m');
+  const r1 = await send(id, 'Hadi ebced değerimi ismimden hesapla', [], 'telegram', { displayName: 'Elif' });
+  assert.equal(r1.engine, 'abjad-verification', `expected Ebced engine, got ${r1.engine}`);
+  assert.doesNotMatch(
+    r1.reply,
+    /Latin harfli isim doğrudan tahmini Arapça harflere çevrilerek hesaplanmaz/,
+    'must not fall back to the confirmation-required rejection when a display name is available',
+  );
+  assert.match(r1.reply, /Elif/, 'should resolve and compute the known display name');
+  assert.equal(r1.data?.engineTelemetry?.engineUsed, 'atlas-ebced-v1');
+  assert.equal(r1.data?.engineTelemetry?.engineSuccess, true);
+
+  // Follow-up in the SAME real entry point, SAME channel, with a verified
+  // total now present in history - domain must persist and Esma matching
+  // must use only the engine-supported methodology (no invented claims).
+  const history = [
+    { role: 'user', content: 'Hadi ebced değerimi ismimden hesapla' },
+    { role: 'assistant', content: r1.reply },
+  ];
+  const r2 = await send(id, 'Esması?', history, 'telegram', { displayName: 'Elif' });
+  assert.equal(r2.engine, 'abjad-verification', `expected Ebced/Esma context retained, got ${r2.engine}`);
+  assert.doesNotMatch(r2.reply, /ifadesi tek başına net değil|hangi esma veya hangi bağlamda/i, 'must not ask what "Esması" means when a verified total already exists in history');
+  assert.doesNotMatch(r2.reply, /yak[ıi]n\s+frekans|titre[sş]im|vibrasyon/i);
+});
+
 // ── Final Acceptance Test (task-specified conversation) ──────────────────
 await check('FINAL ACCEPTANCE — Furkan -> Hangi Esma -> Benimkine de bak -> Ne alaka tarot', async () => {
   const id = convId('final');
