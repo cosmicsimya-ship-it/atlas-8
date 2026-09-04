@@ -37,6 +37,7 @@ import {
   getAdminAuditLog,
 } from './admin/control-center.js';
 import { getAgentOsSummary, runAgentOsSweep } from './admin/agentos-bridge.js';
+import { listAtlasLabTraces, getAtlasLabTrace } from './atlas-lab/trace-store.js';
 import { createAgentTask } from './agentos/orchestrator.js';
 import { getTask, listTasks, listSubtasks } from './agentos/task-store.js';
 import { cancelAgentTask, approveAgentTaskAction } from './admin/agentos-task-actions.js';
@@ -1225,6 +1226,49 @@ app.get(
       return res.json({ ok: true, ...result });
     } catch (err) {
       console.error('[ATLAS] admin/audit error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+// ═══════════════════════════════════════════════════════════════════════
+// ATLAS LAB (read-only, dev/admin observability) — recent request traces
+// captured by server/atlas-lab/trace-store.js via request-timing.js. This
+// is diagnostic-only: it never mutates a conversation, never rewrites a
+// response, and carries no chain-of-thought (see trace-store.js header).
+// ═══════════════════════════════════════════════════════════════════════
+app.get(
+  '/api/admin/atlas-lab/traces',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const channel = typeof req.query.channel === 'string' && req.query.channel ? req.query.channel : undefined;
+      const traces = listAtlasLabTraces({ channel, limit });
+      return res.json({ ok: true, traces });
+    } catch (err) {
+      console.error('[ATLAS] admin/atlas-lab/traces error:', err.message);
+      return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
+    }
+  },
+);
+
+app.get(
+  '/api/admin/atlas-lab/traces/:requestId',
+  attachAuthFromSession({ createAnonymous: false }),
+  requireAuth,
+  requireRole('admin'),
+  adminRateLimit,
+  (req, res) => {
+    try {
+      const trace = getAtlasLabTrace(req.params.requestId);
+      if (!trace) return res.status(404).json({ ok: false, error: 'Trace not found' });
+      return res.json({ ok: true, trace });
+    } catch (err) {
+      console.error('[ATLAS] admin/atlas-lab/traces/:requestId error:', err.message);
       return res.status(503).json({ ok: false, error: 'Admin service unavailable' });
     }
   },
