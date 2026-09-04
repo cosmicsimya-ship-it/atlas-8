@@ -598,7 +598,12 @@ function AuditTab() {
 }
 
 export default function AdminControlCenter({ actorUserId }: { actorUserId: string }) {
-  const [tab, setTab] = useState<Tab>('agentos');
+  // Default to a tab confirmed present in every deployed backend version —
+  // 'agentos'/'agent-tasks' depend on the AgentOS Phase 1 bridge routes,
+  // which are not yet deployed to production (proven 404, not a bug in
+  // those panels themselves). Landing there was producing a non-JSON
+  // response error banner on every admin page load.
+  const [tab, setTab] = useState<Tab>('overview');
   return (
     <div className="mt-10 border-t border-white/10 pt-8">
       <p className="font-brand text-[11px] uppercase tracking-[0.28em] text-[#8b93a3]">Control Center</p>
