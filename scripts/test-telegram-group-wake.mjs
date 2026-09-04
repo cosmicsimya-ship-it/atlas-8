@@ -13,6 +13,8 @@ import {
   isGroupWakeActive,
   GROUP_CONTEXT_MAX_AGE_MS,
 } from '../server/telegram-group-context.js';
+import { normalizeTelegramMessage } from '../server/channel-adapters.js';
+import { shouldForwardGroupMessage } from '../server/conversation-activation.js';
 
 let passed = 0;
 let failed = 0;
@@ -131,6 +133,87 @@ function makeWakeStore() {
 // ── Private chat is untouched: groupWakeKey requires a group-shaped msg but callers only invoke this for isGroupChat ──
 {
   record('GROUP_CONTEXT_MAX_AGE_MS unchanged (5 min)', GROUP_CONTEXT_MAX_AGE_MS === 5 * 60 * 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// REGRESSION: "Atlas" -> "Buradayım." -> ordinary same-user follow-up ->
+// no reply.
+//
+// The wake-window logic above (A-G) was ALWAYS correct in isolation — it
+// correctly decides groupWakeActive=true for exactly this case. The real
+// bug was one level up: telegram.js's forwardToPipeline() only threaded
+// contextualWakeRequest (bare-wake-word reactivation) into
+// allowActiveSession, never groupWakeActive (the ordinary-follow-up wake
+// window) — and even where allowActiveSession WAS passed,
+// normalizeTelegramMessage() in channel-adapters.js never used it to set
+// metadata.addressedToBot. So the backend's own, separate activation gate
+// (conversation-activation.js, a different process) never learned the
+// message was already approved, and could independently decide
+// "not addressed" and silently drop it. These tests cover the actual fix:
+// normalizeTelegramMessage() must honor allowActiveSession, and — equally
+// important — must NOT do so when allowActiveSession isn't set, or every
+// group message would start reaching the model (violating the "never
+// respond to everyone" requirement).
+// ═══════════════════════════════════════════════════════════════════════
+
+const BOT_IDENTITY = { id: BOT_ID, username: 'atlas_bot' };
+function groupMsg(text, overrides = {}) {
+  return {
+    chat: { id: CHAT_ID, type: 'supergroup' },
+    message_thread_id: null,
+    message_id: Math.floor(Math.random() * 1e6),
+    date: Math.floor(Date.now() / 1000),
+    from: { id: 111, is_bot: false, first_name: 'Furkan' },
+    text,
+    ...overrides,
+  };
+}
+
+// ── B (the real reported regression): ordinary same-user sentence, wake window active ──
+{
+  const ordinary = groupMsg('Soruyu algıladın mı canım');
+  const normalized = normalizeTelegramMessage(ordinary, [], { ...BOT_IDENTITY, allowActiveSession: true });
+  record(
+    'B: normalizeTelegramMessage sets addressedToBot=true when allowActiveSession=true (THE FIX)',
+    normalized.metadata.addressedToBot === true,
+  );
+  const forward = shouldForwardGroupMessage({
+    message: ordinary.text,
+    conversationId: String(CHAT_ID),
+    userId: 'telegram:111',
+    isGroup: true,
+    addressedToBot: normalized.metadata.addressedToBot,
+  });
+  record('B: shouldForwardGroupMessage forwards the ordinary follow-up once addressedToBot propagates', forward === true);
+}
+
+// ── G: no global group activation — without an active wake window, the same ordinary message must NOT be forwarded ──
+{
+  const ordinary = groupMsg('Soruyu algıladın mı canım');
+  const normalized = normalizeTelegramMessage(ordinary, [], { ...BOT_IDENTITY, allowActiveSession: false });
+  record(
+    'G: normalizeTelegramMessage does NOT set addressedToBot without an active wake window (no blanket group activation)',
+    normalized.metadata.addressedToBot === false,
+  );
+  const normalizedDefault = normalizeTelegramMessage(ordinary, [], { ...BOT_IDENTITY });
+  record(
+    'G: allowActiveSession defaults to inert (omitted entirely) — same ordinary message stays silent',
+    normalizedDefault.metadata.addressedToBot === false,
+  );
+}
+
+// ── F: the bot's own short acknowledgement must not close/reset the wake window ──
+{
+  const wake = makeWakeStore();
+  const userA = { id: 111 };
+  const t0 = 7_000_000;
+  wake.set(msg({ from: userA }), t0); // "Atlas" -> wake opens
+  // Presence-check ack ("Buradayım.") triggers setGroupWakeState again on
+  // the SAME turn in the real code (telegram.js calls it after every
+  // successful reply) — refreshing, never clearing, the window.
+  wake.set(msg({ from: userA }), t0 + 100);
+  const stillActiveAfterAck = wake.has(msg({ from: userA }), t0 + 4000);
+  record('F: window remains active after the bot\'s own acknowledgement refreshes it', stillActiveAfterAck === true);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

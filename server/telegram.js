@@ -364,14 +364,47 @@ function setGroupWakeState(msg, nowMs = Date.now()) {
  * Whether this group message should be treated as an unaddressed continuation
  * of a recently-addressed conversation. A reply to a different real person is
  * never auto-claimed, even with an active wake window.
+ *
+ * Returns full diagnostic detail (not just a boolean) so the wake-decision
+ * debug log below can report exactly why, without a second lookup.
+ * @returns {{
+ *   active: boolean,
+ *   replyToOtherPerson: boolean,
+ *   key: string|null,
+ *   existingWakeState: boolean,
+ *   wakeOwnerMatches: boolean,
+ *   wakeAgeMs: number|null,
+ *   ttlRemainingMs: number|null,
+ * }}
  */
-function hasGroupWakeState(msg, nowMs = Date.now()) {
-  if (isReplyToOtherPerson(msg, botIdentity)) return false;
+function inspectGroupWakeState(msg, nowMs = Date.now()) {
+  const replyToOtherPerson = isReplyToOtherPerson(msg, botIdentity);
   const key = groupWakeKey(msg);
-  if (!key) return false;
-  if (isGroupWakeActive(groupWakeState.get(key), nowMs)) return true;
-  groupWakeState.delete(key);
-  return false;
+  if (!key) {
+    return { active: false, replyToOtherPerson, key: null, existingWakeState: false, wakeOwnerMatches: false, wakeAgeMs: null, ttlRemainingMs: null };
+  }
+  const entry = groupWakeState.get(key);
+  const existingWakeState = Boolean(entry);
+  // groupWakeKey() is itself scoped to (chat, this message's own sender), so
+  // any entry found under it is by construction this sender's own — the
+  // "owner" check that actually matters is whether this message is a reply
+  // hijacking a DIFFERENT person's thread (see isReplyToOtherPerson above).
+  const wakeOwnerMatches = existingWakeState && !replyToOtherPerson;
+  const wakeAgeMs = existingWakeState ? nowMs - (Number(entry.expiresAt) - GROUP_CONTEXT_MAX_AGE_MS) : null;
+  const ttlRemainingMs = existingWakeState ? Number(entry.expiresAt) - nowMs : null;
+
+  if (replyToOtherPerson) {
+    return { active: false, replyToOtherPerson, key, existingWakeState, wakeOwnerMatches, wakeAgeMs, ttlRemainingMs };
+  }
+  if (isGroupWakeActive(entry, nowMs)) {
+    return { active: true, replyToOtherPerson, key, existingWakeState, wakeOwnerMatches, wakeAgeMs, ttlRemainingMs };
+  }
+  if (existingWakeState) groupWakeState.delete(key);
+  return { active: false, replyToOtherPerson, key, existingWakeState, wakeOwnerMatches, wakeAgeMs, ttlRemainingMs: existingWakeState ? ttlRemainingMs : null };
+}
+
+function hasGroupWakeState(msg, nowMs = Date.now()) {
+  return inspectGroupWakeState(msg, nowMs).active;
 }
 
 /**
@@ -647,8 +680,9 @@ async function processOneMessage(msg) {
       : msg.sender_chat?.id != null
         ? `telegram:sc_${String(msg.chat.id).replace(/[^a-zA-Z0-9_]/g, '_')}`
         : null;
+  const replyToAtlas = isTelegramReplyToBot(msg, botIdentity);
   const addressedToBot =
-    isTelegramReplyToBot(msg, botIdentity) ||
+    replyToAtlas ||
     isTelegramGroupMessageAddressedToBot(msg, inboundTextForGate, botIdentity);
   const nowMs = Number(msg.date) ? Number(msg.date) * 1000 : Date.now();
   const groupScope = isGroupChat ? telegramGroupScopeKey(msg) : null;
@@ -700,7 +734,10 @@ async function processOneMessage(msg) {
       });
     }
   }
-  const groupWakeActive = isGroupChat ? hasGroupWakeState(msg, nowMs) : false;
+  const wakeInspection = isGroupChat
+    ? inspectGroupWakeState(msg, nowMs)
+    : { active: false, replyToOtherPerson: false, key: null, existingWakeState: false, wakeOwnerMatches: false, wakeAgeMs: null, ttlRemainingMs: null };
+  const groupWakeActive = wakeInspection.active;
   const allowForward = shouldForwardGroupMessage({
     message: inboundTextForGate || 'media',
     conversationId,
@@ -708,6 +745,40 @@ async function processOneMessage(msg) {
     isGroup: isGroupChat,
     addressedToBot: addressedToBot || Boolean(contextualWakeRequest) || groupWakeActive,
   });
+
+  // Structured wake-decision trace (debug requirement: determine exactly
+  // what happened to any given group message — explicit mention, reply,
+  // wake-window state/ownership/TTL, the final forward/no-forward decision,
+  // and why). Reuses the same emitter as the existing group-context trace
+  // above rather than introducing a second logging mechanism. Text is
+  // truncated, ids are hashed — never logs the full message or raw
+  // chat/user identifiers.
+  if (isGroupChat) {
+    let rejectionReason = null;
+    if (!allowForward) {
+      if (wakeInspection.replyToOtherPerson) rejectionReason = 'reply_to_other_person';
+      else if (wakeInspection.existingWakeState) rejectionReason = 'wake_ttl_expired';
+      else if (!addressedToBot && !contextualWakeRequest) rejectionReason = 'not_addressed_no_wake_state';
+      else rejectionReason = 'rejected_by_shouldForwardGroupMessage';
+    }
+    logGroupContextTrace({
+      event: 'wake_decision',
+      pid: process.pid,
+      updateId: msg.message_id ?? null,
+      chatIdHash: hashChatId(String(chatId)),
+      userIdHash: fromIdForGate ? hashChatId(fromIdForGate) : null,
+      textSummary: inboundTextForGate.slice(0, 40) + (inboundTextForGate.length > 40 ? '…' : ''),
+      explicitMention: addressedToBot,
+      replyToAtlas,
+      existingWakeState: wakeInspection.existingWakeState,
+      wakeOwnerMatches: wakeInspection.wakeOwnerMatches,
+      wakeAgeMs: wakeInspection.wakeAgeMs,
+      ttlRemainingMs: wakeInspection.ttlRemainingMs,
+      contextualWakeMatched: Boolean(contextualWakeRequest),
+      shouldRespond: allowForward,
+      rejectionReason,
+    });
+  }
 
   if (isGroupChat && !allowForward) {
     logTelegramMessageTrace({
@@ -823,11 +894,21 @@ async function processOneMessage(msg) {
 
     await bot.sendChatAction(chatId, 'typing');
 
+    if (isGroupChat) {
+      logGroupContextTrace({ event: 'wake_decision', pid: process.pid, updateId: msg.message_id ?? null, modelInvoked: true });
+    }
     const { backend, normalized, retryCount } = await forwardToPipeline(pipelineMsg, {
       resolvedMessage: effectiveMessage,
       conversationId,
       contextualSource: contextualWakeRequest?.source ?? null,
-      allowActiveSession: Boolean(contextualWakeRequest),
+      // groupWakeActive (the per-chat+user "recently addressed" wake window
+      // — see hasGroupWakeState above) already decided this message should
+      // be forwarded (line ~709's allowForward). It must also reach the
+      // backend's independent activation gate via allowActiveSession, or
+      // the backend can silently re-reject a message telegram.js already
+      // approved. contextualWakeRequest (bare-wake-word reactivation) is a
+      // separate, narrower case and stays included.
+      allowActiveSession: Boolean(contextualWakeRequest) || groupWakeActive,
       mediaKind: resolved.metadata?.mediaKind ?? (inboundKind === 'text' ? null : inboundKind),
       extraMetadata: {
         ...(resolved.metadata || {}),

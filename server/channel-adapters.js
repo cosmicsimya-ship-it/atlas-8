@@ -320,8 +320,18 @@ export function normalizeTelegramMessage(msg, history = [], options = null) {
   };
   const addressText = extracted.text || text;
   const replyToBot = isTelegramReplyToBot(msg, botIdentity);
+  // options.allowActiveSession is the telegram.js edge's own contextual-wake
+  // decision (bare-wake-word reactivation OR an active per-user group wake
+  // window — see hasGroupWakeState/groupWakeActive in server/telegram.js).
+  // That decision must be honored here too: without it, the backend's own,
+  // separate activation session (server/conversation-activation.js) never
+  // learns this message was already deemed addressed, and can independently
+  // re-decide "not addressed" and silently drop it — the root cause of the
+  // "Atlas" -> "Buradayım." -> ordinary follow-up -> no reply regression.
   const addressedToBot =
-    replyToBot || isTelegramGroupMessageAddressedToBot(msg, addressText, botIdentity);
+    replyToBot ||
+    isTelegramGroupMessageAddressedToBot(msg, addressText, botIdentity) ||
+    options?.allowActiveSession === true;
 
   // Opt-in hard throw (legacy). Pipeline + telegram edge enforce silence by default.
   const requireGroupMention =
