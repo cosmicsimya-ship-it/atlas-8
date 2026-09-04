@@ -56,6 +56,7 @@
     "test:atlas-lab-trace-store": "node scripts/test-atlas-lab-trace-store.mjs",
     "test:atlas-lab-evaluator": "node scripts/test-atlas-lab-evaluator.mjs",
     "test:atlas-lab-admin-routes": "node scripts/test-atlas-lab-admin-routes.mjs",
+    "test:atlas-lab-regression": "node scripts/test-atlas-lab-regression.mjs",
     "test:completeness-memory": "node scripts/test-completeness-and-memory.mjs",
     "test:chat-retry": "node scripts/test-web-chat-retry-contract.mjs",
     "test:classical-abjad": "node scripts/validate-classical-fixtures.mjs && node scripts/test-classical-abjad.mjs",
