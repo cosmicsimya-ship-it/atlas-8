@@ -1,0 +1,701 @@
+{
+  "source": "workbook:Esma Ebced!B5:E103",
+  "sourceFile": "EBCED HESAPLAMA TABLOSU.xlsx",
+  "extractedAt": "2026-09-04",
+  "entryCount": 99,
+  "entries": [
+    {
+      "row": 5,
+      "ebcedWorkbook": 13,
+      "name": "Ehad",
+      "arabic": "احد",
+      "meaning": "Zâtında şeriki olmayan, tek olan, kendinden başka ilah olmayan, eşi ve benzeri bulunmayan, her şeyde birliğini ve ehadiyetini gösteren."
+    },
+    {
+      "row": 6,
+      "ebcedWorkbook": 14,
+      "name": "Vehhab",
+      "arabic": "وهاب",
+      "meaning": "Yarattıklarına bolca veren, karşılıksız nimetler sunan. İhsanı bol ve sonsuz olan anlamlarına gelmektedir."
+    },
+    {
+      "row": 7,
+      "ebcedWorkbook": 14,
+      "name": "Vacid",
+      "arabic": "واجد",
+      "meaning": "Her şeyi bilen, hiçbir şeye muhtaç olmayan, emrini ve isteğini daima gerçekleştiren"
+    },
+    {
+      "row": 8,
+      "ebcedWorkbook": 18,
+      "name": "Hayy",
+      "arabic": "حي ",
+      "meaning": "Daima diri olan, her şeye hayat ve can veren, sonsuz, sınırsız bir hayatın sahibi olan, her şeyi bilen ve her şeye gücü yeten, gerçek hayat sahibi olan demektir."
+    },
+    {
+      "row": 9,
+      "ebcedWorkbook": 19,
+      "name": "Vahid",
+      "arabic": "واحد",
+      "meaning": "Allahu Tealanın eşi ve benzeri olmayan tek olması anlamına gelmektedir."
+    },
+    {
+      "row": 10,
+      "ebcedWorkbook": 20,
+      "name": "Vedud",
+      "arabic": "ودود",
+      "meaning": "Sevilen gerçek ve tek varlık. Sevilmeyi, dostluğu kazanılmayı en fazla layık olan ve kendisi de itaatkar kullarını çok sevendir."
+    },
+    {
+      "row": 11,
+      "ebcedWorkbook": 20,
+      "name": "Hadi",
+      "arabic": "هادي",
+      "meaning": "Dilediği kullarını hidayete erdiren, doğru yola ulaştıran, dilediği kulunu hayırlı yollara yönelten"
+    },
+    {
+      "row": 12,
+      "ebcedWorkbook": 37,
+      "name": "Evvel",
+      "arabic": "اول",
+      "meaning": "Başlangıcı olmayan, ilk olan, varlığı kendi zatı ile olan, yaratmayı başlatan"
+    },
+    {
+      "row": 13,
+      "ebcedWorkbook": 46,
+      "name": "Veli",
+      "arabic": "ولى",
+      "meaning": "Allah, sevdiği kullarının dostudur. Allah, sevdiği kullarına yardım eder onların kalbine ferahlık ve genişlik verir."
+    },
+    {
+      "row": 14,
+      "ebcedWorkbook": 47,
+      "name": "Vali",
+      "arabic": "والي",
+      "meaning": "Kainatın tek hakimi, yöneticisi ve kainatı kusursuz ve eksiksiz bir şekilde yöneten"
+    },
+    {
+      "row": 15,
+      "ebcedWorkbook": 48,
+      "name": "Macid",
+      "arabic": "ماجد",
+      "meaning": "Sonsuz şan-şeref ve yücelik sahibi, ihsanı, cömertliği bol olan"
+    },
+    {
+      "row": 16,
+      "ebcedWorkbook": 55,
+      "name": "Mucib",
+      "arabic": "مجيب",
+      "meaning": "Kullarının hacetlerine ve dualarına karşılık verendir."
+    },
+    {
+      "row": 17,
+      "ebcedWorkbook": 56,
+      "name": "Mubdi",
+      "arabic": "مبدى",
+      "meaning": "Modeli ve örneği olmaksızın ibtidâen yaratan"
+    },
+    {
+      "row": 18,
+      "ebcedWorkbook": 57,
+      "name": "Mecid",
+      "arabic": "مجيد",
+      "meaning": "Şeref sahibi. Azameti, kadri, şanı büyük, vermesi bol, zati şerefli, işleri güzel olan"
+    },
+    {
+      "row": 19,
+      "ebcedWorkbook": 62,
+      "name": "Hamid",
+      "arabic": "حميد",
+      "meaning": "Her lisanla, her varlığın diliyle övülen. Övülmüş ve her senaya layık olan, ancak kendisine hamd ve sena olunan, bütün varlıkların diliyle övülen yegane zat en çok övülen ve en çok övgüye layık olan"
+    },
+    {
+      "row": 20,
+      "ebcedWorkbook": 62,
+      "name": "Batın",
+      "arabic": "باطن",
+      "meaning": "Allah'ın (cc) varlığının sınırsız olması nedeniyle kulların sınırlı halleri ile anlaşılmaması ve görülememesi "
+    },
+    {
+      "row": 21,
+      "ebcedWorkbook": 66,
+      "name": "Vekil",
+      "arabic": "وكيل",
+      "meaning": "Kendisine tevekkül edenlerin işlerini en iyi neticeye ulaştıran"
+    },
+    {
+      "row": 22,
+      "ebcedWorkbook": 68,
+      "name": "Hakem",
+      "arabic": "حكم",
+      "meaning": "Mutlak hakim olan ve tek hüküm sahibi olan"
+    },
+    {
+      "row": 23,
+      "ebcedWorkbook": 68,
+      "name": "Muhyi",
+      "arabic": "محيي",
+      "meaning": "Mahlukatı yoktan var edip hayat veren, can bağışlayan, sağlık veren, yaşatan"
+    },
+    {
+      "row": 24,
+      "ebcedWorkbook": 72,
+      "name": "Basıt",
+      "arabic": "باسط",
+      "meaning": "Maddi ve manevi rızkını vererek genişleten, ferahlık veren, rahatlık ve neşe veren"
+    },
+    {
+      "row": 25,
+      "ebcedWorkbook": 73,
+      "name": "Celil",
+      "arabic": "جليل",
+      "meaning": "Hiçbir kayıt ve kıyas kabul etmeksizin azamet sahibi, kadri kıymeti ve mertebesi en yüce olan"
+    },
+    {
+      "row": 26,
+      "ebcedWorkbook": 78,
+      "name": "Hakim",
+      "arabic": "حكيم",
+      "meaning": "Her iş emrinde hüküm ve hikmet sahibi gerekeni en güzel biçimde yapan"
+    },
+    {
+      "row": 27,
+      "ebcedWorkbook": 80,
+      "name": "Hasib",
+      "arabic": "حسيب",
+      "meaning": "O, Allah ki; parçaları bütünüyle bilendir, hesap etmeden bilen, üstün niteliklere sahip olandır."
+    },
+    {
+      "row": 28,
+      "ebcedWorkbook": 86,
+      "name": "Bedi",
+      "arabic": "بديع",
+      "meaning": "Eşsiz bir sanatla, önceden var olan bir malzemeye ihtiyaç duymadan, yoktan var eden"
+    },
+    {
+      "row": 29,
+      "ebcedWorkbook": 88,
+      "name": "Halim",
+      "arabic": "حليم",
+      "meaning": "Tüm kullarına gücü yeten Allah yine de kullarına ceza verme konusunda yavaş olandır"
+    },
+    {
+      "row": 30,
+      "ebcedWorkbook": 90,
+      "name": "Melik",
+      "arabic": "ملك",
+      "meaning": "Görülen ve görülmeyen bütün âlemlerin, bütün kâinatın tek sahibi ve mutlak surette tek hükümdârı"
+    },
+    {
+      "row": 31,
+      "ebcedWorkbook": 94,
+      "name": "Aziz",
+      "arabic": "عزيز",
+      "meaning": "Mağlup edilemeyen mağlup edilmesi mümkün olmayan, sonsuz İzzet sahibi, azamet ve şeref sahibi"
+    },
+    {
+      "row": 32,
+      "ebcedWorkbook": 104,
+      "name": "Adl",
+      "arabic": "عدل",
+      "meaning": "Mutlak adil olan ve çok adaletli olan"
+    },
+    {
+      "row": 33,
+      "ebcedWorkbook": 108,
+      "name": "Hakk",
+      "arabic": "حق",
+      "meaning": "Ahiret gününde hak ile batılı birbirinden ayıran ve hakkı olanı sahiplerine zalimlerden alıp veren"
+    },
+    {
+      "row": 34,
+      "ebcedWorkbook": 110,
+      "name": "Aliy",
+      "arabic": "علي",
+      "meaning": "Şanı, şerefi, izzeti ve kudreti yüce olan O, her şeyin ötesinde ve her yönüyle yüce olandır."
+    },
+    {
+      "row": 35,
+      "ebcedWorkbook": 113,
+      "name": "Baki",
+      "arabic": "با قي",
+      "meaning": "Ebedî olan; varlığının sonu olmayan"
+    },
+    {
+      "row": 36,
+      "ebcedWorkbook": 114,
+      "name": "Cami",
+      "arabic": "جامع",
+      "meaning": "Huzurunda toplayan, bir araya getiren, tertip eden"
+    },
+    {
+      "row": 37,
+      "ebcedWorkbook": 116,
+      "name": "Kaviy",
+      "arabic": "قوي ",
+      "meaning": "Her şeye gücü yeten, kudret sahibi, yorgunluğa ve zaafa uğramayan, gücü ve kuvveti sonsuz olan"
+    },
+    {
+      "row": 38,
+      "ebcedWorkbook": 117,
+      "name": "Muizz",
+      "arabic": "معز",
+      "meaning": "Aziz kılan yani yükselten güçlendiren yücelten"
+    },
+    {
+      "row": 39,
+      "ebcedWorkbook": 124,
+      "name": "Muid",
+      "arabic": "معيد",
+      "meaning": "Allahın can veren verdiği canı tekrar alabilen ve ölen canlıları tekrar canlandıran tek yaratıcı"
+    },
+    {
+      "row": 40,
+      "ebcedWorkbook": 129,
+      "name": "Latif",
+      "arabic": "لطيف",
+      "meaning": "Sonsuz lütuf ve ikram sahibi, her şeyi doğrusuyla ve ayrıntılarıyla bilen"
+    },
+    {
+      "row": 41,
+      "ebcedWorkbook": 131,
+      "name": "Selam",
+      "arabic": "سلام",
+      "meaning": "Esenlik, ferahlık veren, her türlü kötü durumdan selamete erdiren ve gözetip koruyan"
+    },
+    {
+      "row": 42,
+      "ebcedWorkbook": 134,
+      "name": "Samed",
+      "arabic": "صمد",
+      "meaning": "Hiçbir şeye ihtiyaç duymayan hiçbir şeye muhtaç olmayan"
+    },
+    {
+      "row": 43,
+      "ebcedWorkbook": 137,
+      "name": "Mümin",
+      "arabic": "مومن",
+      "meaning": "Gönüllere iman ruhu vererek kendisine sığınan kişilere emniyet ve güvenlik veren, Mü'minleri azaplarından ve yarattıklarının hepsini zulmünden emin kılan kullarına huzur ve güven veren. Emniyet sahibi ve sadık sözünden vaadinden dönmeyen."
+    },
+    {
+      "row": 44,
+      "ebcedWorkbook": 137,
+      "name": "Vasi",
+      "arabic": "واسع",
+      "meaning": "Her türlü isteğe karşı ihsan ve lutufkârlığı yeterli olan, ilmi her şeyi kuşatan, rızkı bütün yaratılmışlara yayılan ve rahmeti her şeyi kapsayan"
+    },
+    {
+      "row": 45,
+      "ebcedWorkbook": 145,
+      "name": "Müheymin",
+      "arabic": "مهيمن",
+      "meaning": "Her şeyi görüp gözeten, her mahlukun yaptığından ve durumundan haberdar olan"
+    },
+    {
+      "row": 46,
+      "ebcedWorkbook": 148,
+      "name": "Muhsi",
+      "arabic": "محسي",
+      "meaning": "İlmiyle her şeyi sayan,büyük veya küçük hiçbir şey gözünden kaçmayan.Cenabı Allah'ın İlmi ve ihatası sonsuzdur."
+    },
+    {
+      "row": 47,
+      "ebcedWorkbook": 150,
+      "name": "Alim",
+      "arabic": "عالم",
+      "meaning": "Gizli ve açık geçmiş gelecek her şeyi en ince detaylarına kadar bilen"
+    },
+    {
+      "row": 48,
+      "ebcedWorkbook": 156,
+      "name": "Kayyum",
+      "arabic": "قيوم",
+      "meaning": "Varlığı ve bekası kendi zâtından olan.” “Zeval bulmayıp devamlı kaim olan.” “Her şeyi ayakta tutan, varlıklarını devam ettiren"
+    },
+    {
+      "row": 49,
+      "ebcedWorkbook": 156,
+      "name": "Afuv",
+      "arabic": "عفو",
+      "meaning": "Hiçbir günah ve kabahatten eser bırakmayan, silip süpüren, kolaylıkla affeden, kullarının günahlarını silen, cezaları kaldıran, çok affedici"
+    },
+    {
+      "row": 50,
+      "ebcedWorkbook": 161,
+      "name": "Mani",
+      "arabic": "مانع",
+      "meaning": "Allah'ın hem dünyada hem de ahirette kullarını koruyup gözetmesi, haksızlığa ve fitneye engel olması"
+    },
+    {
+      "row": 51,
+      "ebcedWorkbook": 170,
+      "name": "Kuddus",
+      "arabic": "قدوس",
+      "meaning": "Tertemiz, pak, kusurdan arınmış, her türlü çirkinlik, noksanlık ve ayıplardan uzak, tertemiz, bütün kemal sıfatları kendisinde toplayan, güzellik, iyilik ve faziletler le övülen"
+    },
+    {
+      "row": 52,
+      "ebcedWorkbook": 180,
+      "name": "Semi",
+      "arabic": "سميع",
+      "meaning": "Gizli açık her şeyi hakkıyla işiten, her şeyi en iyi işiten, duaları kabul işiten ve duyan"
+    },
+    {
+      "row": 53,
+      "ebcedWorkbook": 184,
+      "name": "Mukaddim",
+      "arabic": "مقدم",
+      "meaning": "Allah'ın (cc) istediğini öne aldığı, istediği kimseyi önde bulundurduğu, ileri getiren, öne çıkaran, üstün kılan"
+    },
+    {
+      "row": 54,
+      "ebcedWorkbook": 201,
+      "name": "Nafi",
+      "arabic": "نافع",
+      "meaning": "Devamlı olarak fayda ve yarar sağlayan, mahlukata hayır ve faydalı şeyler yaratan"
+    },
+    {
+      "row": 55,
+      "ebcedWorkbook": 202,
+      "name": "Berr",
+      "arabic": "بر",
+      "meaning": "İbadet eden ve kendisine yönelen kullarına rahmet eyleyen, onları ödüllendiren, kötülüklerden vazgeçen kullarını mükafatlandıran"
+    },
+    {
+      "row": 56,
+      "ebcedWorkbook": 206,
+      "name": "Cebbar",
+      "arabic": "جبار",
+      "meaning": "Dileğini yapan ve yaptıran, kırılanları onaran, noksanlıkları tamamlayan, dilediklerini yaptırmak için muktedir olan"
+    },
+    {
+      "row": 57,
+      "ebcedWorkbook": 209,
+      "name": "Muksit",
+      "arabic": "مقسط",
+      "meaning": "Adalet sahibi; bütün işlerini denk, yerli yerinde ve birbirine uygun biçimde yapan"
+    },
+    {
+      "row": 58,
+      "ebcedWorkbook": 212,
+      "name": "Malikul Mülk",
+      "arabic": "مالك الملك",
+      "meaning": "Mülkün gerçek sahibi; bütün varlık aleminin tek hakimi"
+    },
+    {
+      "row": 59,
+      "ebcedWorkbook": 214,
+      "name": "Bari",
+      "arabic": "باری",
+      "meaning": "Her şeyi kusursuz ve uyumlu yaratan, bir örneği ve maddesi olmaksızın yaratan; evrenin bütün parçalarını âhenkli ve düzenli olarak meydana getiren"
+    },
+    {
+      "row": 60,
+      "ebcedWorkbook": 232,
+      "name": "Kebir",
+      "arabic": "كبير",
+      "meaning": "ilmiyle her şeyi sayan,büyük veya küçük hiçbir şey gözünden kaçmayan.Cenabı Allah'ın İlmi ve ihatası sonsuzdur."
+    },
+    {
+      "row": 61,
+      "ebcedWorkbook": 256,
+      "name": "Nur",
+      "arabic": "نور",
+      "meaning": "Gönüllere iman ve nur veren, kullarını doğru yola ileten, hidayete erdiren"
+    },
+    {
+      "row": 62,
+      "ebcedWorkbook": 258,
+      "name": "Rahim",
+      "arabic": "رحيم",
+      "meaning": "Kullarının hatalarını kusurlarını günahlarını esirgeyip bağışlayan, merhamet sahibi olan"
+    },
+    {
+      "row": 63,
+      "ebcedWorkbook": 270,
+      "name": "Kerim",
+      "arabic": "كریم",
+      "meaning": "Lütuf ve ihsânı bol. Allah vaad ettiği zaman sözünü yerine getirir, verdiği zaman son derece bol verir, karşılıksız verir"
+    },
+    {
+      "row": 64,
+      "ebcedWorkbook": 287,
+      "name": "Rauf",
+      "arabic": "راوف",
+      "meaning": "Kullarına acıyan çok esirgeyen, çok şefkat ve merhamet gösteren"
+    },
+    {
+      "row": 65,
+      "ebcedWorkbook": 298,
+      "name": "Rahman",
+      "arabic": "رحمن",
+      "meaning": "Tüm canlıları affeden ve tüm canlılara merhamet eden"
+    },
+    {
+      "row": 66,
+      "ebcedWorkbook": 298,
+      "name": "Sabur",
+      "arabic": "صبور",
+      "meaning": "Allah Teâlâ, günahkârları cezalandırma konusunda acele etmeyip lütfuyla bağışlayan ve erteleyendir."
+    },
+    {
+      "row": 67,
+      "ebcedWorkbook": 302,
+      "name": "Basir",
+      "arabic": "بصير",
+      "meaning": "Tüm evrendeki saklanmış veya gizlenmiş olan her şeyi gören"
+    },
+    {
+      "row": 68,
+      "ebcedWorkbook": 305,
+      "name": "Kadir",
+      "arabic": "قادر",
+      "meaning": "Her şeye gücü yeten, her istediğini, istediği gibi sonsuz bir güç ve kudretle yapan, sonsuz kudret sahibi olan demektir."
+    },
+    {
+      "row": 69,
+      "ebcedWorkbook": 306,
+      "name": "Kahhar",
+      "arabic": "قهار",
+      "meaning": "Düşmanları şiddetli bir şekilde kahrederek, zalimleri yerle bir eden, mutlak galip gelen, her zaman mağlup etmeye ve galip gelmeye hazır olan"
+    },
+    {
+      "row": 70,
+      "ebcedWorkbook": 308,
+      "name": "Rezzak",
+      "arabic": "رزاق",
+      "meaning": "Tüm varlıkların ihtiyacını karşılayan, dilediğine bol bol rızk veren; rızka muhtaç olan bütün mahlûkata rızkını veren"
+    },
+    {
+      "row": 71,
+      "ebcedWorkbook": 312,
+      "name": "Rakib",
+      "arabic": "رقيب",
+      "meaning": "Her varlığı ve her işi her an görüp, gözeten ve kontrolü altında tutan"
+    },
+    {
+      "row": 72,
+      "ebcedWorkbook": 319,
+      "name": "Şehid",
+      "arabic": "شهيد",
+      "meaning": "Her zaman, her yerde hazır olan; her şeye şâhit olan; kendisine hiçbir şey gizli olmayan"
+    },
+    {
+      "row": 73,
+      "ebcedWorkbook": 336,
+      "name": "Musavvir",
+      "arabic": "مصور",
+      "meaning": "Her şeye şekli veren, ayrı bir şekil vererek tasvir eden ve yarattığı varlıklara suret veren"
+    },
+    {
+      "row": 74,
+      "ebcedWorkbook": 351,
+      "name": "Rafi",
+      "arabic": "رافع",
+      "meaning": "Dilediğini yücelten, yukarı kaldıran, zilletten izzete çıkaran, makam ve mertebelerini yükselten, dereceleri artıran"
+    },
+    {
+      "row": 75,
+      "ebcedWorkbook": 409,
+      "name": "Tevvab",
+      "arabic": "تواب",
+      "meaning": "Kulların dönüşlerini kabul eden, tövbeleri kabul eden, günahları bağışlayan ve cezadan vaz geçen"
+    },
+    {
+      "row": 76,
+      "ebcedWorkbook": 489,
+      "name": "Fettah",
+      "arabic": "فتاح",
+      "meaning": "Fetheden ve dilediği her kapıyı açan yaratıcı olan, kolaylaştıran"
+    },
+    {
+      "row": 77,
+      "ebcedWorkbook": 490,
+      "name": "Mumit",
+      "arabic": "مميت",
+      "meaning": "Öldüren, can alan, ölümü yaratan. Ölümü tattıran, dönüştüren "
+    },
+    {
+      "row": 78,
+      "ebcedWorkbook": 500,
+      "name": "Metin",
+      "arabic": "متين",
+      "meaning": "Sonsuz kudrete sahip; son derece güçlü, kuvvetli; dayanıklı, sağlam"
+    },
+    {
+      "row": 79,
+      "ebcedWorkbook": 514,
+      "name": "Reşid",
+      "arabic": "رشيد",
+      "meaning": "Allahu Tealanın kullarını mutluluğa ve huzura ulaştıran onların iyilikle kötülüğü ayırt etmelerini sağlayan olduğu anlamına gelmektedir."
+    },
+    {
+      "row": 80,
+      "ebcedWorkbook": 526,
+      "name": "Şekur",
+      "arabic": "شكور",
+      "meaning": "Az da olsa kulun iyi bir ameline fazlasıyla karşılık veren. O, az iyiliğe çok ödül veren, verdiği ödülü de katbekat arttırandır."
+    },
+    {
+      "row": 81,
+      "ebcedWorkbook": 550,
+      "name": "mukit",
+      "arabic": "مقيت",
+      "meaning": "Her yaratılmışın rızkını gıdasını veren, tayin eden"
+    },
+    {
+      "row": 82,
+      "ebcedWorkbook": 551,
+      "name": "Mütaali",
+      "arabic": "متعالی",
+      "meaning": "En yüce olan, izzet, şeref ve hükümranlık bakımından en yüce ve bilinenlerin en üstünü; sonsuz ve sınırsız"
+    },
+    {
+      "row": 83,
+      "ebcedWorkbook": 573,
+      "name": "Bais",
+      "arabic": "باعث",
+      "meaning": "Kıyametten sonra ölüleri tekrar dirilten, peygamber gönderen; ölü kalpleri hidayetle dirilten O'dur"
+    },
+    {
+      "row": 84,
+      "ebcedWorkbook": 630,
+      "name": "Müntakim",
+      "arabic": "منتقم",
+      "meaning": "Dilediğine ceza vermede şiddetli davranan,suçlulara müstehak oldukları cezaya çarptıran"
+    },
+    {
+      "row": 85,
+      "ebcedWorkbook": 662,
+      "name": "Mütekebbir",
+      "arabic": "متكبر",
+      "meaning": "Zâtının ve sıfatlarının mahiyeti bilinemeyecek kadar ulu"
+    },
+    {
+      "row": 86,
+      "ebcedWorkbook": 707,
+      "name": "Varis",
+      "arabic": "لوارث",
+      "meaning": "Mülkün gerçek sahibi olan, mevcut olan her şeyin mutlak sahibi ve hakiki maliki, ölümsüz, daim ve kalıcı olan"
+    },
+    {
+      "row": 87,
+      "ebcedWorkbook": 731,
+      "name": "Halik",
+      "arabic": "خالق",
+      "meaning": "Her şeyi yoktan var eden,yaratan. Her şeyin varlığını ve yaşadığı sürece geçireceği halleri,olayları önceden tesbit edip ona göre ortaya çıkaran"
+    },
+    {
+      "row": 88,
+      "ebcedWorkbook": 744,
+      "name": "Muktedir",
+      "arabic": "مقتدر",
+      "meaning": "Tam bir kudret sahibi; her şeye gücü yeten"
+    },
+    {
+      "row": 89,
+      "ebcedWorkbook": 770,
+      "name": "Muzill",
+      "arabic": "مذل",
+      "meaning": "İstediğini zillete düşürme gücüne sahip yaratıcı"
+    },
+    {
+      "row": 90,
+      "ebcedWorkbook": 801,
+      "name": "Ahir",
+      "arabic": "اخر",
+      "meaning": "Ezelî ve ebedi olan, varlığının başı ya da sonu olmayan, baki olan"
+    },
+    {
+      "row": 91,
+      "ebcedWorkbook": 812,
+      "name": "Habir",
+      "arabic": "خبير",
+      "meaning": "Herkesten haberdar olan ve her şeyin iç yüzünü bilen"
+    },
+    {
+      "row": 92,
+      "ebcedWorkbook": 847,
+      "name": "Muahhir",
+      "arabic": "موخر",
+      "meaning": "İstediğini geride bırakan, unutturan, gözden düşüren"
+    },
+    {
+      "row": 93,
+      "ebcedWorkbook": 903,
+      "name": "Kabıd",
+      "arabic": "قابض",
+      "meaning": "Kabzeden, tutan, daraltan, sıkan, zorlaştıran, rızkı kesen, kullarını yoklukla ve fakirlikle sınayan"
+    },
+    {
+      "row": 94,
+      "ebcedWorkbook": 998,
+      "name": "Hafid",
+      "arabic": "خافض",
+      "meaning": "Kafirleri, zülüm edenleri, münafıkları alçaltıp zillete düşüren"
+    },
+    {
+      "row": 95,
+      "ebcedWorkbook": 1001,
+      "name": "Darr",
+      "arabic": "ضار",
+      "meaning": "Darlığa uğratanlara darlık veren, musibetler veren ve kötülükleri cezalandıran"
+    },
+    {
+      "row": 96,
+      "ebcedWorkbook": 1020,
+      "name": "Azim",
+      "arabic": "عظيم",
+      "meaning": "Büyük olan, yüce olan, azametli"
+    },
+    {
+      "row": 97,
+      "ebcedWorkbook": 1060,
+      "name": "Gani",
+      "arabic": "غني",
+      "meaning": "Zatı ile zengin olan, hiçbir şeye ihtiyacı olmayan, zatı ile zengin olan, gerçek manada zengin olan"
+    },
+    {
+      "row": 98,
+      "ebcedWorkbook": 1100,
+      "name": "Zul Celali vel İkram",
+      "arabic": "ذو  الجلال و الإكرام",
+      "meaning": "Azamet sahibi, büyük, yüce ve her türlü noksandan münezzeh olan"
+    },
+    {
+      "row": 99,
+      "ebcedWorkbook": 1100,
+      "name": "Muğni",
+      "arabic": "مغني",
+      "meaning": "Zenginlik veren gerçek zenginlik sahibi olan, ilediği kulunun tüm ihtiyaçlarını karşılayan"
+    },
+    {
+      "row": 100,
+      "ebcedWorkbook": 1106,
+      "name": "Zahir",
+      "arabic": "ظاهر",
+      "meaning": "Varlığının apaçık delilleri ile aşikar olduğu"
+    },
+    {
+      "row": 101,
+      "ebcedWorkbook": 1281,
+      "name": "Gaffar",
+      "arabic": "غفار",
+      "meaning": "Çok merhamet eden, af dileyenleri affeden, suçluları bağışlayan, çirkinlikleri örten ve ayıpları gizli tutan"
+    },
+    {
+      "row": 102,
+      "ebcedWorkbook": 1286,
+      "name": "Gafur",
+      "arabic": "غفور",
+      "meaning": "Kulların günahlarını örten ve onları cezalandırmayan ve bağışı bol"
+    },
+    {
+      "row": 103,
+      "ebcedWorkbook": 1481,
+      "name": "Hafiz",
+      "arabic": "حفيظ",
+      "meaning": "Kâinatta zerre kadar bir şey bile gözetiminden uzak olmayan, koruyup kollayan ve gözeten ve tabiatı dengede tutan"
+    }
+  ]
+}

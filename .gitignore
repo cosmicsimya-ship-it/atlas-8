@@ -50,3 +50,6 @@ data/voice-test-artifacts/
 voice-assets/processed/*.wav
 voice-assets/processed/*.inspect.json
 voice-assets/processed/prepare-reference.status.json
+
+# Ebced engine workbook reverse-engineering scratch (source .xlsx + raw cell dumps)
+tmp-workbook-analysis/

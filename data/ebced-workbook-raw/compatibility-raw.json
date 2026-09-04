@@ -1,0 +1,29 @@
+{
+  "source": "workbook:Çift Uyumu!G27:S27",
+  "sourceFile": "EBCED HESAPLAMA TABLOSU.xlsx",
+  "extractedAt": "2026-09-04",
+  "algorithm": {
+    "description": "Couple/name-pair compatibility. Deterministic arithmetic; verdict text is a fixed lookup table keyed by remainder.",
+    "steps": [
+      "total = ebcedSum(nameA) + ebcedSum(nameB)  (each name's own letter-by-letter Ebced sum, same method as calculateAbjad)",
+      "adjusted = total + 7",
+      "remainder = MOD(adjusted, 9)",
+      "verdict = VERDICT_TABLE[remainder]  (special case: if total == 0, verdict = 'İsim Yok' / no name entered)"
+    ],
+    "constant_offset": 7,
+    "modulus": 9
+  },
+  "rawFormula": "=(IF(G27=\" \",\"İsim Yok\",IF(P27=0,\"Birbirlerini yıpratabilirler o nedenle önerilmiyor!\",IF(P27=1,\"Orta uyumlu\",IF(P27=2,\"Orta uyumlu\",IF(P27=3,\"İlk başta gayet güzel giden sonrası problemli olabilir. Dikkat!\",IF(P27=4,\"Ayrılma ihtimalleri düşük olsa da stresli geçen \nevlilik süreci\",IF(P27=5,\"Gayet uyumlu bir çift\",IF(P27=6,\"Birbirlerini yıpratabilirler o nedenle önerilmiyor!\",IF(P27=7,\"Gayet uyumlu bir çift\",IF(P27=8,\"Orta uyumlu\",IF(P27=9,\"Birbirlerini yıpratabilirler o nedenle önerilmiyor!\",IF(P27=\"İsim Yok\",\"Ana Sayfaya İsim Giriniz\")))))))))))))",
+  "verdictTable": {
+    "0": "Birbirlerini yıpratabilirler o nedenle önerilmiyor!",
+    "1": "Orta uyumlu",
+    "2": "Orta uyumlu",
+    "3": "İlk başta gayet güzel giden sonrası problemli olabilir. Dikkat!",
+    "4": "Ayrılma ihtimalleri düşük olsa da stresli geçen evlilik süreci",
+    "5": "Gayet uyumlu bir çift",
+    "6": "Birbirlerini yıpratabilirler o nedenle önerilmiyor!",
+    "7": "Gayet uyumlu bir çift",
+    "8": "Orta uyumlu",
+    "9": "Birbirlerini yıpratabilirler o nedenle önerilmiyor!"
+  }
+}

@@ -1,0 +1,681 @@
+{
+  "source": "workbook:Ebced Ana Sayfa!D4:BY9",
+  "sourceFile": "EBCED HESAPLAMA TABLOSU.xlsx",
+  "extractedAt": "2026-09-04",
+  "legend": {
+    "nuraniZulmani": {
+      "N": "Nurani",
+      "Z": "Zulmani"
+    },
+    "gender": {
+      "E": "Erkek (masculine)",
+      "D": "Dişi (feminine)"
+    },
+    "element": {
+      "A": "Ateş (Fire)",
+      "S": "Su (Water)",
+      "T": "Toprak (Earth)",
+      "H": "Hava (Air)"
+    }
+  },
+  "entryCount": 73,
+  "entries": [
+    {
+      "column": "D",
+      "reading": "ye",
+      "arabicForm": "ي",
+      "ebcedValue": 10,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "E",
+      "reading": "ye",
+      "arabicForm": "ی",
+      "ebcedValue": 10,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "F",
+      "reading": "ye",
+      "arabicForm": "ى",
+      "ebcedValue": 10,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "H",
+      "reading": "ye",
+      "arabicForm": "ی",
+      "ebcedValue": 10,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "I",
+      "reading": "he",
+      "arabicForm": "ة",
+      "ebcedValue": 5,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "J",
+      "reading": "he",
+      "arabicForm": "ۀ",
+      "ebcedValue": 5,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "K",
+      "reading": "he",
+      "arabicForm": "ﻫ",
+      "ebcedValue": 5,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "L",
+      "reading": "vav",
+      "arabicForm": "ؤ",
+      "ebcedValue": 6,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "M",
+      "reading": "vav",
+      "arabicForm": "ؤ",
+      "ebcedValue": 6,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "N",
+      "reading": "vav",
+      "arabicForm": "و ",
+      "ebcedValue": 6,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "O",
+      "reading": "nun",
+      "arabicForm": "ن",
+      "ebcedValue": 50,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "P",
+      "reading": "nun",
+      "arabicForm": "ن‎",
+      "ebcedValue": 50,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "Q",
+      "reading": "mim",
+      "arabicForm": "م",
+      "ebcedValue": 40,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "A"
+    },
+    {
+      "column": "R",
+      "reading": "mim",
+      "arabicForm": "م",
+      "ebcedValue": 40,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "A"
+    },
+    {
+      "column": "S",
+      "reading": "lam",
+      "arabicForm": "ل",
+      "ebcedValue": 30,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "T",
+      "reading": "lam",
+      "arabicForm": "ل‎‎",
+      "ebcedValue": 30,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "U",
+      "reading": "kef",
+      "arabicForm": "ک",
+      "ebcedValue": 20,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "V",
+      "reading": "kef",
+      "arabicForm": "گ",
+      "ebcedValue": 20,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "W",
+      "reading": "kef",
+      "arabicForm": "ك",
+      "ebcedValue": 20,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "X",
+      "reading": "kef",
+      "arabicForm": "ڭ",
+      "ebcedValue": 20,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "Y",
+      "reading": "kef",
+      "arabicForm": "ك‎",
+      "ebcedValue": 20,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "Z",
+      "reading": "kaf",
+      "arabicForm": "ق",
+      "ebcedValue": 100,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AA",
+      "reading": "kaf",
+      "arabicForm": "ق",
+      "ebcedValue": 100,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AB",
+      "reading": "fe",
+      "arabicForm": "ف",
+      "ebcedValue": 80,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "A"
+    },
+    {
+      "column": "AC",
+      "reading": "fe",
+      "arabicForm": "ف",
+      "ebcedValue": 80,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "A"
+    },
+    {
+      "column": "AD",
+      "reading": "gayn",
+      "arabicForm": "غ",
+      "ebcedValue": 1000,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "AE",
+      "reading": "gayn",
+      "arabicForm": "ﻍ",
+      "ebcedValue": 1000,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "AF",
+      "reading": "ayn",
+      "arabicForm": "ع",
+      "ebcedValue": 70,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "AG",
+      "reading": "ayn",
+      "arabicForm": "ع",
+      "ebcedValue": 70,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "H"
+    },
+    {
+      "column": "AH",
+      "reading": "zı",
+      "arabicForm": "ظ",
+      "ebcedValue": 900,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AI",
+      "reading": "zı",
+      "arabicForm": "ظ",
+      "ebcedValue": 900,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AJ",
+      "reading": "tı",
+      "arabicForm": "ط",
+      "ebcedValue": 9,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "AK",
+      "reading": "tı",
+      "arabicForm": "ط",
+      "ebcedValue": 9,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "AL",
+      "reading": "dad",
+      "arabicForm": "ض",
+      "ebcedValue": 800,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "AM",
+      "reading": "dad",
+      "arabicForm": "ض‎",
+      "ebcedValue": 800,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "AN",
+      "reading": "sad",
+      "arabicForm": "ص",
+      "ebcedValue": 90,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "AO",
+      "reading": "sad",
+      "arabicForm": "ص",
+      "ebcedValue": 90,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "S"
+    },
+    {
+      "column": "AP",
+      "reading": "şın",
+      "arabicForm": "ش",
+      "ebcedValue": 300,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "AQ",
+      "reading": "şın",
+      "arabicForm": "ﺵ‎ ",
+      "ebcedValue": 300,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "AR",
+      "reading": "sin",
+      "arabicForm": "س",
+      "ebcedValue": 60,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "AS",
+      "reading": "sin",
+      "arabicForm": "ﺱ‎ ",
+      "ebcedValue": 60,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "T"
+    },
+    {
+      "column": "AT",
+      "reading": "ze",
+      "arabicForm": "ز",
+      "ebcedValue": 7,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AU",
+      "reading": "ze",
+      "arabicForm": "ژ",
+      "ebcedValue": 7,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AV",
+      "reading": "ze",
+      "arabicForm": "ز‎ ",
+      "ebcedValue": 7,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "AW",
+      "reading": "rı",
+      "arabicForm": "ر",
+      "ebcedValue": 200,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "AX",
+      "reading": "rı",
+      "arabicForm": "ر‎",
+      "ebcedValue": 200,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "AY",
+      "reading": "zel",
+      "arabicForm": "ذ",
+      "ebcedValue": 700,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "AZ",
+      "reading": "zel",
+      "arabicForm": "ذ‎",
+      "ebcedValue": 700,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BA",
+      "reading": "dal",
+      "arabicForm": "د",
+      "ebcedValue": 4,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BB",
+      "reading": "dal",
+      "arabicForm": "د",
+      "ebcedValue": 4,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BC",
+      "reading": "hı",
+      "arabicForm": "خ",
+      "ebcedValue": 600,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BD",
+      "reading": "hı",
+      "arabicForm": "خ",
+      "ebcedValue": 600,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BE",
+      "reading": "ha",
+      "arabicForm": "ح",
+      "ebcedValue": 8,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BF",
+      "reading": "ha",
+      "arabicForm": "ح",
+      "ebcedValue": 8,
+      "nuraniZulmani": "N",
+      "gender": "D",
+      "element": "H"
+    },
+    {
+      "column": "BG",
+      "reading": "cim",
+      "arabicForm": "ج",
+      "ebcedValue": 3,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "BH",
+      "reading": "cim",
+      "arabicForm": "چ",
+      "ebcedValue": 3,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "BI",
+      "reading": "cim",
+      "arabicForm": "ج",
+      "ebcedValue": 3,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "BJ",
+      "reading": "se",
+      "arabicForm": "ث",
+      "ebcedValue": 500,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "BK",
+      "reading": "se",
+      "arabicForm": "ﺙ",
+      "ebcedValue": 500,
+      "nuraniZulmani": "Z",
+      "gender": "E",
+      "element": "T"
+    },
+    {
+      "column": "BL",
+      "reading": "te",
+      "arabicForm": "ت",
+      "ebcedValue": 400,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BM",
+      "reading": "te",
+      "arabicForm": "ت",
+      "ebcedValue": 400,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BN",
+      "reading": "be",
+      "arabicForm": "ﺏ ",
+      "ebcedValue": 2,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BO",
+      "reading": "be",
+      "arabicForm": "ب",
+      "ebcedValue": 2,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BP",
+      "reading": "be",
+      "arabicForm": "پ",
+      "ebcedValue": 2,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BQ",
+      "reading": "elif",
+      "arabicForm": "ا",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BR",
+      "reading": "elif",
+      "arabicForm": "آ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BS",
+      "reading": "elif",
+      "arabicForm": "أ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BT",
+      "reading": "elif",
+      "arabicForm": "إ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BU",
+      "reading": "elif",
+      "arabicForm": "ٱ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BV",
+      "reading": "elif",
+      "arabicForm": "أ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BW",
+      "reading": "elif",
+      "arabicForm": " ء",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    },
+    {
+      "column": "BX",
+      "reading": "vav",
+      "arabicForm": "و",
+      "ebcedValue": 6,
+      "nuraniZulmani": "Z",
+      "gender": "D",
+      "element": "S"
+    },
+    {
+      "column": "BY",
+      "reading": "elif",
+      "arabicForm": "ﺌ",
+      "ebcedValue": 1,
+      "nuraniZulmani": "N",
+      "gender": "E",
+      "element": "A"
+    }
+  ]
+}
