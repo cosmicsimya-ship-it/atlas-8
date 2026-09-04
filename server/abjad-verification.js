@@ -21,8 +21,18 @@ import {
   ESMA_MATCH_TYPE_LABELS,
 } from './symbolic-analysis/esma-abjad-match.js';
 import { lookupEsmaAbjadEntry } from './symbolic-analysis/data/esma-abjad-catalog.js';
+import {
+  calculateCompatibility as calculateEbcedCompatibility,
+  COMPATIBILITY_METHODOLOGY_ID,
+} from './symbolic-analysis/compatibility.js';
+import { calculateVerseAbjad, VERSE_ABJAD_METHODOLOGY_ID } from './symbolic-analysis/verse-abjad.js';
+import { ENGINE_VERSION as ATLAS_EBCED_ENGINE_VERSION } from './symbolic-analysis/atlas-ebced-v1.js';
+import { parseQuranVerseLookup } from './quran-verse-lookup/parse.js';
+import { retrieveVerifiedVerse } from './quran-verse-lookup/retrieve.js';
 
 export const ABJAD_VERIFICATION_VERSION = 'abjad-verification-v1';
+/** Composed engine identity surfaced in telemetry — see atlas-ebced-v1.js. */
+export const EBCED_ENGINE_METHOD_VERSION = ATLAS_EBCED_ENGINE_VERSION;
 
 export const ABJAD_VERIFICATION_SYSTEM_RULES = `
 # Ebced / Esma Doğrulama (zorunlu)
@@ -660,6 +670,7 @@ function finalize(partial) {
     active: true,
     version: ABJAD_VERIFICATION_VERSION,
     engine: 'abjad-verification',
+    methodVersion: ATLAS_EBCED_ENGINE_VERSION,
     intent: partial.intent,
     reply: partial.reply,
     promptBlock,
@@ -739,6 +750,172 @@ export function tryDeterministicAbjadReply(input) {
   const result = runAbjadEsmaVerification(input);
   if (!result.active || !result.reply) return null;
   return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Name-pair compatibility (Çift Uyumu) — genuinely new capability, not
+// present anywhere in the chat layer before atlas-ebced-v1. Scoped
+// conservatively: requires an explicit ebced/abjad cue alongside "uyum" so
+// this never collides with zodiac/burç compatibility phrasing, which is a
+// separate, pre-existing domain this task must not touch.
+// ─────────────────────────────────────────────────────────────────────────
+
+const COMPATIBILITY_CUE_RE = /\buyum(?:u|lu|luluk)?\b/iu;
+const TWO_NAME_CONNECTOR_RE =
+  /\b([A-ZÇĞİÖŞÜ][a-zçğıiöşü]{1,24})(?:['’][a-zçğıiöşü]{0,6})?\s+(?:ile|ve)\s+([A-ZÇĞİÖŞÜ][a-zçğıiöşü]{1,24})(?:['’][a-zçğıiöşü]{0,6})?\b/u;
+
+/**
+ * @param {string} message
+ * @returns {{ active: boolean, nameA?: string, nameB?: string }}
+ */
+export function detectCompatibilityIntent(message) {
+  const text = normalizeTr(message);
+  if (!text) return { active: false };
+  if (!EXPLICIT_EBCED_RE.test(text) || !COMPATIBILITY_CUE_RE.test(text)) return { active: false };
+  const names = text.match(TWO_NAME_CONNECTOR_RE);
+  if (!names) return { active: false };
+  return { active: true, nameA: names[1], nameB: names[2] };
+}
+
+/**
+ * @param {{ message: string }} input
+ */
+export function tryDeterministicCompatibilityReply(input) {
+  const intent = detectCompatibilityIntent(input.message);
+  if (!intent.active) return null;
+
+  const spellingA = resolveArabicSpelling({ originalInput: intent.nameA, latinHint: intent.nameA });
+  const spellingB = resolveArabicSpelling({ originalInput: intent.nameB, latinHint: intent.nameB });
+
+  if (!spellingA.normalizedArabic || !spellingA.spellingConfirmed) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'compatibility',
+      confidence: 'insufficient',
+      reply: spellingA.warnings.join(' ') || `${intent.nameA} için Arapça yazım onayı gerekli.`,
+      compatibility: null,
+    };
+  }
+  if (!spellingB.normalizedArabic || !spellingB.spellingConfirmed) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'compatibility',
+      confidence: 'insufficient',
+      reply: spellingB.warnings.join(' ') || `${intent.nameB} için Arapça yazım onayı gerekli.`,
+      compatibility: null,
+    };
+  }
+
+  const result = calculateEbcedCompatibility(spellingA.normalizedArabic, spellingB.normalizedArabic);
+  if (!result.ok) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'compatibility',
+      confidence: 'insufficient',
+      reply: 'Uyum hesabı için geçerli iki ad gerekli.',
+      compatibility: result,
+    };
+  }
+
+  const reply = [
+    `${intent.nameA}: ${spellingA.normalizedArabic} = ${result.nameATotal}`,
+    `${intent.nameB}: ${spellingB.normalizedArabic} = ${result.nameBTotal}`,
+    `Toplam: ${result.combinedTotal}`,
+    '',
+    `Geleneksel yorum (${COMPATIBILITY_METHODOLOGY_ID}): ${result.traditionalInterpretation}`,
+    '',
+    'Bu geleneksel/sembolik bir yorumdur; kesin hüküm veya bilimsel uyumluluk iddiası taşımaz.',
+  ].join('\n');
+
+  return {
+    active: true,
+    engine: 'abjad-verification',
+    methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+    operation: 'compatibility',
+    confidence: 'high',
+    reply,
+    compatibility: result,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Verse Ebced — requires an explicit ebced/abjad cue alongside a
+// parseable surah:ayah reference, so a plain "12:87 açıkla" keeps going
+// through the existing Qur'an explanation path untouched (that path runs
+// earlier in atlas-message-service.js and has no ebced keyword to match
+// here anyway). This module never asserts verse identity on its own —
+// retrieveVerifiedVerse (unmodified, existing Qur'an lookup) is the only
+// source of a verified verse; calculateVerseAbjad refuses unverified input.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * @param {string} message
+ */
+export function detectVerseEbcedIntent(message) {
+  const text = normalizeTr(message);
+  if (!text || !EXPLICIT_EBCED_RE.test(text)) return { active: false, parsed: null };
+  const parsed = parseQuranVerseLookup(text);
+  if (!parsed?.parse_ok) return { active: false, parsed: null };
+  return { active: true, parsed };
+}
+
+/**
+ * @param {{ message: string, verseStore: import('./quran-verse-lookup/retrieve.js').VerseStore }} input
+ */
+export async function tryDeterministicVerseEbcedReply(input) {
+  const intent = detectVerseEbcedIntent(input.message);
+  if (!intent.active) return null;
+
+  const verseResult = await retrieveVerifiedVerse(intent.parsed, input.verseStore);
+  if (!verseResult.ok || !verseResult.verified || !verseResult.arabic) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'calculate_verified_verse',
+      confidence: 'insufficient',
+      reply:
+        'Bu ayeti doğrulanmış kaynaktan alamadım, bu yüzden ebced hesaplamıyorum. Sure ve ayet numarasını kontrol eder misin?',
+      verse: null,
+    };
+  }
+
+  const calc = calculateVerseAbjad(verseResult);
+  if (!calc.ok) {
+    return {
+      active: true,
+      engine: 'abjad-verification',
+      methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+      operation: 'calculate_verified_verse',
+      confidence: 'insufficient',
+      reply: 'Doğrulanmış ayet metni hesaplanamadı.',
+      verse: calc,
+    };
+  }
+
+  const reply = [
+    `${verseResult.surah_name || verseResult.surah_number}:${verseResult.ayah_number} (${verseResult.verse_key})`,
+    verseResult.arabic,
+    formatAbjadBreakdown(calc.letters, calc.total),
+    '',
+    `Yöntem: ${VERSE_ABJAD_METHODOLOGY_ID} — doğrulanmış Kur'an metni üzerinden hesaplandı.`,
+  ].join('\n');
+
+  return {
+    active: true,
+    engine: 'abjad-verification',
+    methodVersion: ATLAS_EBCED_ENGINE_VERSION,
+    operation: 'calculate_verified_verse',
+    confidence: 'high',
+    reply,
+    verse: calc,
+  };
 }
 
 /** Re-export helpers useful in tests */

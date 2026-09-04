@@ -157,6 +157,10 @@ import {
   tryDeterministicAbjadReply,
   runAbjadEsmaVerification,
   ABJAD_VERIFICATION_VERSION,
+  tryDeterministicCompatibilityReply,
+  tryDeterministicVerseEbcedReply,
+  detectVerseEbcedIntent,
+  EBCED_ENGINE_METHOD_VERSION,
 } from './abjad-verification.js';
 import {
   tryDeterministicDevotionalReply,
@@ -2367,6 +2371,7 @@ export async function processAtlasMessage(input, options = {}) {
       noteAssistantTurn(conversationId, {
         reply: resumedReply,
         intent: resumedIntent,
+        symbolicDomain: lastEngine === 'abjad-verification' ? 'ebced' : undefined,
         engineInvocation: {
           engine: lastEngine,
           intent: resumedIntent,
@@ -2374,6 +2379,9 @@ export async function processAtlasMessage(input, options = {}) {
           inputSummary: message.slice(0, 160),
         },
       });
+      if (lastEngine === 'abjad-verification') {
+        rememberSymbolicDomain(conversationId, 'ebced');
+      }
       return applyPrivacyGuardToResult(
         {
           status: 'complete',
@@ -2385,6 +2393,20 @@ export async function processAtlasMessage(input, options = {}) {
             mode,
             profile: resolveChatProfile(mode),
             resumedEngine: lastEngine,
+            engineTelemetry:
+              lastEngine === 'abjad-verification'
+                ? {
+                    activeDomain: 'ebced',
+                    engineExpected: EBCED_ENGINE_METHOD_VERSION,
+                    engineUsed: resumedFromEngine ? EBCED_ENGINE_METHOD_VERSION : null,
+                    engineBypassed: !resumedFromEngine,
+                    engineMethodVersion: EBCED_ENGINE_METHOD_VERSION,
+                    engineOperation: 'resume_after_correction',
+                    engineSuccess: resumedFromEngine,
+                    topicChangeDetected: false,
+                    selfCorrectionTriggered: true,
+                  }
+                : null,
             model: 'deterministic',
             provider: 'atlas-general-repair-signal',
             tokensUsed: 0,
@@ -2771,18 +2793,133 @@ export async function processAtlasMessage(input, options = {}) {
       }
 
       // Ebced / Esma numeric turns — deterministic engine before casual chat / LLM.
-      const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
-      if (abjadDeterministic?.reply) {
+      // Verse-ebced and compatibility are checked first: both require an
+      // explicit ebced/abjad cue combined with something (a surah:ayah
+      // reference, or two connected names) the generic calculate/esma_match
+      // path below isn't shaped to parse — checking them first avoids the
+      // generic path claiming the turn with a confusing "no Arabic spelling
+      // found" reply instead of routing correctly.
+      const verseEbcedDeterministic = await tryDeterministicVerseEbcedReply({
+        message,
+        verseStore: options.verseStore ?? createVerseStore(),
+      });
+      if (verseEbcedDeterministic?.reply) {
+        const engineSuccess = verseEbcedDeterministic.confidence !== 'insufficient';
         noteAssistantTurn(conversationId, {
-          reply: abjadDeterministic.reply,
-          intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+          reply: verseEbcedDeterministic.reply,
+          intent: `abjad:${verseEbcedDeterministic.operation}`,
+          symbolicDomain: 'ebced',
           engineInvocation: {
             engine: 'abjad-verification',
-            intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
-            status: abjadDeterministic.confidence === 'insufficient' ? 'ambiguous' : 'ok',
+            intent: `abjad:${verseEbcedDeterministic.operation}`,
+            status: engineSuccess ? 'ok' : 'ambiguous',
             inputSummary: message.slice(0, 160),
           },
         });
+        rememberSymbolicDomain(conversationId, 'ebced');
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: verseEbcedDeterministic.reply,
+            intent: `abjad:${verseEbcedDeterministic.operation}`,
+            engine: 'abjad-verification',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              abjadVerification: { version: ABJAD_VERIFICATION_VERSION, verse: verseEbcedDeterministic.verse },
+              engineTelemetry: {
+                activeDomain: 'ebced',
+                engineExpected: EBCED_ENGINE_METHOD_VERSION,
+                engineUsed: EBCED_ENGINE_METHOD_VERSION,
+                engineBypassed: false,
+                engineMethodVersion: verseEbcedDeterministic.methodVersion,
+                engineOperation: verseEbcedDeterministic.operation,
+                engineSuccess,
+                topicChangeDetected: false,
+                selfCorrectionTriggered: false,
+              },
+              model: 'deterministic',
+              provider: 'atlas-abjad-verification',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
+      const compatibilityDeterministic = tryDeterministicCompatibilityReply({ message });
+      if (compatibilityDeterministic?.reply) {
+        const engineSuccess = compatibilityDeterministic.confidence !== 'insufficient';
+        noteAssistantTurn(conversationId, {
+          reply: compatibilityDeterministic.reply,
+          intent: `abjad:${compatibilityDeterministic.operation}`,
+          symbolicDomain: 'ebced',
+          engineInvocation: {
+            engine: 'abjad-verification',
+            intent: `abjad:${compatibilityDeterministic.operation}`,
+            status: engineSuccess ? 'ok' : 'ambiguous',
+            inputSummary: message.slice(0, 160),
+          },
+        });
+        rememberSymbolicDomain(conversationId, 'ebced');
+        return applyPrivacyGuardToResult(
+          {
+            status: 'complete',
+            reply: compatibilityDeterministic.reply,
+            intent: `abjad:${compatibilityDeterministic.operation}`,
+            engine: 'abjad-verification',
+            memoryUpdated: false,
+            data: {
+              mode,
+              profile: resolveChatProfile(mode),
+              abjadVerification: {
+                version: ABJAD_VERIFICATION_VERSION,
+                compatibility: compatibilityDeterministic.compatibility,
+              },
+              engineTelemetry: {
+                activeDomain: 'ebced',
+                engineExpected: EBCED_ENGINE_METHOD_VERSION,
+                engineUsed: EBCED_ENGINE_METHOD_VERSION,
+                engineBypassed: false,
+                engineMethodVersion: compatibilityDeterministic.methodVersion,
+                engineOperation: compatibilityDeterministic.operation,
+                engineSuccess,
+                topicChangeDetected: false,
+                selfCorrectionTriggered: false,
+              },
+              model: 'deterministic',
+              provider: 'atlas-abjad-verification',
+              tokensUsed: 0,
+              costUsd: 0,
+              latencyMs: 0,
+              pipelineDebug,
+              pipelineVersion: PIPELINE_VERSION,
+            },
+          },
+          privacyGuardCtx,
+        );
+      }
+
+      const abjadDeterministic = tryDeterministicAbjadReply({ message, history });
+      if (abjadDeterministic?.reply) {
+        const engineSuccess = abjadDeterministic.confidence !== 'insufficient';
+        noteAssistantTurn(conversationId, {
+          reply: abjadDeterministic.reply,
+          intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+          symbolicDomain: 'ebced',
+          engineInvocation: {
+            engine: 'abjad-verification',
+            intent: `abjad:${abjadDeterministic.intent?.kind || 'verify'}`,
+            status: engineSuccess ? 'ok' : 'ambiguous',
+            inputSummary: message.slice(0, 160),
+          },
+        });
+        rememberSymbolicDomain(conversationId, 'ebced');
         return applyPrivacyGuardToResult(
           {
             status: 'complete',
@@ -2804,6 +2941,17 @@ export async function processAtlasMessage(input, options = {}) {
                   abjadDeterministic.calc?.primary?.total ??
                   abjadDeterministic.calc?.bare?.total ??
                   null,
+              },
+              engineTelemetry: {
+                activeDomain: 'ebced',
+                engineExpected: EBCED_ENGINE_METHOD_VERSION,
+                engineUsed: EBCED_ENGINE_METHOD_VERSION,
+                engineBypassed: false,
+                engineMethodVersion: abjadDeterministic.methodVersion,
+                engineOperation: abjadDeterministic.intent?.kind || 'calculate',
+                engineSuccess,
+                topicChangeDetected: false,
+                selfCorrectionTriggered: false,
               },
               model: 'deterministic',
               provider: 'atlas-abjad-verification',
