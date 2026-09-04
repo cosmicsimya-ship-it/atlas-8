@@ -17,6 +17,7 @@
  */
 
 import { randomBytes, createHash } from 'crypto';
+import { recordAtlasLabTrace } from './atlas-lab/trace-store.js';
 
 export const REQUEST_TIMING_VERSION = 'atlas-request-timing-v2';
 
@@ -292,6 +293,7 @@ export function attachRequestTiming(result, timing) {
     result,
   });
   logRequestTiming(snap);
+  recordAtlasLabTrace(snap);
   const existingLatency = Number(result?.data?.latencyMs);
   return {
     ...result,
