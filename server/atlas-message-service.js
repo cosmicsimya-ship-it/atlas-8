@@ -971,6 +971,7 @@ export async function processAtlasMessage(input, options = {}) {
   const longNorm = normalizeLongMessage(input.message ?? '');
   let message = longNorm.normalized;
   requestTiming.end('normalization');
+  requestTiming.noteUserMessage(message);
   if (!message) {
     return finalizeMessageResult({
       status: 'error',
@@ -1125,6 +1126,7 @@ export async function processAtlasMessage(input, options = {}) {
 
   const originalUserMessage = String(message || '').trim();
   const history = input.history ?? [];
+  requestTiming.noteContext(history.length);
   const convStateEarly = getConversationState(conversationIdEarly);
   const clientSelection =
     input.selection ||
