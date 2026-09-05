@@ -1637,6 +1637,21 @@ export async function processAtlasMessage(input, options = {}) {
     shortFollowUp: symbolicContext.shortFollowUp,
     preserve: symbolicContext.preserveActiveDomain,
     referents: symbolicContext.referents.map((r) => r.kind),
+    // ATLAS LAB routing telemetry (general topic-shift / confidence hardening) —
+    // bounded, decision-level fields only, no chain-of-thought.
+    currentMessageSignals: symbolicContext.currentMessageSignals,
+    previousDomain: symbolicContext.previousDomain,
+    candidateDomains: symbolicContext.candidateDomains,
+    selectedDomain: symbolicContext.selectedDomain,
+    selectionConfidence: symbolicContext.selectionConfidence,
+    topicShiftDetected: symbolicContext.topicShiftDetected,
+    topicShiftReason: symbolicContext.topicShiftReason,
+    domainPersisted: symbolicContext.domainPersisted,
+    domainPersistenceReason: symbolicContext.domainPersistenceReason,
+    domainRejected: symbolicContext.domainRejected,
+    rejectionReason: symbolicContext.rejectionReason,
+    selfCorrectionTriggered: symbolicContext.selfCorrectionTriggered,
+    finalRoute: symbolicContext.finalRoute,
   };
 
   if (!hasImage && !healthSafety.active) {

@@ -5,6 +5,8 @@
 // structured synthesis output per atlas_meta_synthesis.md section 16.
 // ═══════════════════════════════════════════════════════════════════════
 
+import { detectDateSignal, detectExplicitDomainMentions } from './topic-shift.js';
+
 /** Prose output sections from atlas_meta_synthesis.md §16 */
 export const META_SYNTHESIS_SECTIONS = [
   { key: 'main_theme', label: 'Ana Tema', sources: ['core_pattern'] },
@@ -237,7 +239,18 @@ export function detectTarotSpreadIntent(message, history = []) {
     return { active: true, intent: 'spread' };
   }
 
-  if (hasTarotContext(history)) {
+  // A same-turn competing signal — an explicit date/"bugün"/"yarın", or
+  // another domain named outright — means this message is not really about
+  // tarot even when stale history still mentions it. A date alone must
+  // never activate a spread (only the short-command/continue fallback
+  // below, which relies purely on scanning history text, is gated — the
+  // explicit multi-word commands above stay available even on a message
+  // that also contains a date, e.g. "12 ağustosta tarot aç").
+  const competingSignal =
+    detectDateSignal(message).active ||
+    detectExplicitDomainMentions(message).some((d) => d !== 'tarot');
+
+  if (!competingSignal && hasTarotContext(history)) {
     if (/^(devam|bir de|şimdi de)/.test(text) && /(aç|bak|yorum|kart|eylem|duygu|ilişki|alan)/.test(text)) {
       return { active: true, intent: 'continue' };
     }
@@ -248,7 +261,11 @@ export function detectTarotSpreadIntent(message, history = []) {
   }
 
   // Current message may establish tarot context for a follow-up "Aç." in the same turn chain
-  if (TAROT_CONTEXT_MARKERS.some((marker) => text.includes(marker)) && TAROT_ACTION_VERB.test(text)) {
+  if (
+    !competingSignal &&
+    TAROT_CONTEXT_MARKERS.some((marker) => text.includes(marker)) &&
+    TAROT_ACTION_VERB.test(text)
+  ) {
     return { active: true, intent: 'spread' };
   }
 

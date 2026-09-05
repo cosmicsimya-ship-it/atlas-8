@@ -57,6 +57,7 @@ const SUMMARY_MAX_CHARS = 200;
  *   requestedModel: string|null,
  *   fallbackPath: string|null,
  *   postProcessors: string[],
+ *   routingTelemetry: object|null,
  *   responseSummary: string|null,
  *   errorState: string|null,
  *   phases: TimingPhase[],
@@ -111,6 +112,33 @@ function derivePostProcessors(data) {
   if (data.quranCitationBlocked) out.push('quran-citation-structural');
   if (data.quranCitationSemanticBlocked) out.push('quran-citation-semantic');
   return out;
+}
+
+/**
+ * Routing telemetry (topic-shift / domain-confidence hardening) — pulled
+ * straight from pipelineDebug.symbolicContext (server/atlas-message-service.js,
+ * itself sourced from server/symbolic-context.js's resolveSymbolicContext()).
+ * Purely additive/nullable; never changes what was computed or returned.
+ * @param {Record<string, unknown>|null|undefined} data
+ */
+function deriveRoutingTelemetry(data) {
+  const ctx = data?.pipelineDebug?.symbolicContext;
+  if (!ctx || typeof ctx !== 'object') return null;
+  return {
+    currentMessageSignals: ctx.currentMessageSignals ?? null,
+    previousDomain: ctx.previousDomain ?? null,
+    candidateDomains: ctx.candidateDomains ?? [],
+    selectedDomain: ctx.selectedDomain ?? null,
+    selectionConfidence: ctx.selectionConfidence ?? null,
+    topicShiftDetected: ctx.topicShiftDetected ?? false,
+    topicShiftReason: ctx.topicShiftReason ?? null,
+    domainPersisted: ctx.domainPersisted ?? false,
+    domainPersistenceReason: ctx.domainPersistenceReason ?? null,
+    domainRejected: ctx.domainRejected ?? null,
+    rejectionReason: ctx.rejectionReason ?? null,
+    selfCorrectionTriggered: ctx.selfCorrectionTriggered ?? false,
+    finalRoute: ctx.finalRoute ?? null,
+  };
 }
 
 /**
@@ -249,6 +277,7 @@ export function createRequestTiming(opts = {}) {
         requestedModel: meta.requestedModel ?? null,
         fallbackPath: meta.fallbackPath ?? deriveFallbackPath(result, usedRetryOrFallback),
         postProcessors: Array.isArray(meta.postProcessors) ? meta.postProcessors : derivePostProcessors(data),
+        routingTelemetry: meta.routingTelemetry ?? deriveRoutingTelemetry(data),
         responseSummary: meta.responseSummary ?? (typeof result?.reply === 'string' ? truncate(result.reply) : null),
         errorState: meta.errorState ?? deriveErrorState(result),
         phases: [...phases],

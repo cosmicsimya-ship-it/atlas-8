@@ -21,6 +21,7 @@ import {
   ESMA_MATCH_TYPE_LABELS,
 } from './symbolic-analysis/esma-abjad-match.js';
 import { lookupEsmaAbjadEntry } from './symbolic-analysis/data/esma-abjad-catalog.js';
+import { detectDateSignal, detectExplicitDomainMentions } from './topic-shift.js';
 
 export const ABJAD_VERIFICATION_VERSION = 'abjad-verification-v1';
 
@@ -123,6 +124,21 @@ export function isExplicitEbcedEsmaMatchAsk(text, lastTotal = null) {
     }
   }
   if (/\b(eşleşen\s*esma|esma\s*bul)\b/i.test(msg) && !DEVOTIONAL_ESMA_CUE_RE.test(msg)) {
+    return true;
+  }
+  // Bare "Esması?" style short follow-up right after a verified total — a
+  // valid continuation (the referent is the just-computed ebced total),
+  // but never when the same message also carries a competing topic signal
+  // (an explicit date, or another domain named outright) — a stale total
+  // must not pull an unrelated new message back into ebced/Esma.
+  if (
+    Number.isFinite(lastTotal) &&
+    msg.length < 40 &&
+    /\besma/i.test(msg) &&
+    !DEVOTIONAL_ESMA_CUE_RE.test(msg) &&
+    !detectDateSignal(msg).active &&
+    !detectExplicitDomainMentions(msg).some((d) => d !== 'ebced')
+  ) {
     return true;
   }
   return false;

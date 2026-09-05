@@ -3,6 +3,7 @@
  * Follow-ups must stay in numerology session — not route to profile resolvers.
  */
 import { parseBirthDateParts } from '../self-profile-resolver.js';
+import { detectDateSignal, detectExplicitDomainMentions } from '../topic-shift.js';
 
 /**
  * @typedef {'full_analysis'|'followup_deeper'|'followup_cycles'|'followup_master'|'followup_karmic'|'followup_period'|'followup_explore'|'ask_birth_date'|null} NumerologyIntentKind
@@ -124,7 +125,15 @@ export function detectNumerologyIntent(message, history = [], opts = {}) {
   const lower = text.toLocaleLowerCase('tr-TR');
   const birthDate = extractBirthDateFromMessage(text);
   const fullName = extractNameFromMessage(text);
-  const inSession = Boolean(opts.sessionActive) || hasNumerologyContext(history);
+  const inSessionRaw = Boolean(opts.sessionActive) || hasNumerologyContext(history);
+  // A same-turn competing signal (explicit date, or another domain named
+  // outright) with no numerology cue of its own means this message is a
+  // topic shift away from a stale numerology conversation, not a
+  // follow-up — never let old history alone keep monopolizing generic
+  // continuation phrases like "devam" or "başka ne var".
+  const hasCompetingSignal =
+    detectDateSignal(text).active || detectExplicitDomainMentions(text).some((d) => d !== 'numerology');
+  const inSession = inSessionRaw && !(hasCompetingSignal && !NUMEROLOGY_CUE.test(lower));
 
   const askedPastLife = FOLLOWUP_KARMIC.test(lower);
   let depthHint = null;
