@@ -29,6 +29,20 @@ export default function HeroSection() {
         <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#050505_0%,rgba(5,5,5,0.55)_18%,transparent_42%,rgba(5,5,5,0.35)_78%,#050505_100%)]" />
       </div>
 
+      {/* Mobile North Star — independent from the scaled mechanism stack.
+          It is anchored low in the hero so it reads as a background focal
+          element beneath the composition rather than covering body copy. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-2 z-[1] flex justify-center lg:hidden"
+        aria-hidden="true"
+      >
+        <img
+          src="/atlas-north-star.png"
+          alt=""
+          className="h-36 w-36 object-contain opacity-55 mix-blend-screen drop-shadow-[0_0_40px_rgba(201,179,122,0.1)]"
+        />
+      </div>
+
       {/* Desktop midground — giant mechanism */}
       <div
         className="pointer-events-none absolute inset-y-0 right-0 z-[1] hidden w-[min(72%,54rem)] lg:block"
