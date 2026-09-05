@@ -4,8 +4,9 @@ import { apiRequest } from '../../services/api-client';
 import AdminUserActions from './AdminUserActions';
 import AdminFeedbackPanel from './AdminFeedbackPanel';
 import AdminErrorsPanel from './AdminErrorsPanel';
+import AdminAtlasLabPanel from './AdminAtlasLabPanel';
 
-type Tab = 'overview' | 'feedback' | 'errors' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
+type Tab = 'overview' | 'feedback' | 'errors' | 'atlas-lab' | 'users' | 'prime' | 'usage' | 'costs' | 'health' | 'audit';
 
 type AdminUserRow = {
   userId: string;
@@ -65,6 +66,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'feedback', label: 'Feedback' },
   { id: 'errors', label: 'Errors' },
+  { id: 'atlas-lab', label: 'ATLAS LAB' },
   { id: 'users', label: 'Users' },
   { id: 'prime', label: 'Prime' },
   { id: 'health', label: 'System Health' },
@@ -476,6 +478,7 @@ export default function AdminControlCenter({ actorUserId }: { actorUserId: strin
         {tab === 'overview' ? <OverviewTab /> : null}
         {tab === 'feedback' ? <AdminFeedbackPanel /> : null}
         {tab === 'errors' ? <AdminErrorsPanel /> : null}
+        {tab === 'atlas-lab' ? <AdminAtlasLabPanel /> : null}
         {tab === 'users' ? <UsersTab actorUserId={actorUserId} /> : null}
         {tab === 'prime' ? <PrimeTab actorUserId={actorUserId} /> : null}
         {tab === 'usage' ? <UsageTab /> : null}

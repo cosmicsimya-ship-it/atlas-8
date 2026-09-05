@@ -16,10 +16,12 @@ import {
   isRepeatingNumberPattern,
 } from './semantic-layers.js';
 import { getConversationState } from './conversation-context-engine.js';
+import { wantsQuranExplanation } from './quran-verse-lookup/explanation.js';
+import { detectDateSignal, detectCorrectionSignal, TOPIC_SHIFT_VERSION } from './topic-shift.js';
 
-export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v1';
+export const SYMBOLIC_CONTEXT_VERSION = 'atlas-symbolic-context-v2';
 
-/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|null} SymbolicDomainId */
+/** @typedef {'tarot'|'dream'|'symbol'|'date_pattern'|'person'|'choice'|'numerology'|'pattern'|'astrology'|'quran'|null} SymbolicDomainId */
 
 const SHORT_FOLLOWUP_RE =
   /^(a[cç]|bir\s+daha|[uü][cç]\s+tane|devam(\s+et)?|buna\s+bak|yorumla|kart\s+[cç]ek|tekrar(\s+a[cç])?|bu\s+ne\s+demek|peki\s+bu\s+ki[sş]i|ayn[ıi]\s+[sş]ey\s+yine\s+oldu|bu\s+tarih|yine\s+yazd[ıi]|yine\s+oldu|kart\s+a[cç]|[uü][cç]\s+kart(\s+a[cç])?|bir\s+kart\s+daha|daha\s+detayl[ıi](\s+yazabilir\s+misin)?|detayl[ıi]\s+yaz|mesela|mesel[aâ]|[oö]rnek(\s+ver)?|nas[ıi]l\s+yani|bunu\s+a[cç]|birinci(si)?|ikinci(si)?|üçüncü(sü)?|hangisi)[.!?…]*$/iu;
@@ -28,7 +30,7 @@ const SYMBOLIC_FOLLOWUP_RE =
   /(?:a[cç][ıi]l[ıi]m|kart\s+a[cç]|kart\s+[cç]ek|yorumla|r[uü]ya|sembol|tarih|tekrar|devam|bir\s+daha|bu\s+ki[sş]i|bu\s+tarih|bu\s+sembol|bu\s+se[cç]im|yine\s+(?:yazd[ıi]|oldu|[cç][ıi]kt)|daha\s+detayl[ıi])/i;
 
 const EXPLICIT_DOMAIN_SWITCH =
-  /\b(tarot|r[uü]ya|numeroloji|mix(?:ing)?|master(?:ing)?|\bstem\b|telegram|fatura|abonelik)\b/i;
+  /\b(tarot|r[uü]ya|numeroloji|ebced\w*|abjad\w*|cifir|astroloji|ayet\w*|sure\w*|kuran|mix(?:ing)?|master(?:ing)?|\bstem\b|telegram|fatura|abonelik)\b/i;
 
 const ASTROLOGY_DOMAIN_RE =
   /(?:astroloj|bur[cç]|transit|g[oö]ky[uü]z|(?<!\p{L})(?:ko[cç]|bo[gğ]a|[iı]kizler|yenge[cç]|aslan|ba[sş]ak|terazi|akrep|yay|o[gğ]lak|kova|bal[iı]k)(?:lar|ler)?(?!\p{L}))/iu;
@@ -178,7 +180,26 @@ export function resolveSymbolicContext(input) {
   let action = 'interpret';
   const evidence = [];
 
-  const explicitSwitch = EXPLICIT_DOMAIN_SWITCH.test(message) && !shortFollowUp;
+  // RULE 8 (self-correction): the user is rejecting the domain Atlas just
+  // used ("tarot ne alaka?", "onu sormadım") — never read a domain name
+  // inside a correction sentence as a request to (re)activate that domain,
+  // and never let stale/inherited state survive the correction.
+  const correctionSignal = detectCorrectionSignal(message);
+  // RULE 5 (date-aware routing): an explicit date or "bugün"/"yarın" is
+  // strong current-message evidence for the date/daily-synthesis path —
+  // computed up front so it can both seed a message-driven cue below and
+  // veto stale-domain inheritance (RULE 1/2) further down.
+  const dateSignal = detectDateSignal(message);
+
+  const explicitSwitch =
+    EXPLICIT_DOMAIN_SWITCH.test(message) && !shortFollowUp && !correctionSignal.active;
+
+  // Quran has no live-session store and its own short-follow-up phrasing
+  // ("açıkla", "yorumla", "anlamı ne") doesn't always match the generic
+  // SHORT_FOLLOWUP_RE below — recognize it explicitly, scoped to only when
+  // the stored domain is already 'quran' so this never affects other domains.
+  const quranContinuation =
+    storedDomain === 'quran' && !explicitSwitch && wantsQuranExplanation(message);
 
   // History / live session affinity
   const tarotHist = hasTarotContext(history) || Boolean(freshest?.domain === 'tarot');
@@ -196,63 +217,88 @@ export function resolveSymbolicContext(input) {
     historyHasNumericPattern(history) ||
     isRepeatingNumberPattern(message, history);
 
-  // Message-driven domain cues
-  if (/(?:^|[^\p{L}])(tarot|kart\s+a[cç]|a[cç][ıi]l[ıi]m|\d+\s*kart)(?!\p{L})/iu.test(message)) {
-    primary = 'tarot';
-    action = /yorum/i.test(message) ? 'interpret' : 'draw';
-    evidence.push('message_tarot');
-  } else if (semantic.layers.includes('dream') || /(?:^|[^\p{L}])r[uü]ya(?!\p{L})/iu.test(message)) {
-    primary = 'dream';
-    evidence.push('message_dream');
-  } else if (
-    (ASTROLOGY_DOMAIN_RE.test(message) && DATE_BOUND_ASTRO_RE.test(message)) ||
-    semantic.layers.includes('astrology')
-  ) {
-    primary = 'astrology';
-    action = /detayl[ıi]|derine|kapsam/i.test(message) ? 'expand' : 'interpret';
-    evidence.push('message_astrology');
-  } else if (semantic.layers.includes('symbol')) {
-    primary = 'symbol';
-    evidence.push('message_symbol');
-  } else if (patternHist && (shortFollowUp || isRepeatingNumberPattern(message, history))) {
-    primary = 'date_pattern';
-    evidence.push('message_pattern');
-  } else if (/bu\s+ki[sş]i|yine\s+yazd|gidip\s+geri/i.test(message)) {
-    primary = 'person';
-    evidence.push('message_person');
+  // Message-driven domain cues — RULE 1: evaluated from the CURRENT message
+  // first. A correction never lets its own domain-name mention count as
+  // activation evidence (that would read a rejection as a request).
+  if (!correctionSignal.active) {
+    if (/(?:^|[^\p{L}])(tarot|kart\s+a[cç]|a[cç][ıi]l[ıi]m|\d+\s*kart)(?!\p{L})/iu.test(message)) {
+      primary = 'tarot';
+      action = /yorum/i.test(message) ? 'interpret' : 'draw';
+      evidence.push('message_tarot');
+    } else if (semantic.layers.includes('dream') || /(?:^|[^\p{L}])r[uü]ya(?!\p{L})/iu.test(message)) {
+      primary = 'dream';
+      evidence.push('message_dream');
+    } else if (
+      (ASTROLOGY_DOMAIN_RE.test(message) && DATE_BOUND_ASTRO_RE.test(message)) ||
+      semantic.layers.includes('astrology')
+    ) {
+      primary = 'astrology';
+      action = /detayl[ıi]|derine|kapsam/i.test(message) ? 'expand' : 'interpret';
+      evidence.push('message_astrology');
+    } else if (semantic.layers.includes('symbol')) {
+      primary = 'symbol';
+      evidence.push('message_symbol');
+    } else if (patternHist && (shortFollowUp || isRepeatingNumberPattern(message, history))) {
+      primary = 'date_pattern';
+      evidence.push('message_pattern');
+    } else if (/bu\s+ki[sş]i|yine\s+yazd|gidip\s+geri/i.test(message)) {
+      primary = 'person';
+      evidence.push('message_person');
+    } else if (dateSignal.active) {
+      // RULE 5: a bare date/"bugün"/"yarın" ask, with no other domain cue
+      // in the same message, routes to the date/daily path — never tarot.
+      primary = 'date_pattern';
+      action = 'interpret';
+      evidence.push('message_date_signal');
+    }
   }
 
-  // Short follow-up + strong active domain → preserve
-  if (shortFollowUp && !explicitSwitch) {
+  // RULE 1/2/9: short follow-up + strong active domain → preserve, but only
+  // when the CURRENT message did not already resolve to a specific domain
+  // on its own — current-message evidence always outranks inherited state,
+  // and neither a correction nor a fresh date/"bugün" ask may inherit the
+  // old domain even if the message also happens to look like a short
+  // follow-up (e.g. "Bugün 5/9/26" after a tarot session).
+  if (
+    !primary &&
+    (shortFollowUp || quranContinuation) &&
+    !explicitSwitch &&
+    !correctionSignal.active &&
+    !dateSignal.active
+  ) {
     if (freshest?.domain) {
       primary = freshest.domain;
       evidence.push('freshest_session');
     } else if (storedDomain) {
       primary = storedDomain;
       evidence.push('stored_domain');
-    } else if (tarotHist) {
+    } else if (tarotHist && referents.length) {
+      // RULE 3/4: a bare keyword scan over stale history is not enough on
+      // its own to activate a specialized domain — require it to also be
+      // backed by a resolved referent from this turn (person/date/dream/…).
       primary = 'tarot';
       evidence.push('tarot_history');
-    } else if (dreamHist) {
+    } else if (dreamHist && referents.length) {
       primary = 'dream';
       evidence.push('dream_history');
     } else if (patternHist) {
       primary = 'date_pattern';
       evidence.push('pattern_history');
     } else if (
-      storedDomain === 'astrology' ||
-      /astroloj|bur[cç]|kova|transit/i.test(
-        history
-          .slice(-6)
-          .map((h) => h.content || '')
-          .join('\n'),
-      )
+      referents.length &&
+      (storedDomain === 'astrology' ||
+        /astroloj|bur[cç]|kova|transit/i.test(
+          history
+            .slice(-6)
+            .map((h) => h.content || '')
+            .join('\n'),
+        ))
     ) {
       primary = 'astrology';
       action = 'expand';
       evidence.push('astrology_history');
     }
-  } else if (!primary && freshest?.domain && !explicitSwitch) {
+  } else if (!primary && freshest?.domain && !explicitSwitch && !correctionSignal.active) {
     // Soft affinity without forcing
     if (shortFollowUp || SYMBOLIC_FOLLOWUP_RE.test(message)) {
       primary = freshest.domain;
@@ -297,8 +343,68 @@ export function resolveSymbolicContext(input) {
     referents.length > 0 ||
     live.length > 0;
 
+  // RULE 4 (confidence): score the strongest evidence backing the final
+  // primary domain. Explicit current-message cues (including the date
+  // override) and explicit switches are high confidence; a live/remembered
+  // session is medium; a bare textual scan over stale history is low.
+  const EVIDENCE_CONFIDENCE = {
+    message_tarot: 0.95,
+    message_dream: 0.95,
+    message_astrology: 0.9,
+    message_symbol: 0.85,
+    message_pattern: 0.8,
+    message_person: 0.7,
+    message_date_signal: 0.9,
+    freshest_session: 0.75,
+    stored_domain: 0.6,
+    soft_freshest: 0.55,
+    tarot_history: 0.45,
+    dream_history: 0.45,
+    pattern_history: 0.5,
+    astrology_history: 0.45,
+  };
+  const selectionConfidence = evidence.length
+    ? Math.max(...evidence.map((e) => EVIDENCE_CONFIDENCE[e] ?? 0.5))
+    : primary
+      ? 0.5
+      : 0;
+
+  const previousDomain = freshest?.domain || storedDomain || null;
+  const PERSISTENCE_EVIDENCE = new Set([
+    'freshest_session',
+    'stored_domain',
+    'soft_freshest',
+    'tarot_history',
+    'dream_history',
+    'pattern_history',
+    'astrology_history',
+  ]);
+  const domainPersistenceEvidence = evidence.find((e) => PERSISTENCE_EVIDENCE.has(e)) || null;
+  const domainPersisted = Boolean(
+    primary && previousDomain && primary === previousDomain && domainPersistenceEvidence,
+  );
+
+  const topicShiftDetected = Boolean(
+    correctionSignal.active || (dateSignal.active && evidence.includes('message_date_signal')),
+  );
+  const topicShiftReason = correctionSignal.active
+    ? 'user_correction'
+    : dateSignal.active && evidence.includes('message_date_signal')
+      ? 'date_signal'
+      : null;
+
+  const domainRejected = correctionSignal.active ? previousDomain : null;
+  const rejectionReason = correctionSignal.active ? 'user_correction' : null;
+
+  // RULE 8: invalidate the mistaken domain immediately — a corrected-away
+  // domain must never survive into the next turn via stored state.
+  if (correctionSignal.active) {
+    clearSymbolicDomain(conversationId);
+  }
+
   return {
     version: SYMBOLIC_CONTEXT_VERSION,
+    topicShiftVersion: TOPIC_SHIFT_VERSION,
     active,
     primaryDomain: primary,
     secondaryDomains: secondary,
@@ -311,7 +417,29 @@ export function resolveSymbolicContext(input) {
     liveSessions: live.map((l) => l.domain),
     semanticLayers: semantic.layers,
     evidence,
-    preserveActiveDomain: Boolean(shortFollowUp && primary && !explicitSwitch),
+    preserveActiveDomain: Boolean(
+      (shortFollowUp || quranContinuation) && primary && !explicitSwitch && !correctionSignal.active,
+    ),
+    // ── ATLAS LAB routing telemetry (Rule 11) — no chain-of-thought, only
+    // the same evidence/decision fields this function already computed. ──
+    currentMessageSignals: {
+      dateSignal,
+      correctionSignal: correctionSignal.active,
+      explicitSwitch,
+      referents: referents.map((r) => r.kind),
+    },
+    previousDomain,
+    candidateDomains: [...new Set([primary, ...secondary].filter(Boolean))],
+    selectedDomain: primary,
+    selectionConfidence,
+    topicShiftDetected,
+    topicShiftReason,
+    domainPersisted,
+    domainPersistenceReason: domainPersisted ? domainPersistenceEvidence : null,
+    domainRejected,
+    rejectionReason,
+    selfCorrectionTriggered: correctionSignal.active,
+    finalRoute: primary || 'generic',
   };
 }
 
@@ -422,5 +550,17 @@ export function rememberSymbolicDomain(conversationId, domain) {
   const state = getConversationState(conversationId);
   state.symbolicDomain = domain;
   state.activeTopic = state.activeTopic || domain;
+  state.updatedAt = new Date().toISOString();
+}
+
+/**
+ * Invalidate a mistakenly-persisted domain (Rule 8 self-correction) — the
+ * user rejected the route Atlas took, so it must not survive into the next
+ * turn via stored conversation state.
+ * @param {string} conversationId
+ */
+export function clearSymbolicDomain(conversationId) {
+  const state = getConversationState(conversationId);
+  state.symbolicDomain = null;
   state.updatedAt = new Date().toISOString();
 }

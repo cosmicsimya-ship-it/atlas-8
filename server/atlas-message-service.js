@@ -120,6 +120,10 @@ import {
   rememberSymbolicDomain,
   SYMBOLIC_CONTEXT_VERSION,
 } from './symbolic-context.js';
+// P0 intelligence foundation, Part C wiring: read-only shadow routing
+// proposal for ATLAS LAB telemetry only — see server/intelligence/shadow-arbiter.js
+// header. Never used to make a live routing decision.
+import { runShadowArbiter } from './intelligence/shadow-arbiter.js';
 import {
   analyzeIdentityClaim,
   buildAmbiguousIdentityClarifyReply,
@@ -908,6 +912,7 @@ export async function processAtlasMessage(input, options = {}) {
   const longNorm = normalizeLongMessage(input.message ?? '');
   let message = longNorm.normalized;
   requestTiming.end('normalization');
+  requestTiming.noteUserMessage(message);
   if (!message) {
     return finalizeMessageResult({
       status: 'error',
@@ -1062,6 +1067,7 @@ export async function processAtlasMessage(input, options = {}) {
 
   const originalUserMessage = String(message || '').trim();
   const history = input.history ?? [];
+  requestTiming.noteContext(history.length);
   const convStateEarly = getConversationState(conversationIdEarly);
   const clientSelection =
     input.selection ||
@@ -1457,7 +1463,41 @@ export async function processAtlasMessage(input, options = {}) {
     shortFollowUp: symbolicContext.shortFollowUp,
     preserve: symbolicContext.preserveActiveDomain,
     referents: symbolicContext.referents.map((r) => r.kind),
+    // ATLAS LAB routing telemetry (general topic-shift / confidence hardening) —
+    // bounded, decision-level fields only, no chain-of-thought.
+    currentMessageSignals: symbolicContext.currentMessageSignals,
+    previousDomain: symbolicContext.previousDomain,
+    candidateDomains: symbolicContext.candidateDomains,
+    selectedDomain: symbolicContext.selectedDomain,
+    selectionConfidence: symbolicContext.selectionConfidence,
+    topicShiftDetected: symbolicContext.topicShiftDetected,
+    topicShiftReason: symbolicContext.topicShiftReason,
+    domainPersisted: symbolicContext.domainPersisted,
+    domainPersistenceReason: symbolicContext.domainPersistenceReason,
+    domainRejected: symbolicContext.domainRejected,
+    rejectionReason: symbolicContext.rejectionReason,
+    selfCorrectionTriggered: symbolicContext.selfCorrectionTriggered,
+    finalRoute: symbolicContext.finalRoute,
   };
+
+  // P0 intelligence foundation, Part C: shadow intent/domain arbiter.
+  // Read-only, side-effect-free, try/catch-wrapped — never allowed to
+  // affect the live routing decision below. Output is ATLAS LAB
+  // telemetry only (server/request-timing.js reads pipelineDebug.shadowArbiter).
+  try {
+    pipelineDebug.shadowArbiter = runShadowArbiter({
+      message,
+      history,
+      conversationId,
+      userId,
+      symbolicContext,
+    });
+  } catch (err) {
+    pipelineDebug.shadowArbiter = {
+      version: 'atlas-shadow-arbiter-v1',
+      error: err?.message || 'shadow_arbiter_failed',
+    };
+  }
 
   if (!hasImage && !healthSafety.active) {
     requestTiming.start('audio_studio');
