@@ -78,10 +78,43 @@ record(
   (result?.data?.requestTiming?.phases || []).some((p) => p.name === 'numerology_engine') ||
     Number(result?.data?.requestTiming?.totalDurationMs) >= 0,
 );
+// ATLAS LAB (Phase 1): the snapshot OBJECT now intentionally carries a
+// bounded, truncated userMessageSummary for dev-only diagnosis — but the
+// always-on, every-environment console line (logRequestTiming) must still
+// never contain message content, in production or anywhere else. Verify
+// both halves of that boundary explicitly, rather than the old blanket
+// "no message text anywhere" rule this phase deliberately relaxes for the
+// snapshot object only.
 record(
-  'live timing omits message text',
-  !JSON.stringify(result?.data?.requestTiming || {}).includes('27.01.1986'),
+  'live timing snapshot DOES carry a bounded user-message summary (new, intentional)',
+  typeof result?.data?.requestTiming?.userMessageSummary === 'string' &&
+    result.data.requestTiming.userMessageSummary.length > 0,
 );
+{
+  const originalLog = console.log;
+  const printedLines = [];
+  console.log = (...args) => printedLines.push(args.join(' '));
+  try {
+    _resetAllNumerologySessions();
+    await processAtlasMessage(
+      {
+        message: '27.01.1986 numeroloji analizi yap',
+        channel: 'web',
+        conversationId: 'timing-console-check',
+        userId: 'web:timing-user-2',
+        history: [],
+      },
+      { trustedUserId: 'web:timing-user-2' },
+    );
+  } finally {
+    console.log = originalLog;
+  }
+  const printedText = printedLines.join('\n');
+  record(
+    'console-printed [Atlas/timing] line still omits message text (production log boundary)',
+    printedText.includes('[Atlas/timing]') && !printedText.includes('27.01.1986'),
+  );
+}
 record('live llmCallCount 0 for engine', result?.data?.requestTiming?.llmCallCount === 0);
 
 console.log('');
