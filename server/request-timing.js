@@ -18,6 +18,10 @@
 
 import { randomBytes, createHash } from 'crypto';
 import { recordAtlasLabTrace } from './atlas-lab/trace-store.js';
+// P0 intelligence foundation, Part E: classify why the live routing
+// decision and the shadow arbiter's proposal differ, for ATLAS LAB
+// telemetry only. Never influences fallbackPath/errorState/routing above.
+import { classifyDisagreement } from './intelligence/disagreement.js';
 
 export const REQUEST_TIMING_VERSION = 'atlas-request-timing-v2';
 
@@ -58,6 +62,8 @@ const SUMMARY_MAX_CHARS = 200;
  *   fallbackPath: string|null,
  *   postProcessors: string[],
  *   routingTelemetry: object|null,
+ *   shadowArbiter: object|null,
+ *   disagreementCategory: string|null,
  *   responseSummary: string|null,
  *   errorState: string|null,
  *   phases: TimingPhase[],
@@ -139,6 +145,39 @@ function deriveRoutingTelemetry(data) {
     selfCorrectionTriggered: ctx.selfCorrectionTriggered ?? false,
     finalRoute: ctx.finalRoute ?? null,
   };
+}
+
+/**
+ * The shadow arbiter's proposal, verbatim — already bounded/truncated by
+ * server/intelligence/shadow-arbiter.js itself. Purely additive/nullable.
+ * @param {Record<string, unknown>|null|undefined} data
+ */
+function deriveShadowArbiter(data) {
+  const shadow = data?.pipelineDebug?.shadowArbiter;
+  return shadow && typeof shadow === 'object' ? shadow : null;
+}
+
+/**
+ * Categorize why the live routing decision and the shadow arbiter's
+ * proposal differ (server/intelligence/disagreement.js). null when they
+ * agree, or when there is no shadow proposal to compare against.
+ * @param {Record<string, unknown>|null|undefined} data
+ * @param {{ engine?: string|null }|null|undefined} result
+ * @param {ReturnType<typeof deriveRoutingTelemetry>} routingTelemetry
+ */
+function deriveDisagreementCategory(data, result, routingTelemetry) {
+  const shadow = deriveShadowArbiter(data);
+  if (!shadow) return null;
+  try {
+    return classifyDisagreement({
+      legacyDomain: routingTelemetry?.selectedDomain ?? result?.engine ?? null,
+      legacyEngine: result?.engine ?? null,
+      legacyTopicShift: routingTelemetry?.topicShiftDetected ?? null,
+      shadow,
+    });
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -278,6 +317,10 @@ export function createRequestTiming(opts = {}) {
         fallbackPath: meta.fallbackPath ?? deriveFallbackPath(result, usedRetryOrFallback),
         postProcessors: Array.isArray(meta.postProcessors) ? meta.postProcessors : derivePostProcessors(data),
         routingTelemetry: meta.routingTelemetry ?? deriveRoutingTelemetry(data),
+        shadowArbiter: meta.shadowArbiter ?? deriveShadowArbiter(data),
+        disagreementCategory:
+          meta.disagreementCategory ??
+          deriveDisagreementCategory(data, result, meta.routingTelemetry ?? deriveRoutingTelemetry(data)),
         responseSummary: meta.responseSummary ?? (typeof result?.reply === 'string' ? truncate(result.reply) : null),
         errorState: meta.errorState ?? deriveErrorState(result),
         phases: [...phases],

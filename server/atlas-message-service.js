@@ -127,6 +127,10 @@ import {
   rememberSymbolicDomain,
   SYMBOLIC_CONTEXT_VERSION,
 } from './symbolic-context.js';
+// P0 intelligence foundation, Part C wiring: read-only shadow routing
+// proposal for ATLAS LAB telemetry only — see server/intelligence/shadow-arbiter.js
+// header. Never used to make a live routing decision.
+import { runShadowArbiter } from './intelligence/shadow-arbiter.js';
 import {
   analyzeIdentityClaim,
   buildAmbiguousIdentityClarifyReply,
@@ -1653,6 +1657,25 @@ export async function processAtlasMessage(input, options = {}) {
     selfCorrectionTriggered: symbolicContext.selfCorrectionTriggered,
     finalRoute: symbolicContext.finalRoute,
   };
+
+  // P0 intelligence foundation, Part C: shadow intent/domain arbiter.
+  // Read-only, side-effect-free, try/catch-wrapped — never allowed to
+  // affect the live routing decision below. Output is ATLAS LAB
+  // telemetry only (server/request-timing.js reads pipelineDebug.shadowArbiter).
+  try {
+    pipelineDebug.shadowArbiter = runShadowArbiter({
+      message,
+      history,
+      conversationId,
+      userId,
+      symbolicContext,
+    });
+  } catch (err) {
+    pipelineDebug.shadowArbiter = {
+      version: 'atlas-shadow-arbiter-v1',
+      error: err?.message || 'shadow_arbiter_failed',
+    };
+  }
 
   if (!hasImage && !healthSafety.active) {
     requestTiming.start('audio_studio');

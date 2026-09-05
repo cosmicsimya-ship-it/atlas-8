@@ -118,11 +118,20 @@ function TraceDetailPanel({ trace, onClose }: { trace: AtlasLabTrace; onClose: (
           <Field label="Latency" value={`${trace.totalDurationMs}ms`} />
           <Field label="LLM Calls" value={trace.llmCallCount} />
           <Field label="Error / Fallback" value={trace.errorState ?? trace.fallbackPath} />
+          <Field label="Shadow Domain" value={trace.shadowArbiter?.selectedDomain ?? null} />
+          <Field label="Shadow Action" value={trace.shadowArbiter?.action ?? null} />
+          <Field label="Disagreement" value={trace.disagreementCategory} />
         </div>
 
         <ListField label="Selected Tool(s)" items={trace.selectedTools} />
         <ListField label="Retrieval Sources" items={trace.retrievalSources} />
         <ListField label="Verifier / Post-Processor Results" items={trace.postProcessors} />
+        {trace.shadowArbiter?.candidateDomains?.length ? (
+          <ListField
+            label="Shadow Candidate Domains"
+            items={trace.shadowArbiter.candidateDomains.map((c) => `${c.domain} (${c.score})`)}
+          />
+        ) : null}
 
         <Field label="User Message (bounded summary)" value={trace.userMessageSummary} />
         <Field label="Final Response (bounded summary)" value={trace.responseSummary} />

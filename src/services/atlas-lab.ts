@@ -26,6 +26,21 @@ export type AtlasLabTrace = {
   requestedModel: string | null;
   fallbackPath: string | null;
   postProcessors: string[];
+  // P0 intelligence foundation (Parts C/E): shadow arbiter's read-only
+  // routing proposal and why it disagreed with the live decision, if it
+  // did. Never affects routing — diagnostic only. See
+  // server/intelligence/shadow-arbiter.js and server/intelligence/disagreement.js.
+  shadowArbiter: {
+    selectedDomain: string | null;
+    selectionConfidence: number | null;
+    action: string | null;
+    reason: string | null;
+    proposedEngine: string | null;
+    candidateDomains: Array<{ domain: string; score: number; evidence: string[] }>;
+    clarificationPrompt: string | null;
+    error?: string;
+  } | null;
+  disagreementCategory: string | null;
   responseSummary: string | null;
   errorState: string | null;
   phases: Array<{ name: string; durationMs: number; startedAtMs: number; endedAtMs: number }>;
