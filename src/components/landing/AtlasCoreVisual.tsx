@@ -32,15 +32,19 @@ export default function AtlasCoreVisual({ className, crop = 'desktop' }: AtlasCo
       <div className="absolute left-1/2 top-[7%] h-[86%] w-px -translate-x-1/2 bg-[linear-gradient(to_bottom,transparent,rgba(235,239,244,0.055),transparent)]" />
       <div className="absolute left-[7%] top-1/2 h-px w-[86%] -translate-y-1/2 bg-[linear-gradient(to_right,transparent,rgba(235,239,244,0.045),transparent)]" />
 
-      {/* Approved North Star mark. */}
-      <img
-        src="/atlas-north-star.png"
-        alt=""
-        className={cn(
-          'absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.96] drop-shadow-[0_16px_44px_rgba(0,0,0,0.62)]',
-          mobile ? 'h-[84%] w-[84%]' : 'h-[76%] w-[76%]',
-        )}
-      />
+      {/* Approved North Star mark.
+          Desktop only: on mobile this centered mark (84% of a container that
+          spans from 28% of the hero's height to its bottom, then scaled
+          1.15x by the caller) lands across the headline/description/CTA.
+          HeroSection renders a separate, safely-anchored mobile star
+          instead — same fix strategy as the verified hero/brand port. */}
+      {!mobile && (
+        <img
+          src="/atlas-north-star.png"
+          alt=""
+          className="absolute left-1/2 top-1/2 z-10 h-[76%] w-[76%] -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.96] drop-shadow-[0_16px_44px_rgba(0,0,0,0.62)]"
+        />
+      )}
 
       {/* Restrained neutral material glint. */}
       <div className="absolute left-1/2 top-1/2 z-20 h-[8%] w-[8%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.28),rgba(230,234,240,0.06)_34%,transparent_72%)] mix-blend-screen" />

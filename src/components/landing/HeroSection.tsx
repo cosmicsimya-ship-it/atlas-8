@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { landingHero } from '../../data/landing-content';
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
 
@@ -29,18 +30,24 @@ export default function HeroSection() {
         <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#050505_0%,rgba(5,5,5,0.55)_18%,transparent_42%,rgba(5,5,5,0.35)_78%,#050505_100%)]" />
       </div>
 
-      {/* Mobile North Star — independent from the scaled mechanism stack.
-          It is anchored low in the hero so it reads as a background focal
-          element beneath the composition rather than covering body copy. */}
+      {/* Mobile North Star — anchored to the hero's own bottom padding
+          reserve rather than centered in the scaled mechanism stack above.
+          The foreground block's last three pieces (CTA wrapper mt-8, button
+          min-h-12, then pb-28) are fixed-height/fixed-margin regardless of
+          content or viewport, so the description paragraph's bottom edge is
+          ALWAYS exactly 192px (32+48+112) above the section's own bottom
+          edge — independent of dvh or text wrapping. Anchoring the star
+          within a footprint smaller than that 192px guarantees it never
+          crosses the headline or description; sizing it close to that
+          budget (rather than tucking it fully under the CTA, as before)
+          lets its top edge sit behind the CTA pill as a background focal
+          glow — the button's opaque fill keeps it fully readable/clickable
+          — while its bulk anchors below the whole composition. */}
       <div
         className="pointer-events-none absolute inset-x-0 bottom-2 z-[1] flex justify-center lg:hidden"
         aria-hidden="true"
       >
-        <img
-          src="/atlas-north-star.png"
-          alt=""
-          className="h-36 w-36 object-contain opacity-55 mix-blend-screen drop-shadow-[0_0_40px_rgba(201,179,122,0.1)]"
-        />
+        <AtlasCompassMark className="h-36 w-36 mix-blend-screen opacity-55 drop-shadow-[0_0_40px_rgba(201,179,122,0.1)]" />
       </div>
 
       {/* Desktop midground — giant mechanism */}
