@@ -39,17 +39,23 @@ export default function HeroSection() {
       </div>
 
       {/* Mobile North Star — anchored to the hero's own bottom padding
-          reserve (pb-28 below, matching the foreground block's pb-28) rather
-          than centered in the scaled mechanism stack above. The foreground
-          block always keeps at least that much clear space below the CTA
-          (padding, not content), so anchoring the star within a smaller
-          footprint than that reserve guarantees it never crosses the
-          headline, description, or CTA at any viewport height. */}
+          reserve rather than centered in the scaled mechanism stack above.
+          The foreground block's last three pieces (CTA wrapper mt-8, button
+          min-h-12, then pb-28) are fixed-height/fixed-margin regardless of
+          content or viewport, so the description paragraph's bottom edge is
+          ALWAYS exactly 192px (32+48+112) above the section's own bottom
+          edge — independent of dvh or text wrapping. Anchoring the star
+          within a footprint smaller than that 192px guarantees it never
+          crosses the headline or description; sizing it close to that
+          budget (rather than tucking it fully under the CTA, as before)
+          lets its top edge sit behind the CTA pill as a background focal
+          glow — the button's opaque fill keeps it fully readable/clickable
+          — while its bulk anchors below the whole composition. */}
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-3 z-[1] flex justify-center lg:hidden"
+        className="pointer-events-none absolute inset-x-0 bottom-2 z-[1] flex justify-center lg:hidden"
         aria-hidden="true"
       >
-        <AtlasCompassMark className="h-20 w-20 mix-blend-screen opacity-50 drop-shadow-[0_0_28px_rgba(201,179,122,0.08)]" />
+        <AtlasCompassMark className="h-36 w-36 mix-blend-screen opacity-55 drop-shadow-[0_0_40px_rgba(201,179,122,0.1)]" />
       </div>
 
       {/* Desktop midground — giant mechanism */}
