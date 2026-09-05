@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 import { landingHero } from '../../data/landing-content';
+import AtlasCompassMark from '../brand/AtlasCompassMark';
 import AtlasCoreVisual from './AtlasCoreVisual';
 import HeroAtmosphere from './HeroAtmosphere';
 import ObservatoryField from './ObservatoryField';
@@ -35,6 +36,20 @@ export default function HeroSection() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_45%,rgba(201,179,122,0.1),transparent_55%)]" />
         <AtlasCoreVisual crop="mobile" className="h-full w-full scale-[1.15]" />
         <div className="absolute inset-0 bg-[linear-gradient(to_bottom,#050505_0%,rgba(5,5,5,0.55)_18%,transparent_42%,rgba(5,5,5,0.35)_78%,#050505_100%)]" />
+      </div>
+
+      {/* Mobile North Star — anchored to the hero's own bottom padding
+          reserve (pb-28 below, matching the foreground block's pb-28) rather
+          than centered in the scaled mechanism stack above. The foreground
+          block always keeps at least that much clear space below the CTA
+          (padding, not content), so anchoring the star within a smaller
+          footprint than that reserve guarantees it never crosses the
+          headline, description, or CTA at any viewport height. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-3 z-[1] flex justify-center lg:hidden"
+        aria-hidden="true"
+      >
+        <AtlasCompassMark className="h-20 w-20 mix-blend-screen opacity-50 drop-shadow-[0_0_28px_rgba(201,179,122,0.08)]" />
       </div>
 
       {/* Desktop midground — giant mechanism */}

@@ -60,15 +60,17 @@ export default function AtlasCoreVisual({ className, crop = 'desktop' }: AtlasCo
             the header mark. Sits behind the MID plane's aperture/ticks so it
             reads as the mechanism's true form rather than a sticker on top;
             mix-blend-screen lets its bright facets glow into the dark field
-            instead of showing a flat opaque edge. */}
-        <div className="obs-engine-layer obs-engine-star flex items-center justify-center">
-          <AtlasCompassMark
-            className={cn(
-              'mix-blend-screen opacity-60 drop-shadow-[0_0_32px_rgba(201,179,122,0.06)]',
-              mobile ? 'h-[56%] w-[56%]' : 'h-[46%] w-[46%]',
-            )}
-          />
-        </div>
+            instead of showing a flat opaque edge.
+            Desktop only: on mobile this layer is skipped because it lives
+            inside the scale-[1.15] mechanism stack (see AtlasCoreVisual's
+            caller), and at hero-copy heights that scale pushes a centered
+            56%-of-container star into the headline/CTA. HeroSection renders
+            a dedicated, safely-anchored mobile star instead. */}
+        {!mobile && (
+          <div className="obs-engine-layer obs-engine-star flex items-center justify-center">
+            <AtlasCompassMark className="h-[46%] w-[46%] mix-blend-screen opacity-60 drop-shadow-[0_0_32px_rgba(201,179,122,0.06)]" />
+          </div>
+        )}
 
         {/* MID plane — main observation mechanism */}
         <div className="obs-engine-layer obs-engine-mid obs-drift-soft">
